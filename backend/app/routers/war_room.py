@@ -39,6 +39,18 @@ async def get_war_room(request: Request):
         return await war_room.get_war_room(conn, season, league_id, owner_id)
 
 
+@router.get("/mock")
+async def mock_draft_board(request: Request):
+    """The player board and league shape for a practice mock draft."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
+        return await war_room.mock_board(conn, season, league_id, owner_id)
+
+
 @router.post("/keeper-nudge")
 async def nudge_keepers(request: Request):
     """Pushes everyone who hasn't finished their keepers. Once a day per

@@ -523,3 +523,24 @@ async def test_get_keeper_rules_readable_by_any_member_not_just_commissioner(poo
     body = get_resp.json()
     assert body["max_keepers"] == 3
     assert body["max_consecutive_years"] == 2
+
+
+async def test_tag_fees_save_and_carry_into_next_seasons_rules(pool, monkeypatch):
+    """2026-10-28 (League #1's franchise tag): the commissioner sets a fee
+    by year kept, and next season's rules start from it."""
+    _set_env(monkeypatch)
+    commish_user, commissioner_id = await _seed_member_with_team(pool, 21, 521, role="commissioner")
+    async with _client() as client:
+        client.cookies.update(_session_cookie(commish_user, commissioner_id))
+        first = await client.put(
+            "/keepers/rules",
+            json={"season": _PRIOR_SEASON, "max_keepers": 1, "max_consecutive_years": 3, "tag_fees": [0, 10, 25]},
+        )
+        assert first.status_code == 200
+        assert first.json()["tag_fees"] == [0, 10, 25]
+        bad = await client.put("/keepers/rules", json={"season": TEST_SEASON, "max_keepers": 1, "tag_fees": [-5]})
+        assert bad.status_code == 400
+        carried = await client.put("/keepers/rules", json={"season": TEST_SEASON, "max_keepers": 1, "max_consecutive_years": 3})
+        assert carried.json()["tag_fees"] == [0, 10, 25]
+        cleared = await client.put("/keepers/rules", json={"season": TEST_SEASON, "max_keepers": 1, "tag_fees": []})
+        assert cleared.json()["tag_fees"] is None

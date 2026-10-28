@@ -208,6 +208,9 @@ def translate_sleeper(league: dict) -> dict:
         "playoff_start_week": int(settings.get("playoff_week_start") or 0) or None,
         "waiver_type": "faab" if int(settings.get("waiver_type") or 0) == 2 else None,
         "faab_budget": int(settings.get("waiver_budget") or 0) or None,
+        # Keepers (2026-10-28): Sleeper's count, only for a keeper league
+        # (settings.type 1); a redraft league keeps nobody.
+        "max_keepers": int(settings.get("max_keepers") or 0) if int(settings.get("type") or 0) == 1 else 0,
         "notes": notes,
     }
 
@@ -225,6 +228,8 @@ def translate_espn(league) -> dict:
         "playoff_start_week": (reg_weeks + 1) if reg_weeks else None,
         "waiver_type": "faab" if faab else None,
         "faab_budget": int(getattr(league.settings, "acquisition_budget", 0) or 0) if faab else None,
+        # ESPN's keeper count (draftSettings.keeperCount; 0 in a redraft league).
+        "max_keepers": int(getattr(league.settings, "keeper_count", 0) or 0),
         "notes": notes,
     }
 
@@ -262,7 +267,31 @@ async def apply(conn, league_id: int, season: int, translated: dict) -> None:
             """,
             season, league_id, json.dumps(slots),
         )
+    await _apply_keepers(conn, league_id, season, translated.get("max_keepers"))
     if translated.get("playoff_teams"):
         await league_queries.set_playoff_team_count(
             conn, league_id, season, int(translated["playoff_teams"]), start_week=translated.get("playoff_start_week")
+        )
+
+
+async def _apply_keepers(conn, league_id: int, season: int, max_keepers: int | None) -> None:
+    """A synced league keeps as many players as it does on ESPN or
+    Sleeper (2026-10-28). Neither platform caps how many years in a row
+    someone can be kept, so that stays open, and a deadline the
+    commissioner set here is left alone. Locked keepers aren't touched."""
+    if max_keepers is None:
+        return
+    existing = await conn.fetchrow(
+        "SELECT max_keepers, locked_at FROM league_keeper_rules WHERE season = $1 AND league_id = $2", season, league_id
+    )
+    if existing is None:
+        if max_keepers > 0:
+            await conn.execute(
+                "INSERT INTO league_keeper_rules (season, league_id, max_keepers) VALUES ($1, $2, $3)",
+                season, league_id, max_keepers,
+            )
+    elif existing["locked_at"] is None and existing["max_keepers"] != max_keepers:
+        await conn.execute(
+            "UPDATE league_keeper_rules SET max_keepers = $3 WHERE season = $1 AND league_id = $2",
+            season, league_id, max_keepers,
         )

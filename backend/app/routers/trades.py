@@ -91,6 +91,10 @@ def _trade_dict(trade: dict) -> dict:
         "veto_votes": trade.get("veto_votes", 0),
         "my_veto_vote": trade.get("my_veto_vote", False),
         "assets": trade["assets"],
+        # Future draft picks in the deal (app/domain/future_picks.py).
+        "picks": trade.get("picks", []),
+        # Franchise tag loops for the commissioner to look at (trades.py's _tag_flags).
+        "tag_flags": trade.get("tag_flags", []),
         "drops": trade.get("drops", []),
         "value": trade.get("value"),
     }
@@ -163,6 +167,37 @@ class ProposeTradeRequest(BaseModel):
     drops: list[str] = []
     # Answering an offer made to you: that one is declined.
     counter_of: int | None = None
+    # Future draft picks (future_picks ids), keeper and dynasty leagues.
+    give_picks: list[int] = []
+    receive_picks: list[int] = []
+
+
+@router.get("/picks")
+async def tradeable_picks(team_id: int, request: Request, pool=Depends(get_pool)):
+    """The future picks you and the other team hold, for the trade
+    builder. Empty lists in a league that doesn't trade picks."""
+    from app.domain import future_picks
+
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        my_team_id, league_id = await _require_my_team(conn, payload, season)
+        owners = {
+            r["id"]: r["owner_id"]
+            for r in await conn.fetch(
+                "SELECT id, owner_id FROM teams_by_season WHERE id = ANY($1::int[]) AND league_id = $2 AND season = $3",
+                [my_team_id, team_id], league_id, season,
+            )
+        }
+        if team_id not in owners:
+            raise HTTPException(status_code=404, detail="That team isn't in your league")
+        mine = await future_picks.owned_by(conn, league_id, season, owners[my_team_id])
+        theirs = await future_picks.owned_by(conn, league_id, season, owners[team_id])
+    return {"mine": [_pick_dict(p) for p in mine], "theirs": [_pick_dict(p) for p in theirs]}
+
+
+def _pick_dict(p: dict) -> dict:
+    return {"id": p["id"], "season": p["season"], "round": p["round"], "label": p["label"]}
 
 
 @router.post("")
@@ -177,6 +212,7 @@ async def propose_trade(body: ProposeTradeRequest, request: Request, pool=Depend
             trade = await trades_domain.propose_trade(
                 conn, league_id, season, team_id, body.receiving_team_id, body.give, body.receive, body.note,
                 drops=body.drops, counter_of=body.counter_of,
+                give_picks=body.give_picks, receive_picks=body.receive_picks,
             )
         except TradeError as e:
             raise _map_trade_error(e) from e

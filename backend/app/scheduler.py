@@ -168,7 +168,7 @@ from app.db import get_pool
 from app.domain import draft_engine, matchup_context, narrative_engine, recap_release, weekly_stats
 from app.domain.season_awards import determine_and_save_season_awards
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
-from app.domain import auction_engine, guillotine, live_activity, win_prob_history
+from app.domain import auction_engine, guillotine, kitty, live_activity, win_prob_history
 from app.notifications import game_alerts, inactives
 from app.domain.week_flip import is_past_week_flip
 from app.domain import watch_party as watch_party_domain
@@ -199,7 +199,6 @@ from app.providers.sync import run_full_sync, run_live_sync, update_league_state
 from app.domain import adp, announcements, rivalry_detection, schedule_builder, waivers
 from app.domain.waiver_settings import get_waiver_settings
 from app.domain.playoffs import resolve_ready_playoff_matchups
-from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
 from app.queries import league_espn_connections as espn_connection_queries
 from app.queries import league_sleeper_connections as sleeper_connection_queries
@@ -849,7 +848,8 @@ async def _run_keeper_lock_job():
         )
         for row in due:
             league_id = row["league_id"]
-            locked = await keeper_queries.lock_rules(conn, season, league_id=league_id)
+            # Locks and bills franchise tag fees (app/domain/kitty.py).
+            locked = await kitty.lock_keepers(conn, season, league_id)
             if locked is not None:
                 logger.info("Keeper auto-lock: season=%s league_id=%s", season, league_id)
 

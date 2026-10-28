@@ -57,6 +57,8 @@ import type {
   AwardLeaderboardCategory,
   CareerProfile,
   DraftGrade,
+  MockBoard,
+  OffseasonState,
   Owner,
   PunishmentWheel,
   OwnerBadges,
@@ -74,7 +76,10 @@ import type {
   TradeBlockPlayer,
   TradeEvaluation,
   TradePartner,
+  TradePick,
   TradeRosterPlayer,
+  KeeperCostMode,
+  Kitty,
   KeeperRules,
   MyKeepers,
   WarRoom,
@@ -566,7 +571,7 @@ export const api = {
     give: string[],
     receive: string[],
     note?: string,
-    extra?: { drops?: string[]; counterOf?: number | null },
+    extra?: { drops?: string[]; counterOf?: number | null; givePicks?: number[]; receivePicks?: number[] },
   ) =>
     request<Trade>('/trades', {
       method: 'POST',
@@ -577,8 +582,12 @@ export const api = {
         note: note || null,
         drops: extra?.drops ?? [],
         counter_of: extra?.counterOf ?? null,
+        give_picks: extra?.givePicks ?? [],
+        receive_picks: extra?.receivePicks ?? [],
       }),
     }),
+  // Future picks you and a trade partner hold (keeper and dynasty leagues).
+  tradePicks: (teamId: number) => request<{ mine: TradePick[]; theirs: TradePick[] }>(`/trades/picks?team_id=${teamId}`),
   evaluateTrade: (partnerTeamId: number, give: string[], receive: string[], drops: string[]) =>
     request<TradeEvaluation>('/trades/evaluate', {
       method: 'POST',
@@ -600,11 +609,28 @@ export const api = {
     request<Trade>(`/trades/${tradeId}/${action}`, { method: 'POST', body: '{}' }),
   myKeepers: () => request<MyKeepers>('/keepers/me'),
   warRoom: () => request<WarRoom>('/war-room'),
+  mockBoard: () => request<MockBoard>('/war-room/mock'),
+  kitty: () => request<Kitty>('/league/kitty'),
+  addKittyEntry: (entry: { owner_id: number | null; amount: number; reason: string }) =>
+    request<Kitty>('/league/kitty', { method: 'POST', body: JSON.stringify(entry) }),
+  setKittyPaid: (id: number, paid: boolean) => request<Kitty>(`/league/kitty/${id}/paid`, { method: 'POST', body: JSON.stringify({ paid }) }),
+  deleteKittyEntry: (id: number) => request<Kitty>(`/league/kitty/${id}`, { method: 'DELETE' }),
+  offseason: () => request<OffseasonState>('/league/offseason'),
+  setOffseason: (body: { lock?: boolean; cleared?: boolean }) =>
+    request<OffseasonState>('/league/offseason', { method: 'PUT', body: JSON.stringify(body) }),
   nudgeKeepers: () => request<{ nudged: number }>('/war-room/keeper-nudge', { method: 'POST' }),
   saveKeepers: (espnPlayerIds: number[]) =>
     request<unknown>('/keepers/me', { method: 'PUT', body: JSON.stringify({ espn_player_ids: espnPlayerIds }) }),
   // Commissioner only.
-  setKeeperRules: (rules: { season: number; max_keepers: number; max_consecutive_years: number | null; keeper_deadline: string | null }) =>
+  setKeeperRules: (rules: {
+    season: number;
+    max_keepers: number;
+    max_consecutive_years: number | null;
+    keeper_deadline: string | null;
+    cost_mode?: KeeperCostMode;
+    cost_step?: number;
+    tag_fees?: number[];
+  }) =>
     request<KeeperRules>('/keepers/rules', { method: 'PUT', body: JSON.stringify(rules) }),
   setKeepersLocked: (season: number, locked: boolean) =>
     request<KeeperRules>(`/keepers/rules/${locked ? 'lock' : 'unlock'}`, { method: 'POST', body: JSON.stringify({ season }) }),

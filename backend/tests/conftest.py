@@ -353,6 +353,8 @@ async def cleanup_test_season(pool):
             [TEST_SEASON, TEST_SEASON - 1],
         )
         await conn.execute("DELETE FROM trades WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        await conn.execute("DELETE FROM future_picks WHERE season BETWEEN $1 AND $2", TEST_SEASON - 1, TEST_SEASON + 3)
+        await conn.execute("DELETE FROM league_kitty_entries WHERE season BETWEEN $1 AND $2", TEST_SEASON - 1, TEST_SEASON + 3)
         await conn.execute("DELETE FROM league_trade_settings WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         # current_rosters/draft_picks/roster_history/roster_transactions
         # reference teams_by_season(id), so they have to go before the

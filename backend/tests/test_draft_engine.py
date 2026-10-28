@@ -658,6 +658,48 @@ async def test_seed_keepers_seeds_last_round_for_every_locked_selection(pool):
     assert picks_by_owner[owner_b]["sleeper_player_id"] == sleeper_b
 
 
+async def test_two_keepers_take_the_last_two_rounds(pool):
+    """ESPN's default (2026-10-28): a second keeper takes the round
+    before the last, instead of overwriting the first on the same pick."""
+    owner_a, _ = await _seed_owner_and_team(pool, "twoa")
+    owner_b, _ = await _seed_owner_and_team(pool, "twob")
+    first = await _seed_player(pool, "twoa-k1", espn_player_id=910021)
+    second = await _seed_player(pool, "twoa-k2", espn_player_id=910022)
+    await _seed_keeper_rules(pool, locked=True, max_keepers=2)
+    await _seed_keeper_selection(pool, owner_a, 910021, "Keeper One")
+    await _seed_keeper_selection(pool, owner_a, 910022, "Keeper Two")
+
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS)
+        seeded = await draft_engine.seed_keepers_from_locked_selections(conn, TEST_SEASON)
+        kept = await conn.fetch(
+            "SELECT round, sleeper_player_id FROM draft_picks WHERE season = $1 AND owner_id = $2 AND is_keeper ORDER BY round",
+            TEST_SEASON, owner_a,
+        )
+    last_round = draft_engine.total_draftable_slots(_ROSTER_SLOTS)
+    assert sorted(s["round"] for s in seeded) == [last_round - 1, last_round]
+    assert {k["sleeper_player_id"] for k in kept} == {first, second}
+
+
+async def test_round_drafted_keepers_cost_where_they_went_last_year(pool):
+    owner_a, _ = await _seed_owner_and_team(pool, "rda")
+    owner_b, _ = await _seed_owner_and_team(pool, "rdb")
+    kept = await _seed_player(pool, "rda-k", espn_player_id=910031)
+    await _seed_keeper_rules(pool, locked=True)
+    await _seed_keeper_selection(pool, owner_a, 910031, "Round Three Guy")
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE league_keeper_rules SET cost_mode = 'round_drafted' WHERE season = $1", TEST_SEASON)
+        await conn.execute(
+            "INSERT INTO draft_picks (season, league_id, pick_number, round, round_pick, owner_id, sleeper_player_id) "
+            "VALUES ($1, 1, 5, 3, 1, $2, $3)",
+            TEST_SEASON - 1, owner_a, kept,
+        )
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS)
+        seeded = await draft_engine.seed_keepers_from_locked_selections(conn, TEST_SEASON)
+        await conn.execute("DELETE FROM draft_picks WHERE season = $1", TEST_SEASON - 1)
+    assert [s["round"] for s in seeded] == [3]
+
+
 async def test_seed_keepers_is_idempotent_and_only_seeds_new_owners(pool):
     owner_a, _ = await _seed_owner_and_team(pool, "ika")
     owner_b, _ = await _seed_owner_and_team(pool, "ikb")

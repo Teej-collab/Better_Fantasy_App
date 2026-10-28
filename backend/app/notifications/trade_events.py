@@ -26,6 +26,7 @@ _CENTRAL = ZoneInfo("America/Chicago")
 
 def _names(trade: dict, to_team_id: int) -> str:
     names = [a["player_name"] for a in trade["assets"] if a["to_team_id"] == to_team_id]
+    names += [f"a {p['label']} pick" for p in trade.get("picks", []) if p["to_team_id"] == to_team_id]
     return ", ".join(names) or "nothing"
 
 
@@ -122,6 +123,15 @@ async def notify_trade_event(conn, trade: dict | None, event: str, settings: dic
         both = [proposer, receiver]
         summary = _summary(trade)
         status = trade["status"]
+
+        # A franchise-tagged player headed back to a manager who kept him:
+        # the commissioner hears about it once it's accepted (trades.py's
+        # _tag_flags).
+        if event == "accepted" and trade.get("tag_flags"):
+            await _send(
+                conn, await _commissioner_owner_ids(conn, trade),
+                formatter.trade_update("🏷️ Franchise tag check", "; ".join(trade["tag_flags"]), tid), league_wide=False,
+            )
 
         if event == "proposed":
             note = f" — “{trade['note']}”" if trade.get("note") else ""

@@ -12,14 +12,15 @@ import { api } from '@/lib/api';
 import { trackTap } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import { refreshTrades, useMe, useMyTrades, useTradePartners, useTradeRoster, useTradeTeams } from '@/lib/queries';
-import type { TradeRosterPlayer } from '@/lib/types';
+import type { TradePick, TradeRosterPlayer } from '@/lib/types';
 
 // The trade builder (2026-10-23 overhaul, mockup 5): pick a team, tap
 // players on both sides, and the fairness meter, your lineup before →
 // after and a "to even it out" suggestion update as you go (backend
 // POST /trades/evaluate). A 2-for-1 coming your way asks who you'd drop.
 // ?team=&player= opens on a team with a player picked (a player card or
-// the trade block); ?counter=<id> answers an offer made to you.
+// the trade block); ?counter=<id> answers an offer made to you. In keeper
+// and dynasty leagues, future draft picks trade too (2026-10-28).
 
 function toggleIn(list: string[], id: string): string[] {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -43,8 +44,10 @@ export default function TradeBuilderScreen() {
         partner: counterOf.proposing_team_id,
         give: counterOf.assets.filter((a) => a.from_team_id === myTeam.team_id).map((a) => a.sleeper_player_id),
         receive: counterOf.assets.filter((a) => a.from_team_id === counterOf.proposing_team_id).map((a) => a.sleeper_player_id),
+        givePicks: (counterOf.picks ?? []).filter((p) => p.from_team_id === myTeam.team_id).map((p) => p.future_pick_id),
+        receivePicks: (counterOf.picks ?? []).filter((p) => p.from_team_id === counterOf.proposing_team_id).map((p) => p.future_pick_id),
       }
-    : { partner: params.team ? Number(params.team) || null : null, give: [], receive: params.player ? [params.player] : [] };
+    : { partner: params.team ? Number(params.team) || null : null, give: [], receive: params.player ? [params.player] : [], givePicks: [], receivePicks: [] };
 
   return (
     <Builder
@@ -65,12 +68,15 @@ function Builder({
 }: {
   myTeamId: number;
   teams: { team_id: number; team_name: string }[];
-  initial: { partner: number | null; give: string[]; receive: string[] };
+  initial: { partner: number | null; give: string[]; receive: string[]; givePicks: number[]; receivePicks: number[] };
   counterOf: number | null;
 }) {
   const [partner, setPartner] = useState<number | null>(initial.partner);
   const [give, setGive] = useState<string[]>(initial.give);
   const [receive, setReceive] = useState<string[]>(initial.receive);
+  const [givePicks, setGivePicks] = useState<number[]>(initial.givePicks);
+  const [receivePicks, setReceivePicks] = useState<number[]>(initial.receivePicks);
+  const picks = useQuery({ queryKey: ['trade-picks', partner], queryFn: () => api.tradePicks(partner!), enabled: partner !== null });
   const [drops, setDrops] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -80,7 +86,8 @@ function Builder({
   const partnerName = teams.find((t) => t.team_id === partner)?.team_name ?? '';
   const partnerInfo = useTradePartners().data?.find((t) => t.team_id === partner) ?? null;
 
-  const ready = partner !== null && give.length > 0 && receive.length > 0;
+  const ready = partner !== null && (give.length > 0 || givePicks.length > 0) && (receive.length > 0 || receivePicks.length > 0);
+  const hasPicks = givePicks.length > 0 || receivePicks.length > 0;
   const evaluation = useQuery({
     queryKey: ['trade-eval-live', partner, give, receive, drops],
     queryFn: () => api.evaluateTrade(partner!, give, receive, drops),
@@ -95,6 +102,7 @@ function Builder({
     haptics.select();
     setPartner(id);
     setReceive([]);
+    setReceivePicks([]);
     setDrops([]);
   }
 
@@ -119,7 +127,7 @@ function Builder({
     setBusy(true);
     setError(null);
     try {
-      await api.proposeTrade(partner, give, receive, note.trim(), { drops, counterOf });
+      await api.proposeTrade(partner, give, receive, note.trim(), { drops, counterOf, givePicks, receivePicks });
       haptics.success();
       refreshTrades();
       router.back();
@@ -148,12 +156,26 @@ function Builder({
             </View>
             {counterOf === null && <SmallButton label="Change" onPress={() => setPartner(null)} />}
           </View>
-          <ValueMeter change={ev?.value_change ?? 0} empty={!ready || !ev} />
+          <ValueMeter change={ev?.value_change ?? 0} empty={!ready || !ev || (give.length === 0 && receive.length === 0)} />
+          {hasPicks && <Text style={styles.meta}>The meter weighs this season&apos;s points; draft picks aren&apos;t in it.</Text>}
 
           <View style={styles.columns}>
             <PlayerColumn title="You give" color={YOU} players={mine} selected={give} onPick={(id) => pick('give', id)} />
             <PlayerColumn title="You get" color={THEM} players={theirs} selected={receive} onPick={(id) => pick('receive', id)} />
           </View>
+
+          {picks.data && (picks.data.mine.length > 0 || picks.data.theirs.length > 0) && (
+            <View style={styles.columns}>
+              <PickColumn title="Your picks" color={YOU} picks={picks.data.mine} selected={givePicks} onPick={(id) => {
+                haptics.select();
+                setGivePicks((g) => (g.includes(id) ? g.filter((x) => x !== id) : [...g, id]));
+              }} />
+              <PickColumn title="Their picks" color={THEM} picks={picks.data.theirs} selected={receivePicks} onPick={(id) => {
+                haptics.select();
+                setReceivePicks((r) => (r.includes(id) ? r.filter((x) => x !== id) : [...r, id]));
+              }} />
+            </View>
+          )}
 
           {ready && ev && <LineupChange lineup={ev.my_lineup} title="Your starting lineup after" />}
 
@@ -277,6 +299,44 @@ function PlayerColumn({
               {pos(p.position)} · {(p.per_week ?? 0).toFixed(1)}/wk{p.injury_status ? ` · ${p.injury_status}` : ''}
               {p.on_block ? ' · on the block' : ''}
             </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function PickColumn({
+  title,
+  color,
+  picks,
+  selected,
+  onPick,
+}: {
+  title: string;
+  color: string;
+  picks: TradePick[];
+  selected: number[];
+  onPick: (id: number) => void;
+}) {
+  return (
+    <View style={styles.column}>
+      <GroupTitle title={title} color={color} />
+      {picks.length === 0 && <Text style={styles.playerSub}>None to trade</Text>}
+      {picks.map((p) => {
+        const on = selected.includes(p.id);
+        return (
+          <Pressable
+            key={p.id}
+            onPress={() => onPick(p.id)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={`${p.label} pick`}
+            style={[styles.player, on && { borderColor: color, backgroundColor: `${color}22` }]}>
+            <Text style={styles.playerName} numberOfLines={2}>
+              {p.label}
+            </Text>
+            <Text style={styles.playerSub}>Draft pick</Text>
           </Pressable>
         );
       })}

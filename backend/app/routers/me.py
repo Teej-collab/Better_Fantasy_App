@@ -114,6 +114,15 @@ async def _require_my_team(payload: dict, active_season: int) -> tuple[int, str,
     return team["id"], team["team_name"], league_id
 
 
+async def _forbid_in_offseason(conn, season: int, league_id: int) -> None:
+    """A league with the offseason roster lock on takes no pickups
+    between the end of the season and the draft (app/domain/offseason.py)."""
+    from app.domain import offseason
+
+    if message := await offseason.pickups_blocked(conn, season, league_id):
+        raise HTTPException(status_code=409, detail=message)
+
+
 async def _forbid_in_best_ball(conn, league_id: int, kind: str) -> None:
     """Best ball (2026-10): lineups set themselves and rosters are set at
     the draft — refuse a lineup move ("lineup") or an add/drop/claim
@@ -688,6 +697,7 @@ async def add_free_agent(body: FreeAgentAddRequest, request: Request):
             # kickoff; a no-op if they're already on waivers for a
             # real reason (a genuine recent drop).
             await _forbid_in_best_ball(conn, league_id, "roster")
+            await _forbid_in_offseason(conn, active_season, league_id)
             locked = await _waiver_locked_pro_teams(conn, active_season, league_id)
             await waivers.ensure_waiver_clock_if_game_locked(
                 conn, active_season, league_id, body.sleeper_player_id, locked
@@ -956,6 +966,7 @@ async def submit_waiver_claim(body: WaiverClaimRequest, request: Request):
             # agent"), so this has to run before it, same as the
             # free-agent-add route above.
             await _forbid_in_best_ball(conn, league_id, "roster")
+            await _forbid_in_offseason(conn, active_season, league_id)
             locked = await _waiver_locked_pro_teams(conn, active_season, league_id)
             await waivers.ensure_waiver_clock_if_game_locked(
                 conn, active_season, league_id, body.add_sleeper_player_id, locked

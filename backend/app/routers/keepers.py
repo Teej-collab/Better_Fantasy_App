@@ -66,6 +66,7 @@ ESPN's side left to write back to. This router is fully functional as
 an in-app system of record on its own.
 """
 import datetime
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -79,7 +80,7 @@ from app.providers.espn.config import ESPNConfig, config_for_connection
 from app.providers.espn.lineup_client import ESPNLineupClient
 from app.providers.espn.lineup_exceptions import TeamNotFoundError
 from app.providers.espn.slots import slot_label
-from app.domain import commish_log, league_mode
+from app.domain import commish_log, keeper_costs, kitty, league_mode, war_room
 from app.queries import draft as draft_queries
 from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
@@ -193,6 +194,9 @@ def _rules_dict(row, season: int, draft_scheduled_start=None) -> dict:
             "keeper_deadline": None,
             "locked_at": None,
             "is_open": False,
+            "cost_mode": "last_round",
+            "cost_step": 1,
+            "tag_fees": None,
             "draft_scheduled_start": draft_scheduled_start.isoformat() if draft_scheduled_start else None,
         }
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -204,7 +208,33 @@ def _rules_dict(row, season: int, draft_scheduled_start=None) -> dict:
         "keeper_deadline": row["keeper_deadline"].isoformat() if row["keeper_deadline"] else None,
         "locked_at": row["locked_at"].isoformat() if row["locked_at"] else None,
         "is_open": is_open,
+        "cost_mode": row["cost_mode"],
+        "cost_step": row["cost_step"],
+        # Franchise tag fee by year kept, dollars ([0, 10, 25]); None: no fees.
+        "tag_fees": json.loads(row["tag_fees"]) if isinstance(row["tag_fees"], str) else row["tag_fees"],
         "draft_scheduled_start": draft_scheduled_start.isoformat() if draft_scheduled_start else None,
+    }
+
+
+_COST_LABEL = {
+    "last_round": "your last-round picks",
+    "round_drafted": "the round he was drafted",
+    "escalating": "the round he was drafted, earlier each year",
+}
+
+
+def _fees_label(fees) -> str:
+    fees = json.loads(fees) if isinstance(fees, str) else fees
+    if not fees or not any(fees):
+        return "none"
+    return ", ".join(f"year {i} ${f:g}" for i, f in enumerate(fees, start=1))
+
+
+def _outlook_fields(o: dict | None) -> dict:
+    o = o or {}
+    return {
+        "adp": o.get("adp"), "verdict": o.get("verdict"), "verdict_tone": o.get("tone"),
+        "last_season": o.get("last_season"), "cost_round": o.get("cost_round"),
     }
 
 
@@ -228,6 +258,23 @@ async def get_my_keepers(request: Request, pool=Depends(get_pool)):
         # should still work in that case, same as the homepage's own
         # Draft Countdown card (your_week.py).
         draft_scheduled_start = await draft_queries.get_effective_scheduled_start(conn, active_season, league_id)
+        # Each candidate's ADP, last season here and a keep-or-let-go
+        # read (app/domain/war_room.py's keeper_outlook, 2026-10-28).
+        sleeper_by_espn = {
+            r["espn_player_id"]: r["sleeper_player_id"]
+            for r in await conn.fetch(
+                "SELECT espn_player_id, sleeper_player_id FROM players WHERE espn_player_id = ANY($1::int[])",
+                [r["espn_player_id"] for r in pool_rows],
+            )
+        } if pool_rows else {}
+        prior_by_player_ids = {r["espn_player_id"] for r in prior}
+        kept_before = {
+            sleeper_by_espn[r["espn_player_id"]]: r["espn_player_id"] in prior_by_player_ids
+            for r in pool_rows if r["espn_player_id"] in sleeper_by_espn
+        }
+        outlook = await war_room.keeper_outlook(
+            conn, active_season, league_id, owner_id, list(sleeper_by_espn.values()), kept_before
+        ) if owner_id is not None and sleeper_by_espn else {}
 
     rules = _rules_dict(rules_row, active_season, draft_scheduled_start)
     prior_by_player = {r["espn_player_id"]: r for r in prior}
@@ -252,6 +299,11 @@ async def get_my_keepers(request: Request, pool=Depends(get_pool)):
                 "consecutive_years_if_kept": prior_by_player[r["espn_player_id"]]["consecutive_years_kept"] + 1
                 if r["espn_player_id"] in prior_by_player
                 else 1,
+                **_outlook_fields(outlook.get(sleeper_by_espn.get(r["espn_player_id"]))),
+                "tag_fee": kitty.tag_fee(
+                    rules["tag_fees"],
+                    prior_by_player[r["espn_player_id"]]["consecutive_years_kept"] + 1 if r["espn_player_id"] in prior_by_player else 1,
+                ),
             }
             for r in pool_rows
         ],
@@ -334,6 +386,13 @@ class KeeperRulesBody(BaseModel):
     max_keepers: int
     max_consecutive_years: int | None = None
     keeper_deadline: datetime.datetime | None = None
+    # What a keeper costs (app/domain/keeper_costs.py); left out, it
+    # stays as it was.
+    cost_mode: str | None = None
+    cost_step: int | None = None
+    # Franchise tag fee by year kept, in dollars; [] clears them. Left
+    # out, they stay as they are.
+    tag_fees: list[float] | None = None
 
 
 @router.put("/rules")
@@ -343,12 +402,26 @@ async def set_keeper_rules(body: KeeperRulesBody, request: Request, pool=Depends
         raise HTTPException(status_code=400, detail="max_keepers can't be negative")
     if body.max_consecutive_years is not None and body.max_consecutive_years < 1:
         raise HTTPException(status_code=400, detail="max_consecutive_years must be at least 1")
+    if body.cost_mode is not None and body.cost_mode not in keeper_costs.COST_MODES:
+        raise HTTPException(status_code=400, detail="Unknown keeper cost")
+    if body.cost_step is not None and not 1 <= body.cost_step <= 5:
+        raise HTTPException(status_code=400, detail="Rounds earlier per year must be 1 to 5")
+    if body.tag_fees is not None and (len(body.tag_fees) > 10 or any(f < 0 or f > 10_000 for f in body.tag_fees)):
+        raise HTTPException(status_code=400, detail="Tag fees must be between $0 and $10,000, up to 10 years")
 
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
         before = await keeper_queries.get_rules(conn, body.season, league_id)
+        # A new season's rules start from last season's costs and fees
+        # unless the commissioner sends new ones.
+        prior = await keeper_queries.get_rules(conn, body.season - 1, league_id) if before is None else None
+        fees = body.tag_fees if body.tag_fees is not None else (
+            json.loads(prior["tag_fees"]) if prior and isinstance(prior["tag_fees"], str) else (prior["tag_fees"] if prior else "keep")
+        )
         row = await keeper_queries.upsert_rules(
-            conn, body.season, body.max_keepers, body.max_consecutive_years, body.keeper_deadline, league_id
+            conn, body.season, body.max_keepers, body.max_consecutive_years, body.keeper_deadline, league_id,
+            body.cost_mode or (prior["cost_mode"] if prior else None), body.cost_step or (prior["cost_step"] if prior else None),
+            fees,
         )
         if row is not None:
             changes = [
@@ -356,6 +429,12 @@ async def set_keeper_rules(body: KeeperRulesBody, request: Request, pool=Depends
                 commish_log.change(
                     "Max years in a row", (before["max_consecutive_years"] if before else None) or "no cap",
                     row["max_consecutive_years"] or "no cap",
+                ),
+                commish_log.change(
+                    "Keeper cost", _COST_LABEL.get(before["cost_mode"]) if before else None, _COST_LABEL.get(row["cost_mode"]),
+                ),
+                commish_log.change(
+                    "Franchise tag fees", _fees_label(before["tag_fees"]) if before else None, _fees_label(row["tag_fees"]),
                 ),
                 commish_log.change(
                     f"{body.season} keeper deadline", commish_log.when(before["keeper_deadline"] if before else None),
@@ -379,7 +458,8 @@ async def lock_keeper_rules(body: SeasonBody, request: Request, pool=Depends(get
     payload = _require_session(request)
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
-        row = await keeper_queries.lock_rules(conn, body.season, league_id)
+        # Locking bills franchise tag fees to the kitty (app/domain/kitty.py).
+        row = await kitty.lock_keepers(conn, body.season, league_id)
         if row is None:
             row = await keeper_queries.get_rules(conn, body.season, league_id)
         else:
@@ -393,6 +473,8 @@ async def unlock_keeper_rules(body: SeasonBody, request: Request, pool=Depends(g
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
         row = await keeper_queries.unlock_rules(conn, body.season, league_id)
+        if row is not None:
+            await kitty.clear_unpaid_tag_fees(conn, body.season, league_id)
         if row is not None:
             await commish_log.record(conn, league_id, payload["user_id"], "keepers", f"Unlocked {body.season} keeper selections")
     if row is None:

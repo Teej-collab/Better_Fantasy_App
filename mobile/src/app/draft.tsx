@@ -7,11 +7,12 @@ import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { PositionStripe } from '@/components/PositionStripe';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
+import { QueueHeader, QueueList } from '@/components/warroom/QueueList';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api, draftSocketUrl } from '@/lib/api';
 import { formatPoints } from '@/lib/format';
 import { positionColor } from '@/lib/positionColors';
-import { openPlayer, queryClient, useDraftPool, useDraftQueue, useDraftState, useMe } from '@/lib/queries';
+import { openPlayer, queryClient, useDraftPool, useDraftQueue, useDraftState, useMe, useWarRoom } from '@/lib/queries';
 import type { AuctionState, DraftChatMessage, DraftPick, DraftPoolPlayer, DraftState } from '@/lib/types';
 
 const RECONNECT_DELAY_MS = 2000;
@@ -40,6 +41,8 @@ function refreshDraft() {
   void queryClient.invalidateQueries({ queryKey: ['draft-state'] });
   void queryClient.invalidateQueries({ queryKey: ['draft-pool'] });
   void queryClient.invalidateQueries({ queryKey: ['draft-queue'] });
+  // The Queue tab's chances and "who took him" (2026-10-28).
+  void queryClient.invalidateQueries({ queryKey: ['war-room'] });
 }
 
 // The draft room's WebSocket (backend/app/routers/draft.py's draft_ws),
@@ -406,77 +409,27 @@ function PlayersView({ canDraft, onDraft, actionLabel }: { canDraft: boolean; on
   );
 }
 
-function QueueView({ canDraft, onDraft, actionLabel }: { canDraft: boolean; onDraft: (p: DraftPoolPlayer) => void; actionLabel: string }) {
-  const queue = useDraftQueue();
-  // Names come from the full pool; the queue itself is just ids.
-  const pool = useDraftPool(undefined, '');
-  const byId = useMemo(() => new Map((pool.data ?? []).map((p) => [p.sleeper_player_id, p])), [pool.data]);
-  const ids = queue.data ?? [];
-
-  async function save(next: string[]) {
-    queryClient.setQueryData(['draft-queue'], next);
-    try {
-      const { queue: saved } = await api.reorderDraftQueue(next);
-      queryClient.setQueryData(['draft-queue'], saved);
-    } catch (e) {
-      void queue.refetch();
-      Alert.alert("Couldn't reorder", e instanceof Error ? e.message : 'Try again.');
-    }
-  }
-
-  function move(index: number, by: number) {
-    const target = index + by;
-    if (target < 0 || target >= ids.length) return;
-    void Haptics.selectionAsync();
-    const next = [...ids];
-    [next[index], next[target]] = [next[target], next[index]];
-    void save(next);
-  }
-
-  async function remove(id: string) {
-    try {
-      const { queue: next } = await api.removeFromDraftQueue(id);
-      queryClient.setQueryData(['draft-queue'], next);
-    } catch (e) {
-      Alert.alert("Couldn't remove", e instanceof Error ? e.message : 'Try again.');
-    }
-  }
-
-  if (queue.isPending) return <LoadingState />;
-  if (ids.length === 0) return <MessageState message="Star players on the Players tab to line them up here." />;
-
+// The queue in the War Room's readable layout (2026-10-28,
+// components/warroom/QueueList.tsx): chances, who took whom, and your
+// open spots. Its data is the War Room's, refreshed on every pick.
+function QueueView({ canDraft, onDraft, actionLabel }: { canDraft: boolean; onDraft: (p: { sleeper_player_id: string; full_name: string }) => void; actionLabel: string }) {
+  const war = useWarRoom();
+  if (war.isPending) return <LoadingState />;
+  const draft = war.data?.draft;
+  const items = draft?.queue_full ?? [];
   return (
-    <FlatList
-      data={ids}
-      keyExtractor={(id) => id}
-      renderItem={({ item: id, index }) => {
-        const player = byId.get(id);
-        return (
-          <PlayerRow
-            position={player?.position ?? null}
-            rank={index + 1}
-            name={player?.full_name ?? 'Loading…'}
-            detail={player ? `${positionLabel(player.position)}${player.pro_team ? ` · ${player.pro_team}` : ''}` : ''}
-            value={player?.drafted ? 'Taken' : formatPoints(player?.projected_points)}
-            onOpen={() => openPlayer(id)}
-            actions={
-              <>
-                <Pressable onPress={() => move(index, -1)} hitSlop={6} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Move ${player?.full_name ?? 'player'} up`}>
-                  <Text style={styles.arrow}>▲</Text>
-                </Pressable>
-                <Pressable onPress={() => move(index, 1)} hitSlop={6} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Move ${player?.full_name ?? 'player'} down`}>
-                  <Text style={styles.arrow}>▼</Text>
-                </Pressable>
-                <Pressable onPress={() => remove(id)} hitSlop={6} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Remove ${player?.full_name ?? 'player'} from queue`}>
-                  <Text style={styles.removeX}>✕</Text>
-                </Pressable>
-                {canDraft && player && !player.drafted && <DraftButton label={actionLabel} onPress={() => onDraft(player)} />}
-              </>
-            }
-          />
-        );
-      }}
-    />
+    <ScrollView contentContainerStyle={styles.queue} refreshControl={<AppRefreshControl />}>
+      {draft && <QueueHeader draft={draft} />}
+      {items.length === 0 ? (
+        <MessageState message="Star players on the Players tab to line them up here." />
+      ) : (
+        <QueueList
+          items={items}
+          draftLabel={actionLabel}
+          onDraft={canDraft ? (id) => onDraft({ sleeper_player_id: id, full_name: items.find((q) => q.sleeper_player_id === id)?.name ?? 'this player' }) : undefined}
+        />
+      )}
+    </ScrollView>
   );
 }
 
@@ -712,6 +665,7 @@ function DraftButton({ onPress, label }: { onPress: () => void; label: string })
 }
 
 const styles = StyleSheet.create({
+  queue: { padding: Spacing.md, paddingBottom: Spacing.xl * 2, gap: Spacing.md },
   auction: { marginHorizontal: Spacing.md, marginBottom: Spacing.sm, padding: Spacing.lg, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.accent, backgroundColor: Colors.surface, gap: Spacing.sm },
   auctionName: { color: Colors.text, fontSize: 18, fontWeight: '800' },
   auctionBid: { color: Colors.text, fontWeight: '800' },

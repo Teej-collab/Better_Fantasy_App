@@ -64,7 +64,9 @@ function reviewLine(s: TradeSettings | null): string | null {
 }
 
 function getsFor(trade: Trade, teamId: number): string {
-  return trade.assets.filter((a) => a.to_team_id === teamId).map((a) => a.player_name).join(', ') || '—';
+  const players = trade.assets.filter((a) => a.to_team_id === teamId).map((a) => a.player_name);
+  const picks = (trade.picks ?? []).filter((p) => p.to_team_id === teamId).map((p) => `${p.label} pick`);
+  return [...players, ...picks].join(', ') || '—';
 }
 
 function nowMs(): number {

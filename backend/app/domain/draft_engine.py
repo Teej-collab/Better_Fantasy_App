@@ -250,6 +250,11 @@ async def create_draft(
                 for pick_number, round_num, round_pick, owner_id in rows
             ],
         )
+        # Picks traded in past seasons go to their new owners
+        # (app/domain/future_picks.py, 2026-10-28).
+        from app.domain import future_picks
+
+        await future_picks.apply_to_draft(conn, season, league_id)
 
 
 async def carry_dynasty_rosters(conn, season: int, league_id: int) -> bool:
@@ -519,17 +524,40 @@ async def seed_keepers_from_locked_selections(conn, season: int, league_id: int 
             )
         else:
             resolved.append({"owner_id": selection["owner_id"], "player_name": selection["player_name"],
-                              "sleeper_player_id": sleeper_player_id})
+                              "sleeper_player_id": sleeper_player_id,
+                              "kept_before": (selection["consecutive_years_kept"] or 1) > 1})
 
     if unresolved:
         raise KeeperResolutionError(unresolved)
 
-    last_round = total_draftable_slots(config["roster_slots"])
+    # Which pick each keeper costs: the league's keeper cost rule
+    # (app/domain/keeper_costs.py, 2026-10-28; ESPN's default is the
+    # final rounds, one per keeper counting back from the last), moved
+    # to the next earlier round you still hold on a clash.
+    from app.domain import keeper_costs
+
+    by_owner: dict[int, list[dict]] = {}
+    for r in resolved:
+        by_owner.setdefault(r["owner_id"], []).append(r)
     seeded = []
     async with conn.transaction():
-        for r in resolved:
-            await seed_keeper_pick(conn, season, r["owner_id"], last_round, r["sleeper_player_id"], league_id)
-            seeded.append({**r, "round": last_round})
+        for owner_id, keepers in by_owner.items():
+            costs = await keeper_costs.cost_rounds(conn, season, league_id, [(k["sleeper_player_id"], k["kept_before"]) for k in keepers])
+            held = {
+                row["round"]
+                for row in await conn.fetch(
+                    "SELECT round FROM draft_picks WHERE season = $1 AND league_id = $2 AND owner_id = $3 "
+                    "AND sleeper_player_id IS NULL",
+                    season, league_id, owner_id,
+                )
+            }
+            rounds = keeper_costs.assign_rounds(list(costs.items()), held)
+            for k in keepers:
+                round_num = rounds.get(k["sleeper_player_id"])
+                if round_num is None:
+                    continue
+                await seed_keeper_pick(conn, season, owner_id, round_num, k["sleeper_player_id"], league_id)
+                seeded.append({key: v for key, v in k.items() if key != "kept_before"} | {"round": round_num})
     return seeded
 
 

@@ -6,6 +6,11 @@ page that follows the calendar.
   stays hidden until keepers lock) and a nudge for the stragglers.
 - draft: countdown, your picks, who's likely still there at your next
   pick, your queue, and the keepers already off the board.
+- queue (2026-10-28): every player you've queued, with his chance of
+  lasting to your next pick or who took him, and the starting spots you
+  still have to fill.
+- dynasty (dynasty leagues): your roster's age, next year's rookie
+  picks and the taxi squad.
 - report card: your draft-day grade next to a hindsight grade from what
   every pick has actually scored, each of your picks' standing now, the
   league's best pick and biggest miss, and next year's keeper watch.
@@ -149,14 +154,13 @@ async def draft_phase(conn, season: int, league_id: int, owner_id: int) -> dict:
             for pid, a, chance in scored[:LIKELY_SHOWN]
         ]
 
-    queue_rows = await conn.fetch(
-        "SELECT q.sleeper_player_id, p.full_name, p.position FROM draft_queue_items q "
-        "LEFT JOIN players p ON p.sleeper_player_id = q.sleeper_player_id "
-        "WHERE q.season = $1 AND q.league_id = $2 AND q.owner_id = $3 AND NOT (q.sleeper_player_id = ANY($4::text[])) "
-        "ORDER BY q.rank LIMIT $5",
-        season, league_id, owner_id, list(taken), QUEUE_SHOWN,
-    )
     names = await _names(conn, league_id, season)
+    ahead = (
+        sum(1 for p in picks if current <= p["pick_number"] < next_pick["pick_number"] and not p["sleeper_player_id"])
+        if next_pick else 0
+    )
+    queue_full = await _full_queue(conn, season, league_id, owner_id, picks, names, adp, next_pick, ahead)
+    queue_rows = [q for q in queue_full if q["taken_by"] is None][:QUEUE_SHOWN]
     keepers: dict[int, list[str]] = {}
     for p in picks:
         if p["is_keeper"] and p["full_name"]:
@@ -179,15 +183,237 @@ async def draft_phase(conn, season: int, league_id: int, owner_id: int) -> dict:
             for p in mine
         ],
         "next_pick": next_pick["pick_number"] if next_pick else None,
+        "next_pick_label": f"{next_pick['round']}.{next_pick['round_pick']:02d}" if next_pick else None,
+        "picks_until": ahead if next_pick else None,
         "likely_available": likely,
         "queue": [
-            {"sleeper_player_id": q["sleeper_player_id"], "name": q["full_name"], "position": q["position"],
-             "adp": round(adp[q["sleeper_player_id"]], 1) if q["sleeper_player_id"] in adp else None}
+            {"sleeper_player_id": q["sleeper_player_id"], "name": q["name"], "position": q["position"], "adp": q["adp"]}
             for q in queue_rows
         ],
+        "queue_full": queue_full,
+        "needs": _needs(config["roster_slots"] if config else None, [p["position"] for p in mine if p["sleeper_player_id"]]),
         "keepers_off_board": [
             {"owner_id": o, "name": names.get(o, "Manager"), "players": ps} for o, ps in keepers.items()
         ],
+    }
+
+
+async def _full_queue(conn, season, league_id, owner_id, picks, names, adp, next_pick, ahead) -> list[dict]:
+    """Every queued player in order: team, bye, ADP, and either his
+    chance of lasting to your next pick or who already took him."""
+    rows = await conn.fetch(
+        "SELECT q.sleeper_player_id, p.full_name, p.position, p.pro_team, tbw.bye_week FROM draft_queue_items q "
+        "LEFT JOIN players p ON p.sleeper_player_id = q.sleeper_player_id "
+        "LEFT JOIN team_bye_weeks tbw ON tbw.season = $1 AND tbw.pro_team = p.pro_team "
+        "WHERE q.season = $1 AND q.league_id = $2 AND q.owner_id = $3 ORDER BY q.rank",
+        season, league_id, owner_id,
+    )
+    taken_at = {p["sleeper_player_id"]: p for p in picks if p["sleeper_player_id"]}
+    out = []
+    for r in rows:
+        pid = r["sleeper_player_id"]
+        a = adp.get(pid)
+        pick = taken_at.get(pid)
+        out.append({
+            "sleeper_player_id": pid,
+            "name": r["full_name"] or pid,
+            "position": r["position"],
+            "team": r["pro_team"],
+            "bye_week": r["bye_week"],
+            "adp": round(a, 1) if a is not None else None,
+            "chance": chance_available(a, next_pick["pick_number"], ahead) if a is not None and next_pick and not pick else None,
+            "taken_by": {
+                "name": "You" if pick["owner_id"] == owner_id else names.get(pick["owner_id"], "Someone"),
+                "pick": f"{pick['round']}.{pick['round_pick']:02d}",
+            } if pick else None,
+        })
+    return out
+
+
+# The positions a lineup needs, in the order they're shown.
+_NEED_ORDER = ("QB", "RB", "WR", "TE", "DEF", "K", "DL", "LB", "DB")
+
+
+def _needs(roster_slots: dict | str | None, drafted_positions: list[str | None]) -> list[dict]:
+    """Starting spots still open by position: the league's starter slots
+    for that position minus who you've drafted there. Flex spots fill
+    from whatever's left, so they aren't counted."""
+    import json
+
+    from app.domain.roster_slots import DEFAULT_ROSTER_SLOTS, POSITION_TO_SLOT_LABEL
+
+    slots = json.loads(roster_slots) if isinstance(roster_slots, str) else (roster_slots or DEFAULT_ROSTER_SLOTS)
+    have: dict[str, int] = {}
+    for pos in drafted_positions:
+        if pos:
+            have[pos] = have.get(pos, 0) + 1
+    out = []
+    for pos in _NEED_ORDER:
+        want = int(slots.get(POSITION_TO_SLOT_LABEL[pos], 0) or 0)
+        if want - have.get(pos, 0) > 0:
+            out.append({"position": pos, "count": want - have.get(pos, 0)})
+    return out
+
+
+def _snake_pick(round_num: int, slot: int, teams: int) -> int:
+    return (round_num - 1) * teams + (slot if round_num % 2 == 1 else teams - slot + 1)
+
+
+async def keeper_outlook(
+    conn, season: int, league_id: int, owner_id: int, sleeper_ids: list[str], kept_before: dict[str, bool] | None = None,
+) -> dict[str, dict]:
+    """For the keeper screen: each candidate's ADP, last season's points
+    and position rank here, and a one-line keep-or-let-go read. Keepers
+    use your final-round picks, so the question is whether he'd still be
+    there when you pick early: keep the ones who won't be."""
+    adp = await _adp_board(conn, season, league_id, None)
+    config = await conn.fetchrow("SELECT draft_order FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id)
+    order = list(config["draft_order"]) if config and config["draft_order"] else []
+    teams = len(order) or await _season_team_count(conn, season, league_id) or await _season_team_count(conn, season - 1, league_id) or 12
+    slot = order.index(owner_id) + 1 if owner_id in order else None
+    assumed = slot is None
+    slot = slot or (teams + 1) // 2
+
+    totals = await conn.fetch(
+        """
+        SELECT pws.sleeper_player_id, p.position, SUM(pws.fantasy_points) AS pts
+        FROM player_week_stats pws JOIN players p ON p.sleeper_player_id = pws.sleeper_player_id
+        WHERE pws.season = $1 AND pws.league_id = $2
+        GROUP BY pws.sleeper_player_id, p.position
+        """,
+        season - 1, league_id,
+    )
+    by_pos: dict[str, list] = {}
+    for r in totals:
+        by_pos.setdefault(r["position"], []).append(r)
+    rank: dict[str, tuple[str, int, float]] = {}
+    for pos, rows in by_pos.items():
+        for i, r in enumerate(sorted(rows, key=lambda r: -(r["pts"] or 0)), start=1):
+            rank[r["sleeper_player_id"]] = (pos, i, float(r["pts"] or 0))
+
+    # What each one would cost under the league's keeper cost rule.
+    from app.domain import keeper_costs
+
+    mode, _ = await keeper_costs.rules(conn, season, league_id)
+    costs = await keeper_costs.cost_rounds(conn, season, league_id, [(pid, (kept_before or {}).get(pid, False)) for pid in sleeper_ids])
+
+    out: dict[str, dict] = {}
+    for pid in sleeper_ids:
+        a = adp.get(pid)
+        info: dict = {"adp": round(a, 1) if a is not None else None, "verdict": None, "tone": None, "cost_round": costs.get(pid)}
+        if pid in rank:
+            pos, n, pts = rank[pid]
+            info["last_season"] = f"{'D/ST' if pos == 'DEF' else pos}{n} last year · {pts:.0f} pts"
+        if a is not None and mode != "last_round":
+            # A keeper costs a real round: worth it when he'd normally
+            # go well before that round.
+            cost = costs[pid]
+            goes = max(1, -(-int(round(a)) // teams))
+            if cost - goes >= 2:
+                info["verdict"], info["tone"] = f"Keep: costs your round {cost} pick, and he goes around round {goes}", "keep"
+            elif cost - goes <= 0:
+                info["verdict"], info["tone"] = f"Let go: costs round {cost}, but he usually lasts to round {goes}", "let_go"
+            else:
+                info["verdict"], info["tone"] = f"Fair price: costs round {cost}, he goes around round {goes}", "toss_up"
+        elif a is not None:
+            first = _snake_pick(1, slot, teams)
+            c1 = chance_available(a, first, first - 1)
+            mine = " (a middle pick, until the order's set)" if assumed else ""
+            if c1 < 0.35:
+                info["verdict"], info["tone"] = f"Keep: only a {round(c1 * 100)}% chance he lasts to your first pick{mine}", "keep"
+            else:
+                late = None
+                for r in range(2, 9):
+                    pick = _snake_pick(r, slot, teams)
+                    c = chance_available(a, pick, pick - 1)
+                    if c >= 0.7:
+                        late = (r, c)
+                if late:
+                    info["verdict"], info["tone"] = f"Let go: {round(late[1] * 100)}% he's still there in round {late[0]}{mine}", "let_go"
+                else:
+                    info["verdict"], info["tone"] = f"Toss-up: {round(c1 * 100)}% he lasts to your first pick{mine}", "toss_up"
+        out[pid] = info
+    return out
+
+
+async def dynasty_phase(conn, season: int, league_id: int, owner_id: int) -> dict | None:
+    """A dynasty league's franchise view: how old your roster is, next
+    year's rookie picks (projected from this year's standings, worst
+    team first, until that draft is set) and your taxi squad."""
+    from app.domain.league_format import get_league_format
+    from app.queries.league import get_standings
+
+    fmt = await get_league_format(conn, league_id)
+    if fmt["league_type"] != "dynasty":
+        return None
+    team_id = await conn.fetchval(
+        "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3", season, owner_id, league_id
+    )
+    roster = await conn.fetch(
+        """
+        SELECT cr.sleeper_player_id, cr.lineup_slot, p.full_name, p.position, p.pro_team, p.age, p.years_exp
+        FROM current_rosters cr JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
+        WHERE cr.season = $1 AND cr.team_id = $2
+        """,
+        season, team_id,
+    ) if team_id else []
+
+    starters = [r for r in roster if r["lineup_slot"] not in ("BE", "IR", "TAXI") and r["age"]]
+    avg = round(sum(float(r["age"]) for r in starters) / len(starters), 1) if starters else None
+    groups = []
+    for pos in ("QB", "RB", "WR", "TE"):
+        ages = [float(r["age"]) for r in roster if r["position"] == pos and r["age"]]
+        if ages:
+            groups.append({
+                "position": pos,
+                "young": sum(1 for a in ages if a < 25),
+                "prime": sum(1 for a in ages if 25 <= a < 29),
+                "old": sum(1 for a in ages if a >= 29),
+            })
+
+    rounds = int(fmt["type_settings"].get("rookie_draft_rounds", 4))
+    real = await conn.fetch(
+        "SELECT dp.round, dp.round_pick FROM draft_picks dp JOIN draft_config dc ON dc.season = dp.season AND dc.league_id = dp.league_id "
+        "WHERE dp.season = $1 AND dp.league_id = $2 AND dp.owner_id = $3 AND dc.pool = 'rookies' ORDER BY dp.pick_number",
+        season + 1, league_id, owner_id,
+    )
+    traded = []
+    if real:
+        picks, projected = [f"{r['round']}.{r['round_pick']:02d}" for r in real], False
+    else:
+        # Next year's picks you hold, yours and any traded for
+        # (app/domain/future_picks.py), each in its original team's
+        # slot: worst record this season picks first.
+        from app.domain import future_picks
+
+        standings = await get_standings(conn, season, league_id)
+        owner_of = {
+            r["id"]: r["owner_id"]
+            for r in await conn.fetch("SELECT id, owner_id FROM teams_by_season WHERE season = $1 AND league_id = $2", season, league_id)
+        }
+        order = [owner_of.get(r["team_id"]) for r in standings]
+        slot = {o: len(order) - i for i, o in enumerate(order)}
+        held = [p for p in await future_picks.owned_by(conn, league_id, season, owner_id) if p["season"] == season + 1]
+        picks = [
+            f"{p['round']}.{slot[p['original_owner_id']]:02d}"
+            + ("" if p["original_owner_id"] == owner_id else f" from {p['original_name']}")
+            for p in held if p["original_owner_id"] in slot
+        ]
+        traded = [f"{t['season']} round {t['round']} to {t['to']}" for t in await future_picks.traded_away(conn, league_id, season, owner_id)]
+        projected = True
+
+    taxi_size = int(fmt["type_settings"].get("taxi_squad_size", 0) or 0)
+    taxi = [
+        {"sleeper_player_id": r["sleeper_player_id"], "name": r["full_name"], "position": r["position"],
+         "team": r["pro_team"], "age": float(r["age"]) if r["age"] else None, "years_exp": r["years_exp"]}
+        for r in roster if r["lineup_slot"] == "TAXI"
+    ]
+    return {
+        "avg_starter_age": avg,
+        "starters_29_plus": sum(1 for r in starters if float(r["age"]) >= 29),
+        "ages": groups,
+        "rookie_draft": {"season": season + 1, "rounds": rounds, "picks": picks, "projected": projected, "traded_away": traded},
+        "taxi": {"size": taxi_size, "players": taxi},
     }
 
 
@@ -353,6 +579,7 @@ async def get_war_room(conn, season: int, league_id: int, owner_id: int) -> dict
     keepers = await keepers_phase(conn, season, league_id, owner_id)
     draft = await draft_phase(conn, season, league_id, owner_id)
     report = await report_card_phase(conn, season, league_id, owner_id) if draft["status"] == "complete" else None
+    dynasty = await dynasty_phase(conn, season, league_id, owner_id)
     if report:
         phase = "report_card"
     elif draft["status"] in ("in_progress", "paused"):
@@ -361,7 +588,7 @@ async def get_war_room(conn, season: int, league_id: int, owner_id: int) -> dict
         phase = "keepers"
     else:
         phase = "draft"
-    return {"season": season, "phase": phase, "keepers": keepers, "draft": draft, "report_card": report}
+    return {"season": season, "phase": phase, "keepers": keepers, "draft": draft, "report_card": report, "dynasty": dynasty}
 
 
 async def nudge_keepers(conn, season: int, league_id: int, sender_owner_id: int) -> list[int]:
@@ -370,3 +597,60 @@ async def nudge_keepers(conn, season: int, league_id: int, sender_owner_id: int)
     if not keepers or not keepers["is_open"]:
         return []
     return [m["owner_id"] for m in keepers["managers"] if not m["done"] and m["owner_id"] != sender_owner_id]
+
+
+MOCK_POOL_SIZE = 300
+
+
+async def mock_board(conn, season: int, league_id: int, owner_id: int) -> dict:
+    """Everything a mock draft needs (2026-10-28): the league's size and
+    rounds, your real slot when the order's set, the roster shape, your
+    queue, and the top players by ADP (or the season's player rank when
+    there's no ADP yet). The draft itself runs on the phone against
+    bots; nothing is saved."""
+    from app.domain.keeper_costs import last_round
+    from app.domain.roster_slots import DEFAULT_ROSTER_SLOTS
+    from app.queries.draft import get_effective_roster_slots
+
+    config = await conn.fetchrow("SELECT draft_order, adp_snapshot_id FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id)
+    order = list(config["draft_order"]) if config and config["draft_order"] else []
+    teams = len(order) or await _season_team_count(conn, season, league_id) or 12
+    slots = await get_effective_roster_slots(conn, season, league_id) or DEFAULT_ROSTER_SLOTS
+    adp = await _adp_board(conn, season, league_id, config["adp_snapshot_id"] if config else None)
+    if adp:
+        ids = [pid for pid, _ in sorted(adp.items(), key=lambda kv: kv[1])[:MOCK_POOL_SIZE]]
+        rows = await conn.fetch(
+            "SELECT sleeper_player_id, full_name, position, pro_team FROM players WHERE sleeper_player_id = ANY($1::text[])", ids,
+        )
+        by_id = {r["sleeper_player_id"]: r for r in rows}
+        players = [
+            {"id": pid, "name": by_id[pid]["full_name"], "position": by_id[pid]["position"], "team": by_id[pid]["pro_team"], "adp": round(adp[pid], 1)}
+            for pid in ids if pid in by_id
+        ]
+    else:
+        rows = await conn.fetch(
+            "SELECT sleeper_player_id, full_name, position, pro_team, search_rank FROM players "
+            "WHERE search_rank IS NOT NULL AND pro_team IS NOT NULL AND position = ANY($1::text[]) "
+            "ORDER BY search_rank LIMIT $2",
+            ["QB", "RB", "WR", "TE", "K", "DEF"], MOCK_POOL_SIZE,
+        )
+        players = [
+            {"id": r["sleeper_player_id"], "name": r["full_name"], "position": r["position"], "team": r["pro_team"], "adp": float(i)}
+            for i, r in enumerate(rows, start=1)
+        ]
+    queue = [
+        r["sleeper_player_id"]
+        for r in await conn.fetch(
+            "SELECT sleeper_player_id FROM draft_queue_items WHERE season = $1 AND league_id = $2 AND owner_id = $3 ORDER BY rank",
+            season, league_id, owner_id,
+        )
+    ]
+    return {
+        "teams": teams,
+        "rounds": await last_round(conn, season, league_id),
+        "my_slot": order.index(owner_id) + 1 if owner_id in order else None,
+        "roster_slots": slots,
+        "uses_adp": bool(adp),
+        "queue": queue,
+        "players": players,
+    }

@@ -1057,12 +1057,21 @@ export type Trade = {
   veto_votes?: number;
   my_veto_vote?: boolean;
   assets: { sleeper_player_id: string; player_name: string; position: string; from_team_id: number; to_team_id: number }[];
+  // Future draft picks in the deal (keeper and dynasty leagues, 2026-10-28).
+  picks?: TradePickAsset[];
+  // A franchise-tagged player going back to a manager who kept him.
+  tag_flags?: string[];
   // Who each side cuts to make room when it goes through (2026-10-23).
   drops?: { team_id: number; sleeper_player_id: string; player_name: string; position: string | null }[];
   // Points a week gained by the viewer's side, or for a trade between
   // two other teams, which side it leans to (backend trade_values.py).
   value?: TradeValueSummary | null;
 };
+
+export type TradePickAsset = { future_pick_id: number; from_team_id: number; to_team_id: number; season: number; round: number; label: string };
+
+// A future pick you or a trade partner hold (GET /trades/picks).
+export type TradePick = { id: number; season: number; round: number; label: string };
 
 export type TradeValueSummary = { value_change: number; verdict: 'you' | 'them' | 'even' | 'leans'; leans_team_id: number | null };
 
@@ -1132,8 +1141,33 @@ export type KeeperRules = {
   keeper_deadline: string | null;
   locked_at: string | null;
   is_open: boolean;
+  // What a keeper costs (backend app/domain/keeper_costs.py, 2026-10-28).
+  cost_mode?: KeeperCostMode;
+  cost_step?: number;
+  // Franchise tag fee by year kept, dollars ([0, 10, 25]); null: none.
+  tag_fees?: number[] | null;
   draft_scheduled_start: string | null;
 };
+
+// The league kitty (GET /league/kitty, 2026-10-28).
+export type KittyEntry = {
+  id: number;
+  season: number;
+  owner_id: number | null;
+  owner_name: string | null;
+  amount: number;
+  reason: string;
+  // A franchise tag fee billed when keepers locked.
+  automatic: boolean;
+  created_at: string;
+  paid_at: string | null;
+};
+export type Kitty = { entries: KittyEntry[]; collected: number; outstanding: number };
+
+// GET /league/offseason: no pickups between the season and the draft.
+export type OffseasonState = { lock: boolean; cleared: boolean; blocked_now: boolean };
+
+export type KeeperCostMode = 'last_round' | 'round_drafted' | 'escalating';
 
 export type MyKeepers = {
   rules: KeeperRules;
@@ -1145,6 +1179,15 @@ export type MyKeepers = {
     pro_team: string | null;
     eligible: boolean;
     consecutive_years_if_kept: number;
+    // 2026-10-28: market ADP, "RB3 last year · 312 pts", and a
+    // keep-or-let-go read (app/domain/war_room.py's keeper_outlook).
+    adp?: number | null;
+    verdict?: string | null;
+    verdict_tone?: 'keep' | 'let_go' | 'toss_up' | null;
+    last_season?: string | null;
+    // The draft round he'd cost, and the franchise tag fee for keeping him.
+    cost_round?: number | null;
+    tag_fee?: number;
   }[];
   selections: { espn_player_id: number; player_name: string; consecutive_years_kept: number }[];
 };
@@ -1764,7 +1807,7 @@ export type CommishAnnouncements = {
 
 // The War Room (2026-10-27) — backend/app/routers/war_room.py; same
 // shapes as the web's lib/warRoomApi.ts.
-export type WarRoomPhase = 'keepers' | 'draft' | 'report_card';
+export type WarRoomPhase = 'keepers' | 'draft' | 'report_card' | 'dynasty';
 
 export type WarRoomKeepers = {
   max_keepers: number;
@@ -1797,9 +1840,48 @@ export type WarRoomDraft = {
     position: string | null;
   }[];
   next_pick: number | null;
+  // "2.07", and how many picks are still to be made before it.
+  next_pick_label?: string | null;
+  picks_until?: number | null;
   likely_available: (WarRoomPlayer & { adp: number; chance: number })[];
   queue: (WarRoomPlayer & { adp: number | null })[];
+  // Every queued player, drafted ones included (2026-10-28).
+  queue_full?: WarRoomQueueItem[];
+  // Starting spots still open, by position.
+  needs?: { position: string; count: number }[];
   keepers_off_board: { owner_id: number; name: string; players: string[] }[];
+};
+
+// GET /war-room/mock: the board for a practice mock draft (2026-10-28).
+export type MockPlayer = { id: string; name: string; position: string; team: string | null; adp: number };
+export type MockBoard = {
+  teams: number;
+  rounds: number;
+  my_slot: number | null;
+  roster_slots: Record<string, number>;
+  // False: no ADP yet, ranked by the season's player rank instead.
+  uses_adp: boolean;
+  queue: string[];
+  players: MockPlayer[];
+};
+
+export type WarRoomQueueItem = WarRoomPlayer & {
+  bye_week: number | null;
+  adp: number | null;
+  // Chance he lasts to your next pick; null once he's gone or without ADP.
+  chance: number | null;
+  taken_by: { name: string; pick: string } | null;
+};
+
+export type WarRoomDynasty = {
+  avg_starter_age: number | null;
+  starters_29_plus: number;
+  ages: { position: string; young: number; prime: number; old: number }[];
+  rookie_draft: { season: number; rounds: number; picks: string[]; projected: boolean; traded_away?: string[] };
+  taxi: {
+    size: number;
+    players: { sleeper_player_id: string; name: string; position: string | null; team: string | null; age: number | null; years_exp: number | null }[];
+  };
 };
 
 export type WarRoomHeadline = {
@@ -1844,4 +1926,6 @@ export type WarRoom = {
   keepers: WarRoomKeepers | null;
   draft: WarRoomDraft;
   report_card: WarRoomReportCard | null;
+  // Dynasty leagues only.
+  dynasty?: WarRoomDynasty | null;
 };

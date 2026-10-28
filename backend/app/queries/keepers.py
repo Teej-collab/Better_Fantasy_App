@@ -20,6 +20,8 @@ syncs by real NFL week, so it'd be many months stale by keeper-
 selection time — see that function's docstring for the full reasoning).
 """
 
+import json
+
 from app.config import DEFAULT_LEAGUE_ID
 
 
@@ -36,6 +38,9 @@ async def upsert_rules(
     max_consecutive_years: int | None,
     keeper_deadline,
     league_id: int = DEFAULT_LEAGUE_ID,
+    cost_mode: str | None = None,
+    cost_step: int | None = None,
+    tag_fees: list[float] | None | str = "keep",
 ):
     """Commissioner-only (enforced in the router). Refuses to change
     anything once the season's window is locked — a commissioner who
@@ -44,16 +49,21 @@ async def upsert_rules(
     silently invalidates selections owners already made under it."""
     return await conn.fetchrow(
         """
-        INSERT INTO league_keeper_rules (season, max_keepers, max_consecutive_years, keeper_deadline, league_id)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO league_keeper_rules
+            (season, max_keepers, max_consecutive_years, keeper_deadline, league_id, cost_mode, cost_step, tag_fees)
+        VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'last_round'), COALESCE($7, 1), CASE WHEN $8 THEN $9::jsonb END)
         ON CONFLICT (season, league_id) DO UPDATE SET
             max_keepers = EXCLUDED.max_keepers,
             max_consecutive_years = EXCLUDED.max_consecutive_years,
-            keeper_deadline = EXCLUDED.keeper_deadline
+            keeper_deadline = EXCLUDED.keeper_deadline,
+            cost_mode = COALESCE($6, league_keeper_rules.cost_mode),
+            cost_step = COALESCE($7, league_keeper_rules.cost_step),
+            tag_fees = CASE WHEN $8 THEN $9::jsonb ELSE league_keeper_rules.tag_fees END
         WHERE league_keeper_rules.locked_at IS NULL
         RETURNING *
         """,
-        season, max_keepers, max_consecutive_years, keeper_deadline, league_id,
+        season, max_keepers, max_consecutive_years, keeper_deadline, league_id, cost_mode, cost_step,
+        tag_fees != "keep", json.dumps(tag_fees) if tag_fees not in ("keep", None) and tag_fees else None,
     )
 
 

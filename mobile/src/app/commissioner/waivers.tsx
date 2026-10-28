@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet, TextInput, View } from 'react-native';
@@ -42,7 +43,58 @@ export default function WaiversScreen() {
       ) : (
         <WaiverForm data={q.data} />
       )}
+      <OffseasonPanel />
     </CommishScreen>
+  );
+}
+
+// The offseason roster lock (2026-10-28, backend app/domain/offseason.py):
+// no pickups between the end of the season and the draft until the
+// commissioner clears the offseason. Trades still go.
+function OffseasonPanel() {
+  const q = useQuery({ queryKey: ['offseason'], queryFn: api.offseason });
+  const [busy, setBusy] = useState(false);
+  if (!q.data) return null;
+  const state = q.data;
+
+  async function change(body: { lock?: boolean; cleared?: boolean }) {
+    setBusy(true);
+    try {
+      queryClient.setQueryData(['offseason'], await api.setOffseason(body));
+      haptics.success();
+    } catch (e) {
+      Alert.alert("Couldn't save that", errorMessage(e, 'Try again.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel>
+      <SwitchRow
+        first
+        title="No pickups in the offseason"
+        sub="From the end of the season until the draft, nobody adds a free agent or rookie. Rostered players can still be traded."
+        value={state.lock}
+        onChange={(v) => void change({ lock: v })}
+      />
+      {state.lock && (
+        <View style={styles.offseason}>
+          <Text style={styles.offseasonText}>
+            {state.cleared
+              ? 'You cleared the offseason: free agency is open.'
+              : state.blocked_now
+                ? 'Pickups are closed right now.'
+                : 'Pickups close when the season ends.'}
+          </Text>
+          <SmallButton
+            label={state.cleared ? 'Close pickups again' : 'Clear the offseason'}
+            disabled={busy}
+            onPress={() => void change({ cleared: !state.cleared })}
+          />
+        </View>
+      )}
+    </Panel>
   );
 }
 
@@ -177,6 +229,8 @@ function WaiverForm({ data }: { data: CommishWaivers }) {
 }
 
 const styles = StyleSheet.create({
+  offseason: { gap: Spacing.sm, paddingTop: Spacing.sm, alignItems: 'flex-start' },
+  offseasonText: { color: Colors.textSecondary, fontSize: 13 },
   status: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: 14 },
   statusTitle: { color: Colors.text, fontSize: 15, fontWeight: '700' },
   section: { gap: Spacing.sm },

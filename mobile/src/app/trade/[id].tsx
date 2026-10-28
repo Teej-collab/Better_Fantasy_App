@@ -112,6 +112,14 @@ function TradeDetail({ trade, myTeamId, evaluation }: { trade: Trade; myTeamId: 
           return (
             <View key={teamId} style={[styles.card, styles.side, { borderColor: `${color}55` }]}>
               <Text style={[styles.kicker, { color }]}>{label}</Text>
+              {(trade.picks ?? [])
+                .filter((p) => p.to_team_id === teamId)
+                .map((p) => (
+                  <View key={`pick-${p.future_pick_id}`}>
+                    <Text style={styles.name}>{p.label} pick</Text>
+                    <Text style={styles.meta}>Draft pick</Text>
+                  </View>
+                ))}
               {sideGets(teamId).map((a) => {
                 const value = valueOf(a.sleeper_player_id);
                 return (
@@ -129,6 +137,11 @@ function TradeDetail({ trade, myTeamId, evaluation }: { trade: Trade; myTeamId: 
         })}
       </View>
 
+      {(trade.tag_flags ?? []).map((f) => (
+        <Text key={f} style={[styles.verdict, { color: TONES.yellow }]}>
+          🏷️ {f}
+        </Text>
+      ))}
       {v && <Text style={[styles.verdict, { color: v.color }]}>{v.text}</Text>}
       {!v && leanFor(trade) && <Text style={[styles.verdict, { color: TONES.yellow }]}>{leanFor(trade)}</Text>}
       </ShareCardIf>

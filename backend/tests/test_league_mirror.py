@@ -197,3 +197,28 @@ async def test_switching_mid_week_waits_for_next_week(pool, monkeypatch):
         assert status["mirrored"] is False
     finally:
         await client.__aexit__(None, None, None)
+
+
+
+async def test_synced_keeper_count_follows_the_platform(pool):
+    """2026-10-28: a synced league keeps as many as it does on ESPN or
+    Sleeper, with no cap on years; a locked season isn't touched."""
+    from app.domain import league_settings_import as imp_
+
+    assert imp_.translate_sleeper({"settings": {"type": 1, "max_keepers": 3}})["max_keepers"] == 3
+    assert imp_.translate_sleeper({"settings": {"type": 0, "max_keepers": 1}})["max_keepers"] == 0
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ('test-mirror-keepers@example.com', 'x', 'K') RETURNING id"
+        )
+        league_id = await conn.fetchval(
+            "INSERT INTO leagues (name, created_by_user_id, invite_code) VALUES ('Test League Mirror Keepers', $1, 'MIRKEEP1') RETURNING id",
+            user_id,
+        )
+        await imp_._apply_keepers(conn, league_id, 2031, 2)
+        row = await conn.fetchrow("SELECT * FROM league_keeper_rules WHERE season = 2031 AND league_id = $1", league_id)
+        assert row["max_keepers"] == 2 and row["max_consecutive_years"] is None
+        await conn.execute("UPDATE league_keeper_rules SET locked_at = now() WHERE season = 2031 AND league_id = $1", league_id)
+        await imp_._apply_keepers(conn, league_id, 2031, 4)
+        assert await conn.fetchval("SELECT max_keepers FROM league_keeper_rules WHERE season = 2031 AND league_id = $1", league_id) == 2
+        await conn.execute("DELETE FROM league_keeper_rules WHERE league_id = $1", league_id)

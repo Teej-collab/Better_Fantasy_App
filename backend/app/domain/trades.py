@@ -2,9 +2,10 @@
 app/domain/lineup_engine.py's free-agent add/drop, using the exact same
 conventions (a DB transaction around any write, roster-capacity checks
 via app/domain/roster_slots.py, players default onto the bench). A
-trade is strictly a two-team, player-for-player swap: no free agents,
-no draft picks/future considerations — those aren't tradeable assets
-anywhere in this app's data model today.
+trade is a two-team swap of players and, in keeper and dynasty leagues,
+future draft picks (app/domain/future_picks.py, 2026-10-28); no free
+agents. A pick rides in trade_assets.future_pick_id and comes back
+under `picks`, apart from the players in `assets`.
 
 Ownership and roster-capacity are validated twice: once at proposal
 time (fail fast, don't let an obviously-bad trade sit in someone's
@@ -270,6 +271,29 @@ async def get_trade(conn, trade_id: int) -> dict | None:
         trade_id,
     )
     trade["assets"] = [dict(a) for a in assets]
+    pick_rows = await conn.fetch(
+        """
+        SELECT ta.future_pick_id, ta.from_team_id, ta.to_team_id, fp.season, fp.round, fp.original_owner_id,
+               COALESCE(o.goes_by, o.display_name) AS original_name
+        FROM trade_assets ta
+        JOIN future_picks fp ON fp.id = ta.future_pick_id
+        JOIN owners o ON o.owner_id = fp.original_owner_id
+        WHERE ta.trade_id = $1
+        ORDER BY fp.season, fp.round
+        """,
+        trade_id,
+    )
+    from_owner = {trade["proposing_team_id"]: trade["proposing_owner_id"], trade["receiving_team_id"]: trade["receiving_owner_id"]}
+    trade["picks"] = [
+        {
+            "future_pick_id": r["future_pick_id"], "from_team_id": r["from_team_id"], "to_team_id": r["to_team_id"],
+            "season": r["season"], "round": r["round"],
+            "label": f"{r['season']} round {r['round']}"
+            + ("" if r["original_owner_id"] == from_owner.get(r["from_team_id"]) else f" (from {r['original_name']})"),
+        }
+        for r in pick_rows
+    ]
+    trade["tag_flags"] = await _tag_flags(conn, trade)
     trade["drops"] = [
         dict(d)
         for d in await conn.fetch(
@@ -279,6 +303,30 @@ async def get_trade(conn, trade_id: int) -> dict | None:
         )
     ]
     return trade
+
+
+async def _tag_flags(conn, trade: dict) -> list[str]:
+    """Franchise tag loops (2026-10-28, League #1's rule): a player going
+    back to a manager who kept him this season or last. Trading a tagged
+    player is allowed and resets his years for the new team, but passing
+    him back and forth to restart the count is the commissioner's call,
+    so it's flagged, not blocked."""
+    flags = []
+    owners = {trade["proposing_team_id"]: trade["proposing_owner_id"], trade["receiving_team_id"]: trade["receiving_owner_id"]}
+    names = {trade["proposing_owner_id"]: trade["proposing_team_name"], trade["receiving_owner_id"]: trade["receiving_team_name"]}
+    for a in trade["assets"]:
+        owner = owners.get(a["to_team_id"])
+        kept = await conn.fetchval(
+            """
+            SELECT max(ks.season) FROM keeper_selections ks
+            JOIN players p ON p.espn_player_id = ks.espn_player_id
+            WHERE p.sleeper_player_id = $1 AND ks.owner_id = $2 AND ks.league_id = $3 AND ks.season >= $4
+            """,
+            a["sleeper_player_id"], owner, trade["league_id"], trade["season"] - 1,
+        )
+        if kept:
+            flags.append(f"{a['player_name']} goes back to {names.get(owner, 'a manager')}, who kept him in {kept}")
+    return flags
 
 
 async def get_team_roster_for_trade(conn, season: int, team_id: int) -> list[dict]:
@@ -346,14 +394,17 @@ async def propose_trade(
     conn, league_id: int, season: int, proposing_team_id: int, receiving_team_id: int,
     give: list[str], receive: list[str], note: str | None = None,
     drops: list[str] | None = None, counter_of: int | None = None,
+    give_picks: list[int] | None = None, receive_picks: list[int] | None = None,
 ) -> dict:
     """`drops`: the proposer's own cuts to make room (a 2-for-1 coming
     in). `counter_of`: an offer made TO the proposer that this one
     answers — it's declined in the same transaction."""
     if proposing_team_id == receiving_team_id:
         raise SameTeamTradeError("Can't propose a trade with your own team")
-    if not give or not receive:
-        raise EmptyTradeError("A trade needs at least one player on each side")
+    give_picks = list(dict.fromkeys(give_picks or []))
+    receive_picks = list(dict.fromkeys(receive_picks or []))
+    if not (give or give_picks) or not (receive or receive_picks):
+        raise EmptyTradeError("A trade needs a player or a pick on each side")
 
     await _assert_before_deadline(conn, league_id, season)
     drops = list(dict.fromkeys(drops or []))
@@ -372,6 +423,8 @@ async def propose_trade(
             conn, season, league_id, proposing_team_id, receiving_team_id, give, receive, {proposing_team_id: drops},
             receiver_can_still_drop=True,
         )
+        await _assert_owns_picks(conn, league_id, proposing_team_id, give_picks)
+        await _assert_owns_picks(conn, league_id, receiving_team_id, receive_picks)
         trade_id = await conn.fetchval(
             "INSERT INTO trades (league_id, season, proposing_team_id, receiving_team_id, expires_at, note) "
             "VALUES ($1, $2, $3, $4, now() + make_interval(hours => $5), $6) RETURNING id",
@@ -389,8 +442,25 @@ async def propose_trade(
                 "VALUES ($1, $2, $3, $4)",
                 trade_id, pid, receiving_team_id, proposing_team_id,
             )
+        for pick_id, frm, to in [(p, proposing_team_id, receiving_team_id) for p in give_picks] + [
+            (p, receiving_team_id, proposing_team_id) for p in receive_picks
+        ]:
+            await conn.execute(
+                "INSERT INTO trade_assets (trade_id, future_pick_id, from_team_id, to_team_id) VALUES ($1, $2, $3, $4)",
+                trade_id, pick_id, frm, to,
+            )
         await _save_drops(conn, trade_id, proposing_team_id, drops)
     return await get_trade(conn, trade_id)
+
+
+async def _team_owner(conn, team_id: int) -> int:
+    return await conn.fetchval("SELECT owner_id FROM teams_by_season WHERE id = $1", team_id)
+
+
+async def _assert_owns_picks(conn, league_id: int, team_id: int, pick_ids: list[int]) -> None:
+    from app.domain import future_picks
+
+    await future_picks.assert_owns(conn, league_id, await _team_owner(conn, team_id), pick_ids)
 
 
 async def _apply_trade(conn, trade: dict) -> None:
@@ -408,6 +478,13 @@ async def _apply_trade(conn, trade: dict) -> None:
         conn, trade["season"], trade["league_id"], trade["proposing_team_id"], trade["receiving_team_id"], give, receive,
         drops,
     )
+    # Draft picks: still the sender's, then they change hands.
+    for p in trade.get("picks", []):
+        await _assert_owns_picks(conn, trade["league_id"], p["from_team_id"], [p["future_pick_id"]])
+    for p in trade.get("picks", []):
+        await conn.execute(
+            "UPDATE future_picks SET owner_id = $2 WHERE id = $1", p["future_pick_id"], await _team_owner(conn, p["to_team_id"]),
+        )
     # Room first: each side's cuts go back to free agency, through
     # waivers like any other drop (me.py's /team/lineup/drop).
     for team_id, pids in drops.items():

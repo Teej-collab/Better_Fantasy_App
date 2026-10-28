@@ -1,16 +1,17 @@
 import { router, Stack, type Href } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Display, Text } from '@/components/Text';
 import { Card, LoadingState, MessageState } from '@/components/ui';
+import { ChanceBar, HexChip, initials, PosTag, posLabel } from '@/components/warroom/parts';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
 import { positionColor } from '@/lib/positionColors';
-import { useWarRoom } from '@/lib/queries';
-import type { WarRoomDraft, WarRoomHeadline, WarRoomKeepers, WarRoomPhase, WarRoomReportCard } from '@/lib/types';
+import { queryClient, useWarRoom } from '@/lib/queries';
+import type { WarRoomDraft, WarRoomDynasty, WarRoomHeadline, WarRoomKeepers, WarRoomPhase, WarRoomReportCard } from '@/lib/types';
 
 // The War Room (2026-10-27): My Team's Draft and Keepers as one
 // screen, same as the web's /war-room. It opens on whatever the
@@ -21,6 +22,7 @@ const PHASES: { key: WarRoomPhase; label: string }[] = [
   { key: 'keepers', label: 'Keepers' },
   { key: 'draft', label: 'Draft' },
   { key: 'report_card', label: 'Report Card' },
+  { key: 'dynasty', label: 'Dynasty' },
 ];
 
 const AMBER = '#f59e0b';
@@ -56,11 +58,12 @@ export default function WarRoomScreen() {
   if (!q.data) return <MessageState message="Couldn't load the War Room." actionLabel="Try again" onAction={() => void q.refetch()} />;
   const data = q.data;
   const phase = picked ?? data.phase;
-  const tabs = PHASES.filter((p) => p.key !== 'keepers' || data.keepers);
+  const tabs = PHASES.filter((p) => (p.key !== 'keepers' || data.keepers) && (p.key !== 'dynasty' || data.dynasty));
   const done: Record<WarRoomPhase, boolean> = {
     keepers: Boolean(data.keepers?.locked),
     draft: data.draft.status === 'complete',
     report_card: false,
+    dynasty: false,
   };
 
   return (
@@ -90,6 +93,7 @@ export default function WarRoomScreen() {
       </View>
       {phase === 'keepers' && data.keepers && <KeepersTab keepers={data.keepers} />}
       {phase === 'draft' && <DraftTab draft={data.draft} />}
+      {phase === 'dynasty' && data.dynasty && <DynastyTab dynasty={data.dynasty} />}
       {phase === 'report_card' &&
         (data.report_card ? (
           <ReportCardTab card={data.report_card} />
@@ -190,20 +194,38 @@ function KeepersTab({ keepers }: { keepers: WarRoomKeepers }) {
       )}
 
       <Section title="Your keepers">
-        {me?.players && me.players.length > 0 ? (
-          me.players.map((name) => (
-            <Text key={name} style={styles.name}>
-              {name}
-            </Text>
-          ))
-        ) : (
-          <Text style={styles.muted}>None picked yet.</Text>
-        )}
+        <View style={styles.slots}>
+          {Array.from({ length: keepers.max_keepers }, (_, i) => {
+            const name = me?.players?.[i];
+            return name ? (
+              <View key={i} style={[styles.slot, styles.slotOn]}>
+                <Text style={[styles.eyebrow, { color: Colors.accent }]}>Keeper {i + 1}</Text>
+                <Text style={styles.slotName} numberOfLines={2}>
+                  {name}
+                </Text>
+              </View>
+            ) : (
+              <View key={i} style={[styles.slot, styles.slotEmpty]}>
+                <Text style={styles.eyebrow}>Keeper {i + 1}</Text>
+                <Text style={styles.muted}>{keepers.is_open ? 'Not picked yet' : 'Not used'}</Text>
+              </View>
+            );
+          })}
+        </View>
         <Button label={keepers.is_open ? 'Pick your keepers' : 'See your keepers'} primary={keepers.is_open} onPress={() => router.push('/keepers')} />
+        <Button label="League kitty" onPress={() => router.push('/kitty' as Href)} />
       </Section>
 
       <Section title="League keeper board" aside={<Text style={styles.small}>{keepers.locked ? 'Locked' : 'Hidden until lock'}</Text>}>
-        {!keepers.locked && <Text style={styles.muted}>See who&apos;s done without seeing who they kept.</Text>}
+        <View style={styles.hexRow} accessible accessibilityLabel={`${keepers.managers.filter((m) => m.done).length} of ${keepers.managers.length} managers are set`}>
+          {keepers.managers.map((m) => (
+            <HexChip key={m.owner_id} label={initials(m.name)} on={m.done} />
+          ))}
+        </View>
+        <Text style={styles.strong}>
+          {keepers.managers.filter((m) => m.done).length} of {keepers.managers.length} managers are set
+        </Text>
+        {!keepers.locked && <Text style={styles.muted}>Who everyone kept stays secret until the lock.</Text>}
         {keepers.managers.map((m) => (
           <View key={m.owner_id} style={styles.tile}>
             <View style={styles.rowBetween}>
@@ -247,6 +269,7 @@ function DraftTab({ draft }: { draft: WarRoomDraft }) {
         {!live && !over && draft.scheduled_start && <Text style={styles.muted}>{when(draft.scheduled_start)}</Text>}
         {facts.length > 0 && <Text style={styles.eyebrow}>{facts.join(' · ')}</Text>}
         <Button label={over ? 'See the full draft board' : 'Enter the draft room'} primary onPress={() => router.push('/draft')} />
+        {!live && !over && <Button label="Run a mock draft" onPress={() => router.push('/mock-draft' as Href)} />}
       </Section>
 
       {draft.my_picks.length > 0 && (
@@ -286,23 +309,7 @@ function DraftTab({ draft }: { draft: WarRoomDraft }) {
         </Section>
       ) : null}
 
-      {!over && (
-        <Section title="Your queue">
-          {draft.queue.length === 0 ? (
-            <Text style={styles.muted}>Nobody queued yet. Build it in the draft room.</Text>
-          ) : (
-            draft.queue.map((p, i) => (
-              <View key={p.sleeper_player_id} style={styles.row}>
-                <Text style={styles.rank}>{i + 1}</Text>
-                <Pos position={p.position} />
-                <Text style={[styles.name, styles.flex]}>{p.name}</Text>
-                {p.adp !== null ? <Text style={styles.small}>ADP {p.adp}</Text> : null}
-              </View>
-            ))
-          )}
-          <Text style={styles.small}>Miss your pick and autopick takes the top of your queue, then the best ADP left.</Text>
-        </Section>
-      )}
+      {!over && <QueuePreview draft={draft} />}
 
       {draft.keepers_off_board.length > 0 && (
         <Section title="Already off the board">
@@ -318,6 +325,156 @@ function DraftTab({ draft }: { draft: WarRoomDraft }) {
       {draft.order.length > 0 && (
         <Section title="Draft order">
           <Text style={styles.muted}>{draft.order.map((o, i) => `${i + 1}. ${o.name}`).join('   ')}</Text>
+        </Section>
+      )}
+    </>
+  );
+}
+
+function QueuePreview({ draft }: { draft: WarRoomDraft }) {
+  const items = (draft.queue_full ?? []).filter((q) => q.taken_by === null).slice(0, 3);
+  const total = (draft.queue_full ?? draft.queue).length;
+  return (
+    <Section title="Your queue" aside={total > 0 ? <Text style={styles.small}>{total} lined up</Text> : undefined}>
+      {(draft.needs ?? []).length > 0 && (
+        <Text style={styles.muted}>
+          Still need: {(draft.needs ?? []).map((n) => `${posLabel(n.position)}${n.count > 1 ? ` ×${n.count}` : ''}`).join(', ')}
+        </Text>
+      )}
+      {items.length === 0 ? (
+        <Text style={styles.muted}>Nobody queued yet. Star players in the draft room and they line up here.</Text>
+      ) : (
+        items.map((p, i) => (
+          <View key={p.sleeper_player_id} style={styles.queueRow}>
+            <View style={styles.row}>
+              <Text style={styles.rank}>{i + 1}</Text>
+              <PosTag position={p.position} />
+              <Text style={[styles.name, styles.flex]} numberOfLines={1}>
+                {p.name}
+              </Text>
+              {p.adp !== null ? <Text style={styles.small}>ADP {Math.round(p.adp)}</Text> : null}
+            </View>
+            {p.chance !== null && <ChanceBar chance={p.chance} />}
+          </View>
+        ))
+      )}
+      <Button label="Open your queue" primary={items.length > 0} onPress={() => router.push('/draft-queue' as Href)} />
+    </Section>
+  );
+}
+
+function DynastyTab({ dynasty }: { dynasty: WarRoomDynasty }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const avg = dynasty.avg_starter_age;
+  // Where the average starter's age sits between 22 and 30.
+  const marker = avg === null ? null : Math.max(0, Math.min(1, (avg - 22) / 8));
+  const stage = avg === null ? null : avg < 24.5 ? 'Young core' : avg < 27 ? 'In its prime' : 'Win now';
+  const taxi = dynasty.taxi;
+
+  async function promote(id: string, name: string) {
+    setBusy(id);
+    try {
+      await api.moveLineup(id, 'BE');
+      haptics.success();
+      void queryClient.invalidateQueries({ queryKey: ['war-room'] });
+      void queryClient.invalidateQueries({ queryKey: ['my-team'] });
+    } catch (e) {
+      Alert.alert(`Couldn't promote ${name}`, e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <Section highlight title="Roster age" aside={stage ? <Text style={[styles.stage, { color: Colors.accent }]}>{stage}</Text> : undefined}>
+        {marker !== null ? (
+          <>
+            <View style={styles.meter}>
+              <View style={[styles.meterPart, { backgroundColor: '#38bdf8' }]} />
+              <View style={[styles.meterPart, { backgroundColor: Colors.accent }]} />
+              <View style={[styles.meterPart, { backgroundColor: '#fb923c' }]} />
+              <View style={[styles.marker, { left: `${marker * 100}%` }]} />
+            </View>
+            <View style={styles.rowBetween}>
+              <Text style={styles.small}>Young</Text>
+              <Text style={styles.small}>Prime</Text>
+              <Text style={styles.small}>Aging</Text>
+            </View>
+            <Text style={styles.muted}>
+              Your starters average {avg} years old{dynasty.starters_29_plus > 0 ? `; ${dynasty.starters_29_plus} of them ${dynasty.starters_29_plus === 1 ? 'is' : 'are'} 29 or older` : ''}.
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.muted}>Set a lineup to see how old your starters are.</Text>
+        )}
+        {dynasty.ages.map((g) => {
+          const total = g.young + g.prime + g.old;
+          return (
+            <View key={g.position} style={styles.row} accessible accessibilityLabel={`${g.position}: ${g.young} under 25, ${g.prime} 25 to 28, ${g.old} 29 or older`}>
+              <Text style={[styles.ageLabel, { color: positionColor(g.position) }]}>{g.position}</Text>
+              <View style={styles.ageBar}>
+                {g.young > 0 && <View style={{ flex: g.young / total, backgroundColor: '#38bdf8' }} />}
+                {g.prime > 0 && <View style={{ flex: g.prime / total, backgroundColor: Colors.accent }} />}
+                {g.old > 0 && <View style={{ flex: g.old / total, backgroundColor: '#fb923c' }} />}
+              </View>
+              <Text style={styles.small}>{total}</Text>
+            </View>
+          );
+        })}
+        {dynasty.ages.length > 0 && <Text style={styles.small}>Blue under 25 · green 25 to 28 · orange 29 and up</Text>}
+      </Section>
+
+      <Section title={`${dynasty.rookie_draft.season} rookie draft · ${dynasty.rookie_draft.rounds} rounds`}>
+        {dynasty.rookie_draft.picks.length > 0 ? (
+          <View style={styles.picks}>
+            {dynasty.rookie_draft.picks.map((label) => (
+              <View key={label} style={[styles.pick, styles.rookiePick]}>
+                <Text style={[styles.pickText, { color: '#c084fc' }]}>{label}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.muted}>Your picks show up once the standings settle.</Text>
+        )}
+        {(dynasty.rookie_draft.traded_away ?? []).length > 0 && (
+          <Text style={styles.small}>Traded away: {(dynasty.rookie_draft.traded_away ?? []).join(', ')}</Text>
+        )}
+        <Button label="Trade picks" onPress={() => router.push('/trade-builder' as Href)} />
+        <Text style={styles.muted}>
+          {dynasty.rookie_draft.projected
+            ? 'Projected from the standings today: the worst record picks first, every round. Rookies only.'
+            : 'Worst record picks first, every round. Rookies only.'}
+        </Text>
+      </Section>
+
+      {taxi.size > 0 && (
+        <Section title={`Taxi squad · ${taxi.players.length} of ${taxi.size}`} aside={<Text style={styles.small}>Stashed, don&apos;t score</Text>}>
+          {taxi.players.map((p) => (
+            <View key={p.sleeper_player_id} style={styles.row}>
+              <PosTag position={p.position} />
+              <View style={styles.flex}>
+                <Text style={styles.name}>{p.name}</Text>
+                <Text style={styles.small}>
+                  {[p.team, p.age ? `age ${Math.floor(p.age)}` : null, p.years_exp === 0 ? 'rookie' : p.years_exp === 1 ? '2nd year' : null].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+              <Pressable
+                disabled={busy !== null}
+                onPress={() => void promote(p.sleeper_player_id, p.name)}
+                accessibilityRole="button"
+                accessibilityLabel={`Promote ${p.name} to your bench`}
+                style={({ pressed }) => [styles.promote, pressed && styles.pressed]}>
+                <Text style={styles.promoteText}>{busy === p.sleeper_player_id ? '…' : 'Promote'}</Text>
+              </Pressable>
+            </View>
+          ))}
+          {Array.from({ length: Math.max(0, taxi.size - taxi.players.length) }, (_, i) => (
+            <View key={i} style={styles.openSpot}>
+              <Text style={styles.muted}>Open taxi spot</Text>
+            </View>
+          ))}
+          <Text style={styles.small}>Rookies and second-year players only. Promote moves him to your bench.</Text>
         </Section>
       )}
     </>
@@ -486,4 +643,21 @@ const styles = StyleSheet.create({
   buttonText: { color: Colors.text, fontSize: 14, fontWeight: '600' },
   buttonTextPrimary: { color: '#0d1016', fontWeight: '800' },
   pressed: { opacity: 0.7 },
+  slots: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  slot: { flexGrow: 1, flexBasis: '45%', minHeight: 80, borderRadius: 14, padding: 12, gap: 4 },
+  slotOn: { backgroundColor: `${Colors.accent}14`, borderWidth: 1, borderColor: Colors.accent },
+  slotEmpty: { borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#343b47', alignItems: 'center', justifyContent: 'center' },
+  slotName: { color: Colors.text, fontSize: 17, fontWeight: '800' },
+  hexRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  queueRow: { gap: 6 },
+  stage: { fontSize: 15, fontWeight: '800', textTransform: 'uppercase' },
+  meter: { height: 10, borderRadius: 5, flexDirection: 'row', overflow: 'visible' },
+  meterPart: { flex: 1, height: 10 },
+  marker: { position: 'absolute', top: -5, width: 20, height: 20, marginLeft: -10, borderRadius: 10, backgroundColor: Colors.text, borderWidth: 3, borderColor: Colors.bg },
+  ageLabel: { width: 28, fontSize: 12, fontWeight: '800' },
+  ageBar: { flex: 1, height: 14, borderRadius: 4, overflow: 'hidden', flexDirection: 'row', gap: 2, backgroundColor: Colors.tile },
+  rookiePick: { backgroundColor: 'rgba(192,132,252,0.14)' },
+  promote: { minHeight: 36, borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.accent, paddingHorizontal: 12, justifyContent: 'center' },
+  promoteText: { color: Colors.accent, fontSize: 13, fontWeight: '700' },
+  openSpot: { minHeight: 40, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#343b47', alignItems: 'center', justifyContent: 'center' },
 });

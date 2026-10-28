@@ -521,3 +521,71 @@ async def test_league_vote_vetoes_once_enough_other_teams_vote(pool, monkeypatch
         vote = await client.post(f"/trades/{trade_id}/veto-vote")
         assert vote.status_code == 200, vote.text
         assert vote.json()["status"] == "vetoed"
+
+
+async def test_future_picks_trade_and_follow_into_next_years_draft(pool):
+    """2026-10-28: in a dynasty league, picks trade like players, and the
+    next draft hands a traded pick to its new owner."""
+    from app.domain import draft_engine, future_picks, trades as trades_domain
+
+    async with pool.acquire() as conn:
+        user_a = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ('test-picks-a@example.com', 'x', 'A') RETURNING id"
+        )
+        league_id = await conn.fetchval(
+            "INSERT INTO leagues (name, created_by_user_id, invite_code, league_type, type_settings) "
+            "VALUES ('Test League Future Picks', $1, 'FUTPICK1', 'dynasty', '{\"rookie_draft_rounds\": 2}'::jsonb) RETURNING id",
+            user_a,
+        )
+        owners, teams = [], []
+        for i in range(2):
+            owner = await conn.fetchval(
+                "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+                f"test-picks-owner-{i}", f"Pick Owner {i}",
+            )
+            team = await conn.fetchval(
+                "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+                TEST_SEASON, 970000 + i, owner, f"Pick Team {i}", league_id,
+            )
+            owners.append(owner)
+            teams.append(team)
+        await conn.execute(
+            "INSERT INTO players (sleeper_player_id, full_name, position) VALUES ('test-picks-wr', 'Pick WR', 'WR') ON CONFLICT DO NOTHING"
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, league_id) VALUES ($1, $2, 'test-picks-wr', 'BE', $3)",
+            TEST_SEASON, teams[1], league_id,
+        )
+        await conn.execute(
+            "INSERT INTO draft_config (season, league_id, draft_order, roster_slots, status) VALUES ($1, $2, $3, '{\"QB\": 1, \"BE\": 3}'::jsonb, 'complete')",
+            TEST_SEASON, league_id, owners,
+        )
+        mine = await future_picks.owned_by(conn, league_id, TEST_SEASON, owners[0])
+        first_next_year = next(p for p in mine if p["season"] == TEST_SEASON + 1 and p["round"] == 1)
+
+        # My 1st-rounder for their WR.
+        trade = await trades_domain.propose_trade(
+            conn, league_id, TEST_SEASON, teams[0], teams[1], [], ["test-picks-wr"], give_picks=[first_next_year["id"]],
+        )
+        assert trade["picks"][0]["label"] == f"{TEST_SEASON + 1} round 1"
+        await trades_domain._apply_trade(conn, trade)
+        assert await conn.fetchval("SELECT owner_id FROM future_picks WHERE id = $1", first_next_year["id"]) == owners[1]
+        theirs = await future_picks.owned_by(conn, league_id, TEST_SEASON, owners[1])
+        assert any(p["label"] == f"{TEST_SEASON + 1} round 1 (from Pick Owner 0)" for p in theirs)
+
+        # Next year's draft: that round-1 pick in my slot is theirs now.
+        for i, owner in enumerate(owners):
+            await conn.execute(
+                "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) VALUES ($1, $2, $3, $4, $5)",
+                TEST_SEASON + 1, 970000 + i, owner, f"Pick Team {i}", league_id,
+            )
+        await draft_engine.create_draft(conn, TEST_SEASON + 1, owners, {"QB": 1, "BE": 1}, league_id=league_id)
+        first_round = await conn.fetch(
+            "SELECT round_pick, owner_id FROM draft_picks WHERE season = $1 AND league_id = $2 AND round = 1 ORDER BY round_pick",
+            TEST_SEASON + 1, league_id,
+        )
+        assert [r["owner_id"] for r in first_round] == [owners[1], owners[1]]
+        await conn.execute("DELETE FROM draft_picks WHERE season = $1 AND league_id = $2", TEST_SEASON + 1, league_id)
+        await conn.execute("DELETE FROM draft_config WHERE season = $1 AND league_id = $2", TEST_SEASON + 1, league_id)
+        await conn.execute("DELETE FROM current_rosters WHERE season = $1 AND league_id = $2", TEST_SEASON + 1, league_id)
+        await conn.execute("DELETE FROM teams_by_season WHERE season = $1 AND league_id = $2", TEST_SEASON + 1, league_id)

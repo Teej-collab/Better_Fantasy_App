@@ -29,6 +29,7 @@ from app.routers import (
     game_day,
     gamecast,
     keepers,
+    kitty,
     league,
     league_bets,
     league_settings,
@@ -205,6 +206,7 @@ app.include_router(system.router)
 app.include_router(waitlist.router)
 app.include_router(friends.router)
 app.include_router(war_room.router)
+app.include_router(kitty.router)
 
 
 @app.get("/health")
