@@ -2,6 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Share, StyleSheet, View } from 'react-native';
 
+import { EspnSignIn, espnSignInAvailable, type EspnSession } from '@/components/start/EspnSignIn';
 import { Field, GhostButton, Icon, Kicker, NeonButton, StartScreen, startStyles, Sub, Title, useRequiredField } from '@/components/start/StartUI';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -33,6 +34,10 @@ export default function ConnectLeagueScreen() {
   const [showPrivate, setShowPrivate] = useState(false);
   const [s2, setS2] = useState('');
   const [swid, setSwid] = useState('');
+  // Sign in with ESPN (2026-10-27): fills espn_s2/SWID, and the league
+  // too when they tap it on ESPN Fantasy (components/start/EspnSignIn.tsx).
+  const [espnSheet, setEspnSheet] = useState(false);
+  const [espnSignedIn, setEspnSignedIn] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [league, setLeague] = useState<LeagueInfo | null>(null);
   const [owners, setOwners] = useState<{ owner_id: number; display_name: string; team_name?: string | null }[]>([]);
@@ -74,15 +79,29 @@ export default function ConnectLeagueScreen() {
     void find(leagueId);
   };
 
-  const find = (picked?: string) =>
+  const find = (picked?: string, creds?: { s2: string; swid: string }) =>
     run(async () => {
       const target = (picked ?? link).trim();
       if (!target) throw new Error(`Paste your league's ${name} link.`);
-      const found = await api.importPreview(platform, target, showPrivate ? s2.trim() : undefined, showPrivate ? swid.trim() : undefined);
+      const useCreds = creds ?? (showPrivate ? { s2: s2.trim(), swid: swid.trim() } : null);
+      const found = await api.importPreview(platform, target, useCreds?.s2 || undefined, useCreds?.swid || undefined);
       setPreview(found);
       haptics.success();
       setStep('found');
     });
+
+  const onEspnSignedIn = (session: EspnSession) => {
+    setEspnSheet(false);
+    setS2(session.espnS2);
+    setSwid(session.swid);
+    setShowPrivate(true);
+    setEspnSignedIn(true);
+    if (session.leagueId) {
+      const url = `https://fantasy.espn.com/football/league?leagueId=${session.leagueId}`;
+      setLink(url);
+      void find(url, { s2: session.espnS2, swid: session.swid });
+    }
+  };
 
   const bringIn = () =>
     run(async () => {
@@ -291,6 +310,19 @@ export default function ConnectLeagueScreen() {
           <Text style={startStyles.muted}>Or paste a league link from sleeper.com instead:</Text>
         </View>
       )}
+      {platform === 'espn' && espnSignInAvailable && (
+        <View style={startStyles.card}>
+          <Kicker>{espnSignedIn ? 'Signed in to ESPN' : 'Easiest, and works for private leagues'}</Kicker>
+          <Text style={styles.cardTitle}>{espnSignedIn ? 'You’re signed in ✓' : 'Sign in with ESPN'}</Text>
+          <Text style={startStyles.muted}>
+            {espnSignedIn
+              ? 'Tap Find my league, or sign in again and tap your league on ESPN to fill in the link.'
+              : 'Sign in on ESPN’s own page, then tap your league. Nothing to turn on, and we never see your password.'}
+          </Text>
+          <NeonButton label={espnSignedIn ? 'Sign in again' : 'Sign in with ESPN'} onPress={() => setEspnSheet(true)} />
+        </View>
+      )}
+      {platform === 'espn' && <EspnSignIn visible={espnSheet} onDone={onEspnSignedIn} onClose={() => setEspnSheet(false)} />}
       <Field
         {...linkField.field}
         label={`${name} league link`}
@@ -300,9 +332,9 @@ export default function ConnectLeagueScreen() {
         autoCorrect={false}
         placeholder={platform === 'espn' ? 'https://fantasy.espn.com/football/league?leagueId=…' : 'https://sleeper.com/leagues/…'}
       />
-      {platform === 'espn' && (
+      {platform === 'espn' && !espnSignedIn && (
         <View style={startStyles.card}>
-          <Kicker>Before you tap Find</Kicker>
+          <Kicker>{espnSignInAvailable ? 'Or, without signing in' : 'Before you tap Find'}</Kicker>
           <Text style={styles.cardTitle}>Turn on “Viewable to Public”</Text>
           <Text style={startStyles.muted}>
             On fantasy.espn.com as the league manager (your phone’s browser works; the ESPN app doesn’t have this setting): League Manager →
@@ -312,6 +344,7 @@ export default function ConnectLeagueScreen() {
         </View>
       )}
       {platform === 'espn' &&
+        !espnSignedIn &&
         (showPrivate ? (
           <View style={styles.list}>
             <Text style={startStyles.muted}>
