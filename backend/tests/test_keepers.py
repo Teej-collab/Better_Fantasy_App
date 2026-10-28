@@ -271,6 +271,58 @@ async def test_roster_pool_is_empty_with_no_prior_season_team(pool, monkeypatch)
     assert resp.json()["roster_pool"] == []
 
 
+async def test_roster_pool_is_empty_when_espn_has_no_such_team_last_season(pool, monkeypatch):
+    """A team this season that ESPN didn't have last season (an expansion
+    slot) has nothing to keep from: an empty pool, not a 500."""
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, "noespnteam", 509)
+    _patch_league(monkeypatch, _fake_roster_league(501, [(1, "Someone Else", "RB")]))
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/keepers/me")
+
+    assert resp.status_code == 200
+    assert resp.json()["roster_pool"] == []
+
+
+async def test_other_league_never_reads_league_ones_espn(pool, monkeypatch):
+    """2026-10-28: a league other than League #1 with no ESPN connection
+    (app-only or Sleeper) used to ask League #1's ESPN for its team and
+    500 with TeamNotFoundError. Now it has an empty pool and ESPN is
+    never called."""
+    _set_env(monkeypatch)
+
+    def _no_espn(**kwargs):
+        raise AssertionError("ESPN was read for a league with no ESPN connection")
+
+    monkeypatch.setattr("app.providers.espn.lineup_client.League", _no_espn)
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            "test-keepers-otherleague@example.com", "Other League Owner",
+        )
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-keepers-owner-otherleague", "Other League Owner",
+        )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
+        league_id = await league_queries.create_league(conn, "Test League Keepers Other", user_id, "KEEPOTHER1")
+        await league_queries.add_member(conn, league_id, user_id, "member")
+        await league_queries.set_active_league_id(conn, user_id, league_id)
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) VALUES ($1, 1001931, $2, 'Zuper', $3)",
+            TEST_SEASON, owner_id, league_id,
+        )
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/keepers/me")
+
+    assert resp.status_code == 200
+    assert resp.json()["roster_pool"] == []
+
+
 async def test_get_my_keepers_includes_draft_scheduled_start(pool, monkeypatch):
     """The owner-facing countdown to auto-lock (KeepersPanel.tsx) needs
     the same scheduled_start DraftCountdownCard.tsx already counts down

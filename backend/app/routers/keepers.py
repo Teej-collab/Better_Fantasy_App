@@ -73,14 +73,17 @@ from pydantic import BaseModel
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_active_league_id, require_league_commissioner, resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
-from app.config import _require
+from app.config import DEFAULT_LEAGUE_ID, _require
 from app.db import get_pool
+from app.providers.espn.config import ESPNConfig, config_for_connection
 from app.providers.espn.lineup_client import ESPNLineupClient
+from app.providers.espn.lineup_exceptions import TeamNotFoundError
 from app.providers.espn.slots import slot_label
 from app.domain import commish_log, league_mode
 from app.queries import draft as draft_queries
 from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
+from app.queries import league_espn_connections as espn_connection_queries
 
 router = APIRouter(prefix="/keepers", tags=["keepers"])
 
@@ -128,8 +131,23 @@ async def _get_roster_pool(conn, owner_id: int, active_season: int, league_id: i
     if current_team is None:
         return []
 
-    client = ESPNLineupClient()
-    roster = client.get_roster(current_team["espn_team_id"], prior_season)
+    # The league's OWN ESPN league (2026-10-28): League #1 reads the env
+    # credentials, any other ESPN league its saved connection. Before
+    # this every league asked League #1's ESPN for its team, which 500'd
+    # (TeamNotFoundError) for anyone in another league opening the War
+    # Room. A Sleeper or app-only league has no ESPN roster to keep
+    # from, and a team that didn't exist last season has nothing to keep.
+    if league_id == DEFAULT_LEAGUE_ID:
+        config = ESPNConfig()
+    else:
+        connection = await espn_connection_queries.get_connection(conn, league_id)
+        if connection is None:
+            return []
+        config = config_for_connection(connection, active_season)
+    try:
+        roster = ESPNLineupClient(config).get_roster(current_team["espn_team_id"], prior_season)
+    except TeamNotFoundError:
+        return []
     return [
         {
             "espn_player_id": e.player_id,
