@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of, resolve_owner_id
 from app.auth.session import create_session_token, decode_session_token, get_session_token
-from app.config import _require
+from app.config import DEFAULT_CHUG_RULE_NAME, _require
 from app.db import get_pool
 from app import monitoring
 from app.notifications import admin_alerts
@@ -696,7 +696,7 @@ async def update_house_rules(league_id: int, body: HouseRulesRequest, request: R
             name = body.chug_rule_name.strip()[:40] or None
             await conn.execute("UPDATE leagues SET chug_rule_name = $2 WHERE id = $1", league_id, name)
         row = await league_queries.get_league(conn, league_id)
-        rule = row["chug_rule_name"] or "Chug rule"
+        rule = row["chug_rule_name"] or DEFAULT_CHUG_RULE_NAME
         if before["chug_enabled"] != row["chug_enabled"]:
             await commish_log.record(conn, league_id, payload["user_id"], "league", f"Turned {rule} {'on' if row['chug_enabled'] else 'off'}")
         elif before["chug_rule_name"] != row["chug_rule_name"]:

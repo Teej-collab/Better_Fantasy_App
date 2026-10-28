@@ -193,3 +193,8 @@ def require_espn_credential_encryption_configured() -> str:
             "`python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"`)."
         )
     return ESPN_CREDENTIAL_ENCRYPTION_KEY
+
+# The chug rule's name in a league that hasn't named its own (2026-10-28:
+# "The Weekend Rule" app-wide; each commissioner can still rename it in
+# Commissioner Tools, leagues.chug_rule_name).
+DEFAULT_CHUG_RULE_NAME = "The Weekend Rule"

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { DEFAULT_CHUG_RULE_NAME } from "@/lib/api";
+import { getMyLeagues } from "@/lib/leaguesApi";
 
 type Remaining = { days: number; hours: number; minutes: number; seconds: number };
 
@@ -23,7 +25,7 @@ function pad(n: number): string {
 
 /**
  * Takes over the Draft Countdown's homepage slot once the draft is
- * done (see app/(home)/page.tsx) — Jeffrey's Rule says chugs are due
+ * done (see app/(home)/page.tsx) — the chug rule says chugs are due
  * by this week's real Monday Night Football kickoff
  * (backend/app/domain/chug_deadline.py computes the actual deadline
  * from ESPN's own schedule, not a guessed fixed time), so this stays
@@ -33,6 +35,24 @@ function pad(n: number): string {
  * server and browser clocks/timezones can otherwise mismatch on the
  * first render.
  */
+// What the active league calls its chug rule (The Weekend Rule by default).
+function useChugRuleName(): string {
+  const [name, setName] = useState(DEFAULT_CHUG_RULE_NAME);
+  useEffect(() => {
+    let cancelled = false;
+    getMyLeagues()
+      .then(({ leagues, activeLeagueId }) => {
+        const active = leagues.find((l) => l.id === activeLeagueId);
+        if (!cancelled && active?.chug_rule_name) setName(active.chug_rule_name);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return name;
+}
+
 export function ChugCountdownCard({
   deadline,
   isPast,
@@ -44,6 +64,7 @@ export function ChugCountdownCard({
   // a glance how many you owe without opening the Chug page.
   mine?: { outstanding_owed: number; fined_owed: number; fine_amount: number } | null;
 }) {
+  const ruleName = useChugRuleName();
   const targetMs = new Date(deadline).getTime();
   const [remaining, setRemaining] = useState<Remaining | null>(null);
   const [reached, setReached] = useState(isPast);
@@ -82,7 +103,7 @@ export function ChugCountdownCard({
         </Link>
       </div>
       <div className="flex flex-col gap-0.5">
-        <span className="font-medium">🍺 Jeffrey&apos;s Rule</span>
+        <span className="font-medium">🍺 {ruleName}</span>
         <span className="text-sm text-white/50">Chugs due by Monday Night Football kickoff</span>
       </div>
 

@@ -1449,6 +1449,20 @@ export function opensOnLeaguePicker(me: Pick<Me, "league_count">): boolean {
 // Server-side counterpart to AuthStatus's client-side /auth/me fetch —
 // used by pages that need to know who's signed in during SSR (e.g. to
 // tell the chat room which messages are "mine").
+// The chug rule's name where a league hasn't named its own (2026-10-28);
+// a commissioner can rename it in Commissioner Tools.
+export const DEFAULT_CHUG_RULE_NAME = "The Weekend Rule";
+
+// What the signed-in member's active league calls its chug rule.
+export async function getChugRuleNameServer(sessionCookie: string | undefined): Promise<string> {
+  const body = await getServerOrNull<{ leagues: { id: number; chug_rule_name?: string | null }[]; active_league_id: number | null }>(
+    "/leagues/mine",
+    sessionCookie,
+  );
+  const active = body?.leagues.find((l) => l.id === body.active_league_id);
+  return active?.chug_rule_name || DEFAULT_CHUG_RULE_NAME;
+}
+
 export async function getMe(sessionCookie: string | undefined): Promise<Me | null> {
   if (!sessionCookie) return null;
   const res = await fetch(`${API_BASE_URL}/auth/me`, {

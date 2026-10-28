@@ -23,6 +23,7 @@ import {
   useNflScoreboard,
   useSeasonWeek,
   useStandings,
+  useHouseRules,
 } from '@/lib/queries';
 import { chugReminders, draftReminders, keeperReminders, lineupReminders } from '@/lib/reminders';
 
@@ -56,15 +57,16 @@ function useLocalReminders() {
   const myWeek = useMyWeek().data;
   const keepers = useMyKeepers().data;
   const chug = useChugDeadline(myWeek?.draft?.status === 'complete').data;
+  const ruleName = useHouseRules().data?.chugRuleName;
   useEffect(() => {
     const now = Date.now();
     syncReminders([
       ...lineupReminders(team, now),
       ...draftReminders(myWeek, now),
       ...keeperReminders(keepers, now),
-      ...chugReminders(chug, now),
+      ...chugReminders(chug, now, ruleName),
     ]).catch(() => {});
-  }, [team, myWeek, keepers, chug]);
+  }, [team, myWeek, keepers, chug, ruleName]);
   useEffect(() => {
     const stop = setUpReminderHandling();
     return () => {

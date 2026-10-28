@@ -7,7 +7,7 @@ import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 import { formatSummary, LEAGUE_TYPES } from '@/lib/leagueFormat';
-import { useActiveLeagueName, useHouseRules, useMe, usePlayoffSettings, usePunishmentWheel, useScoringCatalog } from '@/lib/queries';
+import { DEFAULT_CHUG_RULE_NAME, useActiveLeagueName, useHouseRules, useMe, usePlayoffSettings, usePunishmentWheel, useScoringCatalog } from '@/lib/queries';
 import { scoringSummary } from '@/lib/scoringDisplay';
 
 // The 2026 Official Rulebook, word for word from the web's
@@ -19,7 +19,7 @@ const TOC = [
   { id: 'engagement', emoji: '🗣️', title: 'Engagement Expectation' },
   { id: 'keeper', emoji: '🏷️', title: 'Keeper / Franchise Tag' },
   { id: 'draft-order', emoji: '🏈', title: 'Draft Order Determination' },
-  { id: 'jeffreys-rule', emoji: '🍺', title: "Jeffrey's Rule" },
+  { id: 'jeffreys-rule', emoji: '🍺', title: 'CHUG_RULE' },
   { id: 'sweaty-parlay', emoji: '🎰', title: 'The Sweaty Parlay Rule' },
   { id: 'trash-talk', emoji: '🎥', title: 'Weekly Trash Talk' },
   { id: 'kings-cup', emoji: '👑', title: "King's Cup Rule" },
@@ -130,6 +130,7 @@ function LeagueSettingsRules() {
 // `scrollTo` scrolls the League screen's ScrollView to a y offset; the
 // table of contents uses it to jump to a section.
 function OfficialRulebook({ scrollTo }: { scrollTo: (y: number) => void }) {
+  const ruleName = useHouseRules().data?.chugRuleName ?? DEFAULT_CHUG_RULE_NAME;
   const offsets = useRef<Record<string, number>>({});
   const rootY = useRef(0);
   const measure = (id: string, y: number) => {
@@ -158,7 +159,7 @@ function OfficialRulebook({ scrollTo }: { scrollTo: (y: number) => void }) {
               onPress={() => scrollTo(rootY.current + (offsets.current[item.id] ?? 0) - Spacing.md)}
               style={({ pressed }) => [styles.tocItem, pressed && styles.pressed]}>
               <Text style={styles.tocText}>
-                {item.emoji} {item.title}
+                {item.emoji} {item.title === 'CHUG_RULE' ? ruleName : item.title}
               </Text>
             </Pressable>
           ))}
@@ -240,7 +241,7 @@ function OfficialRulebook({ scrollTo }: { scrollTo: (y: number) => void }) {
         <P soft>Commissioner reserves authority to review and approve all submitted attempts.</P>
       </Section>
 
-      <Section onMeasure={measure} id="jeffreys-rule" emoji="🍺" title="Jeffrey's Rule">
+      <Section onMeasure={measure} id="jeffreys-rule" emoji="🍺" title={ruleName}>
         <P>Each player that earns 0 or negative fantasy points during a matchup results in ONE required chug for that team owner.</P>
         <Sub>Rules</Sub>
         <Bullets

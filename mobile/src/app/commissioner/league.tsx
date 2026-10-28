@@ -167,7 +167,7 @@ function HouseRulesForm({ league }: { league: LeagueInfo }) {
       {enabled && (
         <View style={s.row}>
           <Text style={s.label}>Name it</Text>
-          <Input value={name} onChangeText={setName} placeholder="Chug Rule" maxLength={40} style={{ minWidth: 160 }} />
+          <Input value={name} onChangeText={setName} placeholder="The Weekend Rule" maxLength={40} style={{ minWidth: 160 }} />
         </View>
       )}
       <View style={s.row}>

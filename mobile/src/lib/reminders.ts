@@ -117,7 +117,7 @@ export function keeperReminders(keepers: MyKeepers | undefined, now: number): Re
     .filter((r) => r.at > now);
 }
 
-export function chugReminders(chug: ChugDeadline | null | undefined, now: number): Reminder[] {
+export function chugReminders(chug: ChugDeadline | null | undefined, now: number, ruleName = 'The Weekend Rule'): Reminder[] {
   if (!chug?.deadline || chug.is_past) return [];
   const deadline = new Date(chug.deadline).getTime();
   const at = deadline - 2 * HOUR;
@@ -127,7 +127,7 @@ export function chugReminders(chug: ChugDeadline | null | undefined, now: number
       key: `chug-${deadline}`,
       category: 'chug',
       at,
-      title: "🍺 Jeffrey's Rule: chug deadline in 2 hours",
+      title: `🍺 ${ruleName}: chug deadline in 2 hours`,
       body: 'Get your chug posted before the deadline.',
       url: '/chug',
     },

@@ -382,6 +382,10 @@ export function useActiveLeagueName() {
 
 // The active league's house rules (2026-10): the chug rule is off unless
 // the commissioner turned it on, and goes by whatever name they gave it.
+// The chug rule's name where a league hasn't named its own (2026-10-28);
+// a commissioner can rename it in Commissioner Tools.
+export const DEFAULT_CHUG_RULE_NAME = 'The Weekend Rule';
+
 export function useHouseRules() {
   return useQuery({
     queryKey: ['my-leagues'],
@@ -389,7 +393,7 @@ export function useHouseRules() {
     staleTime: 5 * 60_000,
     select: (d) => {
       const league = d.leagues.find((l) => l.id === d.active_league_id);
-      return { chugEnabled: Boolean(league?.chug_enabled), chugRuleName: league?.chug_rule_name || 'Chug Rule' };
+      return { chugEnabled: Boolean(league?.chug_enabled), chugRuleName: league?.chug_rule_name || DEFAULT_CHUG_RULE_NAME };
     },
   });
 }

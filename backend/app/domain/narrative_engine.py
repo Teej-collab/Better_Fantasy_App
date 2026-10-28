@@ -45,7 +45,7 @@ import asyncio
 import logging
 
 from app import ai_usage
-from app.config import ANTHROPIC_API_KEY, DEFAULT_LEAGUE_ID
+from app.config import ANTHROPIC_API_KEY, DEFAULT_CHUG_RULE_NAME, DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.domain import manager_awards, recap_context, weekly_awards
 from app.domain.team_profile import get_owner_badges
@@ -62,13 +62,13 @@ logger = logging.getLogger(__name__)
 # and pulling from real career/league-wide context — not just this
 # matchup's own two teams' current-season numbers. The "never invent a
 # stat" discipline is unchanged and non-negotiable — every added fact
-# category below (career titles/awards, current league rank, Jeffrey's
+# category below (career titles/awards, current league rank, the chug rule's
 # Rule chug standing) is real, already-computed data, not new license
 # to embellish.
 PREVIEW_PROMPT = """You are the voice of a fantasy football league's website, hyping up an upcoming \
 matchup between two teams — and you are NOT neutral. You are a professional shit-talker: needling, \
 mocking, and roasting both sides using ONLY the real facts you're given (records, streaks, \
-projections, career championships and awards, current league standing, Jeffrey's Rule chug debts, \
+projections, career championships and awards, current league standing, the league's chug-rule debts, \
 rivalry and all-time head-to-head history). Never invent a stat, a player, or an event not present \
 in the data — every jab must be traceable to a specific fact you were handed.
 
@@ -84,7 +84,7 @@ RECAP_PROMPT = """You are the voice of a fantasy football league's website, writ
 matchup actually played out — and you are NOT neutral. You are a professional shit-talker: roasting \
 what actually happened using ONLY the real facts you're given (final scores, who over/under-\
 performed their projection, bench mistakes, clutch or choke results, career championships and \
-awards, current league standing, Jeffrey's Rule chug debts, all-time head-to-head history). Never \
+awards, current league standing, the league's chug-rule debts, all-time head-to-head history). Never \
 invent a stat, a player, or an event not present in the data — every jab must be traceable to a \
 specific fact you were handed.
 
@@ -105,7 +105,7 @@ No hedging, no disclaimers, no consolation-prize softening for the loser. Plain 
 WEEKLY_PREVIEW_PROMPT = """You are the voice of a fantasy football league's website, hyping up the \
 whole league's upcoming week — and you are NOT neutral. You are a professional shit-talker previewing \
 every real matchup using ONLY the facts you're given (every matchup's two teams and records, current \
-league standings, and real league-wide context like Jeffrey's Rule chug debts). Never invent a stat, \
+league standings, and real league-wide context like the league's chug-rule debts). Never invent a stat, \
 a player, or an event not present in the data — every line must be traceable to a specific fact you \
 were handed.
 
@@ -166,7 +166,7 @@ no headline, no lists, no markdown of any kind."""
 
 # 2026-09-15 fix, real report: a full week's recap for a real
 # 12-team league (every matchup's result, every award, standings, AND
-# Jeffrey's Rule chug debts, all as one continuous story) genuinely
+# the league's chug-rule debts, all as one continuous story) genuinely
 # needs more room than 900 tokens gives it — confirmed live, a real
 # generated recap cut off mid-sentence partway through the standings/
 # chug-debt closing paragraph. Anthropic's response is returned as-is
@@ -257,14 +257,21 @@ async def _career_and_live_facts(
     return facts
 
 
-def _chug_fact(side: dict, chug_by_owner: dict) -> str | None:
+async def chug_rule_name(conn, league_id: int) -> str:
+    """What this league calls its chug rule (The Weekend Rule unless the
+    commissioner renamed it)."""
+    name = await conn.fetchval("SELECT chug_rule_name FROM leagues WHERE id = $1", league_id)
+    return name or DEFAULT_CHUG_RULE_NAME
+
+
+def _chug_fact(side: dict, chug_by_owner: dict, rule: str) -> str | None:
     chug = chug_by_owner.get(side["owner_id"])
     if chug is None:
         return None
     owed = float(chug["outstanding_owed"] or 0) + float(chug["fined_owed"] or 0)
     if owed > 0:
-        return f"{side['team_name']}'s owner currently owes {owed:g} under Jeffrey's Rule this season"
-    return f"{side['team_name']}'s owner has a clean Jeffrey's Rule chug record this season"
+        return f"{side['team_name']}'s owner currently owes {owed:g} under {rule} (the league's chug rule) this season"
+    return f"{side['team_name']}'s owner has a clean {rule} chug record this season"
 
 
 async def _build_facts(conn, matchup: dict, kind: str) -> str:
@@ -277,16 +284,17 @@ async def _build_facts(conn, matchup: dict, kind: str) -> str:
     facts += _side_facts(matchup["away"], include_result)
 
     # Right-now league context: current standings rank (not just each
-    # side's own record) and Jeffrey's Rule chug standing — both
+    # side's own record) and the league's chug-rule standing — both
     # genuinely live, not season-long-static, facts.
     standings = await league_queries.get_standings(conn, season, league_id)
     rank_by_team = {row["team_id"]: i + 1 for i, row in enumerate(standings)}
     team_count = len(standings)
     chug_by_owner = await chug_queries.get_chug_standing_by_owner(conn, season, league_id)
+    rule = await chug_rule_name(conn, league_id)
 
     for side in (matchup["home"], matchup["away"]):
         facts += await _career_and_live_facts(conn, side, league_id, rank_by_team, team_count)
-        chug_fact = _chug_fact(side, chug_by_owner)
+        chug_fact = _chug_fact(side, chug_by_owner, rule)
         if chug_fact:
             facts.append(chug_fact)
 
@@ -592,7 +600,7 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
                 facts.append(f"Game of the Week result: {gow_who} {verb} {gow_result['score']}")
 
     # Right-now league context, same as _build_facts: current standings
-    # (leader + last place) and real Jeffrey's Rule chug debts — applies
+    # (leader + last place) and real the league's chug-rule debts — applies
     # to both preview and recap.
     if kind == "recap":
         facts += ["", "POWER RANKINGS & PLAYOFF RACE:", *context["race"], "", "STANDINGS & CHUGS:"]
@@ -604,6 +612,7 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
             facts.append(f"Currently in last place: {who(trailer['team_name'])} ({_standings_record_str(trailer)})")
 
     chug_by_owner = await chug_queries.get_chug_standing_by_owner(conn, season, league_id)
+    rule = await chug_rule_name(conn, league_id)
     if chug_by_owner:
         team_name_by_owner: dict[int, str] = {}
         for m in matchups:
@@ -615,7 +624,7 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
                 continue
             owed = float(chug["outstanding_owed"] or 0) + float(chug["fined_owed"] or 0)
             if owed > 0:
-                facts.append(f"{who(team_name)} currently owes {owed:g} under Jeffrey's Rule this season")
+                facts.append(f"{who(team_name)} currently owes {owed:g} under {rule} (the league's chug rule) this season")
 
     if kind == "recap":
         return "\n".join(line if not line or line.endswith(":") else f"- {line}" for line in facts)

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { awardsHrefFor, listSeasons, safeLatestSeason } from "@/lib/api";
+import { cookies } from "next/headers";
+import { awardsHrefFor, getChugRuleNameServer, listSeasons, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NAV_ACCENT } from "@/lib/navDestinations";
 
@@ -22,7 +23,7 @@ const TOC: RuleLink[] = [
   { id: "engagement", emoji: "🗣️", title: "Engagement Expectation" },
   { id: "keeper", emoji: "🏷️", title: "Keeper / Franchise Tag" },
   { id: "draft-order", emoji: "🏈", title: "Draft Order Determination" },
-  { id: "jeffreys-rule", emoji: "🍺", title: "Jeffrey's Rule" },
+  { id: "jeffreys-rule", emoji: "🍺", title: "CHUG_RULE" },
   { id: "sweaty-parlay", emoji: "🎰", title: "The Sweaty Parlay Rule" },
   { id: "trash-talk", emoji: "🎥", title: "Weekly Trash Talk" },
   { id: "kings-cup", emoji: "👑", title: "King's Cup Rule" },
@@ -37,6 +38,8 @@ const TOC: RuleLink[] = [
 export default async function RulesPage() {
   const { seasons } = await listSeasons();
   const latestSeason = safeLatestSeason(seasons);
+  // The league's own name for its chug rule (The Weekend Rule by default).
+  const ruleName = await getChugRuleNameServer((await cookies()).get("session")?.value);
 
   return (
     <div className="flex flex-col gap-6">
@@ -71,7 +74,7 @@ export default async function RulesPage() {
               className="flex items-center gap-1.5 rounded-lg border border-black/10 bg-black/[0.015] p-3 text-sm font-medium shadow-sm transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none dark:hover:bg-white/5 dark:active:bg-white/10"
             >
               <span aria-hidden>{item.emoji}</span>
-              <span className="min-w-0 wrap-break-word">{item.title}</span>
+              <span className="min-w-0 wrap-break-word">{item.title === "CHUG_RULE" ? ruleName : item.title}</span>
             </a>
           ))}
         </div>
@@ -192,7 +195,7 @@ export default async function RulesPage() {
         </p>
       </RuleSection>
 
-      <RuleSection id="jeffreys-rule" emoji="🍺" title="Jeffrey's Rule">
+      <RuleSection id="jeffreys-rule" emoji="🍺" title={ruleName}>
         <p>
           Each player that earns 0 or negative fantasy points during a matchup results in ONE
           required chug for that team owner.
