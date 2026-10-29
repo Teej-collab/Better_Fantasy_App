@@ -16,6 +16,7 @@ import Animated, {
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { haptics } from '@/lib/haptics';
+import { hasSkia } from '@/lib/skia';
 import type { NflGame } from '@/lib/types';
 
 // Weather Watch's living panes (Niko's idea, 2026-10-29 "Weather Watch ·
@@ -25,7 +26,9 @@ import type { NflGame } from '@/lib/types';
 // storms flash with lightning too (tap one to make it strike); snow falls
 // with frost in the corners, from a few flurries up to a sideways
 // blizzard; and wind blows swirls across, over any of the others too (tap
-// for a gust). With Reduce Motion on, just the still tint.
+// for a gust). Builds with Skia draw it all with real soft light
+// (WeatherFxSkia.tsx); these plain versions are for older builds. With
+// Reduce Motion on, just the still tint.
 
 type Weather = NonNullable<NflGame['weather']>;
 export type WeatherKind = 'storm' | 'snow' | 'rain' | 'wind' | 'cold';
@@ -93,7 +96,13 @@ export function WeatherPane({ weather, label, children }: { weather: Weather; la
   const interactive = !reduceMotion && (kind === 'storm' || blowing);
   const onLayout = (e: LayoutChangeEvent) => setSize({ w: Math.round(e.nativeEvent.layout.width), h: Math.round(e.nativeEvent.layout.height) });
 
-  const fx = size.w > 0 && (
+  const skia = hasSkia && !reduceMotion && size.w > 0;
+  // Required here, not imported: older builds have no Skia to load.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const WeatherFxSkia = skia ? (require('@/components/living/WeatherFxSkia') as typeof import('@/components/living/WeatherFxSkia')).WeatherFxSkia : null;
+  const fx = WeatherFxSkia ? (
+    <WeatherFxSkia w={size.w} h={size.h} kind={kind} level={level} blowing={blowing} poke={poke} />
+  ) : size.w > 0 && (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       {kind === 'storm' && <Clouds w={size.w} still={reduceMotion} />}
       {!reduceMotion && (kind === 'storm' || kind === 'rain') && <Rain w={size.w} h={size.h} heavy={kind === 'storm'} />}

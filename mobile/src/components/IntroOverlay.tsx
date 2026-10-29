@@ -14,11 +14,11 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
-import { HiveTossOpen } from '@/components/HiveTossOpen';
 import { IntroSeasonDecor } from '@/components/IntroSeasonDecor';
 import { haptics } from '@/lib/haptics';
 import { takeFullIntro } from '@/lib/introSound';
 import { currentSeason } from '@/lib/seasonal';
+import { hasSkia } from '@/lib/skia';
 import { Text } from '@/components/Text';
 import { Brand, Colors } from '@/constants/theme';
 
@@ -152,11 +152,15 @@ export function IntroOverlay(props: IntroProps) {
   const reduceMotion = useReducedMotion();
   // The full show (about 8 seconds, with sound) plays on the first open
   // of the day, or per Settings > Appearance > Intro Sound. Every other
-  // Welcome Back is the Hive Toss (HiveTossOpen.tsx); the front door's
-  // quick version and Reduce Motion keep the plain wordmark.
+  // Welcome Back is the Hive Toss (HiveTossSkia.tsx, on builds with
+  // Skia); the front door's quick version, Reduce Motion and older builds
+  // keep the plain wordmark.
   const [full] = useState(() => !reduceMotion && takeFullIntro());
-  if ((props.mode ?? 'welcome') === 'welcome' && !full && !reduceMotion) {
-    return <HiveTossOpen displayName={props.displayName ?? null} onDone={props.onDone} />;
+  if ((props.mode ?? 'welcome') === 'welcome' && !full && !reduceMotion && hasSkia) {
+    // Required here, not imported: older builds have no Skia to load.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { HiveTossSkia } = require('@/components/HiveTossSkia') as typeof import('@/components/HiveTossSkia');
+    return <HiveTossSkia displayName={props.displayName ?? null} onDone={props.onDone} />;
   }
   return <WordmarkIntro {...props} full={full} />;
 }
