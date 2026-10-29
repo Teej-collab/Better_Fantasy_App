@@ -1,0 +1,73 @@
+/* Direction B — "Sunday Show": disciplined evolution of the app's own
+   real identity. Keeps the existing near-black + neon-green DNA and the
+   existing Oswald/IBM Plex Sans pairing, but applies them with the
+   restraint the team's own 01_Design_System.md proposes: flat by
+   default, a static accent edge for "live," and the rotating ring
+   reserved for exactly one genuinely rare Featured moment per screen. */
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+:root {
+  --bg: #0d1016;
+  --bg-elevated: #12161c;
+  --border: #1c2027;
+  --text: #eceef1;
+  --text-secondary: #8790a0;
+  --accent: #39ff14;
+  --accent-2: #22d3ee;
+  --on-accent: #06210a;
+  --live: #ef4444;
+  --success: #22c55e;
+  --warning: #facc15;
+  --nav-bg: #0d1016;
+
+  --radius-card: 14px;
+  --radius-pill: 999px;
+  --card-padding: 16px;
+
+  --font-display: 'Oswald', sans-serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --tracking-display: 0;
+  --display-case: none;
+
+  --stage-bg: #08090b;
+  --stage-text: #eceef1;
+  --stage-text-secondary: #8790a0;
+  --stage-accent: #39ff14;
+  --stage-border: #1c2027;
+}
+
+body { background: var(--stage-bg); }
+
+@property --panel-border-angle {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@keyframes ringSpin { to { --panel-border-angle: 360deg; } }
+.card--featured {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--bg-elevated), var(--bg-elevated)) padding-box,
+    conic-gradient(from var(--panel-border-angle), var(--accent), var(--accent-2), var(--accent)) border-box;
+  animation: ringSpin 5s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card--featured { animation: none; }
+}
+
+.eyebrow-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.motion-budget-note {
+  font-size: 10px;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin: 8px 16px 0;
+}

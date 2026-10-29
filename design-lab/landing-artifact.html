@@ -1,0 +1,130 @@
+<title>Three Directions</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Space+Grotesk:wght@600;700&family=Libre+Bodoni:wght@600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0a0c; --surface:#141417; --line:#242429; --text:#f2f1ee; --dim:#9a9a9e;
+    --c1:#FF5A1F; --c2:#6FF3E0; --c3:#7A2E2E; --c3-bg:#F4EFE4; --c3-ink:#1C1712;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 20px;}
+  header{padding:56px 20px 28px;text-align:center;}
+  .kicker{font-family:'Public Sans';font-size:12px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:clamp(2.4rem,7vw,4.2rem);letter-spacing:0.01em;margin:8px 0 14px;line-height:0.95;text-transform:uppercase;}
+  header p{color:var(--dim);font-size:15px;max-width:560px;margin:0 auto;line-height:1.6;}
+  .grid{display:grid;grid-template-columns:1fr;gap:20px;padding:24px 20px 80px;}
+  @media (min-width:860px){ .grid{grid-template-columns:repeat(3,1fr);} }
+  .card{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;min-height:420px;transition:transform .25s ease, border-color .25s ease;}
+  .card:hover{transform:translateY(-4px);border-color:rgba(255,255,255,0.25);}
+  .primary-link{display:flex;flex-direction:column;flex:1;text-decoration:none;color:inherit;}
+  .preview{height:220px;position:relative;overflow:hidden;}
+  .tag{position:absolute;top:14px;left:14px;font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;padding:4px 9px;border-radius:3px;background:rgba(0,0,0,0.35);backdrop-filter:blur(4px);}
+  .body{padding:22px 22px 26px;display:flex;flex-direction:column;gap:10px;flex:1;}
+  .name{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.9rem;text-transform:uppercase;letter-spacing:0.01em;line-height:1;}
+  .concept2 .name{font-family:'Space Grotesk',sans-serif;text-transform:none;font-weight:700;}
+  .concept3 .name{font-family:'Libre Bodoni',serif;text-transform:none;font-weight:700;}
+  .pitch{font-size:13px;color:var(--dim);line-height:1.55;flex:1;}
+  .enter{margin-top:6px;font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;display:inline-flex;align-items:center;gap:6px;}
+  .enter svg{width:14px;height:14px;transition:transform .2s ease;}
+  .card:hover .enter svg{transform:translateX(3px);}
+  .links{margin-top:2px;display:flex;flex-direction:column;gap:8px;}
+  .mobile-link{font-size:12px;font-weight:600;letter-spacing:0.02em;display:flex;align-items:center;gap:6px;color:inherit;text-decoration:none;opacity:0.85;margin:0 22px 20px;padding-top:14px;border-top:1px solid var(--line);}
+  .concept3 .mobile-link{border-top-color:#D8CFBC;}
+  .mobile-link:hover{opacity:1;}
+  .mobile-link svg{width:13px;height:13px;flex:none;}
+
+  /* Concept 1 preview — sharp broadcast blocks */
+  .p1{background:linear-gradient(180deg,#0B0B0D,#151517);}
+  .p1::before{content:"";position:absolute;inset:0;background:
+    repeating-linear-gradient(115deg, transparent 0 40px, rgba(255,90,31,0.06) 40px 41px);}
+  .p1 .bars{position:absolute;bottom:0;left:0;right:0;display:flex;gap:2px;padding:0 14px 14px;}
+  .p1 .bars i{flex:1;background:var(--c1);height:28px;opacity:.85;clip-path:polygon(6px 0,100% 0,100% 100%,0 100%);}
+  .p1 .score{position:absolute;top:60px;left:14px;font-family:'Barlow Condensed';font-weight:900;font-size:52px;color:#fff;letter-spacing:0.02em;}
+  .p1 .tag{background:var(--c1);color:#160c06;}
+
+  /* Concept 2 preview — orbit */
+  .p2{background:radial-gradient(circle at 30% 30%, #0e0f13, #060608 70%);}
+  .p2 .ring{position:absolute;width:260px;height:260px;border:1px solid rgba(111,243,224,0.25);border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%) rotateX(60deg);}
+  .p2 .ring.r2{width:180px;height:180px;border-color:rgba(111,243,224,0.4);}
+  .p2 .dot{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--c2);box-shadow:0 0 12px var(--c2);top:38%;left:62%;}
+  .p2 .tag{background:rgba(111,243,224,0.18);color:var(--c2);}
+
+  /* Concept 3 preview — editorial */
+  .p3{background:var(--c3-bg);}
+  .p3 .rule{position:absolute;left:16px;right:16px;height:1px;background:#D8CFBC;}
+  .p3 .r1{top:44px;} .p3 .r2{bottom:44px;}
+  .p3 .num{position:absolute;bottom:52px;left:16px;font-family:'Libre Bodoni',serif;font-weight:700;font-size:58px;color:var(--c3-ink);line-height:0.9;}
+  .p3 .cap{position:absolute;top:50px;left:16px;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:#6B6255;font-family:'Public Sans';}
+  .p3 .tag{background:var(--c3);color:#F4EFE4;}
+
+  footer{padding:0 20px 60px;text-align:center;color:var(--dim);font-size:12px;}
+</style>
+<header class="wrap">
+  <div class="kicker">The Weekend — Design Lab</div>
+  <h1>Three Directions.<br/>One League.</h1>
+  <p>Three genuinely different product identities for THE WEEKEND, built on the same fantasy football functionality. Pick a concept below to explore it as a real, interactive prototype — navigate, tap, scroll, live it. Each card links to the full desktop-adaptive build, plus a phone-locked version below it that renders the true mobile layout no matter what device you open it on.</p>
+</header>
+
+<div class="grid wrap">
+  <div class="card concept1">
+    <a class="primary-link" href="https://claude.ai/code/artifact/e7904c75-456a-4cce-97bd-0abc6e57b5fc">
+      <div class="preview p1">
+        <span class="tag">Concept 01</span>
+        <div class="score">108<span style="font-size:22px;color:var(--dim);">.4</span></div>
+        <div class="bars"><i></i><i style="opacity:.5"></i><i style="opacity:.3"></i><i style="opacity:.6"></i><i style="opacity:.4"></i></div>
+      </div>
+      <div class="body">
+        <div class="name">The Booth</div>
+        <p class="pitch">Football is happening right now. A premium sports-broadcast identity — live scoreboards, broadcast graphics, sharp edges, a real production booth for your Sunday.</p>
+        <span class="enter">Enter Design <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </div>
+    </a>
+    <a class="mobile-link" href="https://claude.ai/code/artifact/7bae1466-6bf6-45f1-858a-87a40f43e2e7">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
+      View on Mobile
+    </a>
+  </div>
+
+  <div class="card concept2">
+    <a class="primary-link" href="https://claude.ai/code/artifact/56790303-302f-4325-b891-05f6610301c8">
+      <div class="preview p2">
+        <span class="tag">Concept 02</span>
+        <div class="ring"></div>
+        <div class="ring r2"></div>
+        <div class="dot"></div>
+      </div>
+      <div class="body">
+        <div class="name">The Orbit</div>
+        <p class="pitch">Fantasy football a few years ahead — spatial depth, layered glass, one disciplined accent color. Premium and restrained, not gimmicky.</p>
+        <span class="enter">Enter Design <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </div>
+    </a>
+    <a class="mobile-link" href="https://claude.ai/code/artifact/973a3129-e7e2-44f5-9f60-33e24d2a0cc9">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
+      View on Mobile
+    </a>
+  </div>
+
+  <div class="card concept3">
+    <a class="primary-link" href="https://claude.ai/code/artifact/71e40e30-34a4-45f8-b0d9-38c88d3aed8b">
+      <div class="preview p3">
+        <span class="tag">Concept 03</span>
+        <div class="cap">Vol. VII — Week 7</div>
+        <div class="rule r1"></div>
+        <div class="num">108</div>
+        <div class="rule r2"></div>
+      </div>
+      <div class="body">
+        <div class="name">The Clubhouse</div>
+        <p class="pitch">Your league is your world. A premium sports-magazine identity — editorial layouts, real typography, rivalries and history as the main event. The one concept in warm daylight, not dark mode.</p>
+        <span class="enter">Enter Design <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </div>
+    </a>
+    <a class="mobile-link" href="https://claude.ai/code/artifact/6f9d4219-22ad-4dce-94b1-740787375fcf">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
+      View on Mobile
+    </a>
+  </div>
+</div>
+
+<footer>Interactive prototypes — click any card to explore. Nothing here is implemented in the production app yet.</footer>

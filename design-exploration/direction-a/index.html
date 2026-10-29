@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Direction A — Broadcast Desk</title>
+<link rel="stylesheet" href="../assets/shell.css" />
+<link rel="stylesheet" href="theme.css" />
+</head>
+<body>
+
+<div class="stage">
+  <div class="stage-header">
+    <div class="stage-eyebrow">THE WEEKEND — Redesign Exploration</div>
+    <h1 class="stage-title">Direction A — Broadcast Desk</h1>
+    <p class="stage-sub">Premium sports-broadcast identity: team red + championship gold on near-black, Bebas Neue broadcast-graphic headlines, literal scorebug and lower-third language borrowed from Sunday-afternoon network coverage. The boldest, most "turn this on and it feels like a TV network" of the three directions.</p>
+    <nav class="stage-nav">
+      <a href="../index.html">&larr; All directions</a>
+      <a href="desktop.html">View Desktop Layout &rarr;</a>
+      <a href="onboarding.html">View Splash / Onboarding &rarr;</a>
+      <a href="../direction-b/index.html">Direction B — Sunday Show</a>
+      <a href="../direction-c/index.html">Direction C — Stadium Lights</a>
+    </nav>
+  </div>
+
+  <!-- ============ DESIGN SYSTEM REFERENCE ============ -->
+  <div class="ds-panel">
+    <div class="ds-block-title">Visual system</div>
+    <div class="ds-grid">
+      <div>
+        <div class="ds-block-title">Color</div>
+        <div class="swatch-row">
+          <div class="swatch"><div class="swatch-color" style="background:#0b0d10"></div><div class="swatch-label">bg #0b0d10</div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#15181d"></div><div class="swatch-label">card #15181d</div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#dc2626"></div><div class="swatch-label">accent #dc2626</div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#eab308"></div><div class="swatch-label">gold #eab308</div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#ef4444"></div><div class="swatch-label">live #ef4444</div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#22c55e"></div><div class="swatch-label">success #22c55e</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="ds-block-title">Typography</div>
+        <div class="type-sample type-display" style="font-size:26px;letter-spacing:.03em;text-transform:uppercase;">Sunday's Here</div>
+        <div class="type-sample type-body" style="font-size:14px;">Source Sans 3 — body copy, scores, stat lines.</div>
+        <div class="type-sample type-mono" style="font-size:13px;">JetBrains Mono — 128.4 pts</div>
+      </div>
+      <div>
+        <div class="ds-block-title">Cards &amp; motion</div>
+        <p class="small text-secondary" style="margin:0;line-height:1.6;">Flat by default. A card only gets the gold Featured treatment for one genuinely rare moment per screen (a draft-grade reveal, a champion's row) — everything currently live gets a static red edge + pulse dot instead of continuous glow, directly carrying forward the app's own "glow is a signal, not decoration" rule discovered the hard way in production.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PHONE PROTOTYPE ============ -->
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-screen-area">
+
+        <!-- STATUS BAR -->
+        <div class="statusbar">
+          <span class="js-clock">9:41</span>
+          <span>THE WEEKEND</span>
+          <span>&#9679;&#9679;&#9679; 5G 100%</span>
+        </div>
+
+        <div class="screens">
+
+          <!-- ============ LOGIN ============ -->
+          <section class="screen active" data-screen="login">
+            <div class="login-screen" style="background: radial-gradient(120% 100% at 50% 0%, #241012 0%, #0b0d10 60%);">
+              <img src="../assets/emblem.png" class="login-emblem" alt="THE WEEKEND emblem" />
+              <p class="login-word">THE WEEKEND</p>
+              <p class="login-tag">Kickoff is close. Sign in and let's get to it.</p>
+              <button class="btn btn-primary btn-block" data-nav-target="home" style="max-width:220px;">Sign In</button>
+              <button class="btn btn-secondary btn-block" style="max-width:220px;">Continue with Discord</button>
+              <p class="small text-secondary" style="margin-top:18px;">Week 3 &middot; The Sunday Slate League</p>
+            </div>
+          </section>
+
+          <!-- ============ HOME ============ -->
+          <section class="screen" data-screen="home">
+            <div class="broadcast-strap"><span class="dot"></span> LIVE — 4 GAMES IN PROGRESS</div>
+            <div class="topbar">
+              <div class="topbar-title">Sunday Desk</div>
+              <div class="flex-row">
+                <button class="icon-btn" data-nav-target="settings" aria-label="Settings">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="hero-pad">
+              <div class="card card--live" style="padding:0;overflow:hidden;">
+                <div class="scorebug-top"><span class="badge live"><span class="live-dot"></span> LIVE</span> WEEK 3 &middot; YOUR MATCHUP</div>
+                <div class="scorebug-teams">
+                  <div class="team-block">
+                    <img src="../assets/owners/tj.jpg" alt="" />
+                    <div class="team-name">Gridiron Mafia</div>
+                    <div class="team-record">6-4</div>
+                    <div class="team-score winning" data-countup="118.4">118.4</div>
+                  </div>
+                  <div class="vs-divider"></div>
+                  <div class="team-block">
+                    <img src="../assets/owners/ryan-horak.jpg" alt="" />
+                    <div class="team-name">Horak's Hogs</div>
+                    <div class="team-record">5-5</div>
+                    <div class="team-score" data-countup="96.2">96.2</div>
+                  </div>
+                </div>
+                <div class="win-prob"><div class="win-prob-fill" style="width:78%"></div><div class="win-prob-fill away" style="width:22%"></div></div>
+                <div class="win-prob-label"><span>78% WIN</span><span>22% WIN</span></div>
+                <div style="padding:12px 16px 16px;"><button class="btn btn-secondary btn-block" data-nav-target="matchup">Open Broadcast View</button></div>
+              </div>
+            </div>
+
+            <div class="section-title">Around The League <a data-nav-target="league">See all</a></div>
+            <div class="ticker-wrap">
+              <div class="ticker-track">
+                <span class="ticker-item"><b>Grant P.</b> 142.8 def. Bailey H. 101.2</span>
+                <span class="ticker-item">&#8226;</span>
+                <span class="ticker-item"><b>Aaron W.</b> claimed a WR off waivers</span>
+                <span class="ticker-item">&#8226;</span>
+                <span class="ticker-item"><b>Clay F.</b> proposed a trade to Ian P.</span>
+                <span class="ticker-item">&#8226;</span>
+                <span class="ticker-item"><b>Grant P.</b> 142.8 def. Bailey H. 101.2</span>
+                <span class="ticker-item">&#8226;</span>
+                <span class="ticker-item"><b>Aaron W.</b> claimed a WR off waivers</span>
+              </div>
+            </div>
+
+            <div class="section-title">This Week</div>
+            <div class="stack">
+              <div class="card">
+                <div class="flex-row" style="justify-content:space-between;">
+                  <div class="flex-row"><span class="badge warning">CHUG DUE</span></div>
+                  <span class="small text-secondary">Ryan H. owes Tuesday</span>
+                </div>
+              </div>
+              <div class="card">
+                <div class="flex-row" style="justify-content:space-between;">
+                  <div><div class="row-title">Weekly Recap is ready</div><div class="row-sub">AI-written &middot; Week 2</div></div>
+                  <button class="btn btn-secondary">Read</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-title">Around The NFL</div>
+            <div class="stack">
+              <div class="card card--live">
+                <div class="flex-row" style="justify-content:space-between;">
+                  <div class="flex-row"><span class="badge live"><span class="live-dot"></span>Q3 8:41</span><span class="small">BUF 21 &ndash; KC 17</span></div>
+                  <button class="icon-btn" data-nav-target="gamecast" aria-label="Watch">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ LEAGUE ============ -->
+          <section class="screen" data-screen="league">
+            <div class="topbar"><div class="topbar-title">The Sunday Slate</div><button class="icon-btn" aria-label="Trophy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M17 5h3a2 2 0 0 1-2 4M7 5H4a2 2 0 0 0 2 4"/></svg></button></div>
+            <div class="segmented" data-pane-group="league">
+              <button class="active" data-pane="overview">Overview</button>
+              <button data-pane="standings">Standings</button>
+              <button data-pane="activity">Activity</button>
+            </div>
+
+            <div data-pane-of="league" data-pane="overview">
+              <div class="stack">
+                <div class="card card--featured">
+                  <div class="flex-row" style="justify-content:space-between;">
+                    <div><div class="row-title">Power Rankings</div><div class="row-sub">Updated after Week 2</div></div>
+                    <span class="badge accent">#1 Grant P.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="section-title">This Week's Slate</div>
+              <div class="stack">
+                <div class="card"><div class="list-row" style="border:none;padding:0;"><div class="row-main"><div class="row-title">Aaron R. vs Tyler D.</div><div class="row-sub">Sun 1:00 PM</div></div></div></div>
+                <div class="card"><div class="list-row" style="border:none;padding:0;"><div class="row-main"><div class="row-title">Lorenzo C. vs James H.</div><div class="row-sub">Sun 1:00 PM</div></div></div></div>
+              </div>
+            </div>
+
+            <div data-pane-of="league" data-pane="standings" hidden>
+              <div class="stack">
+                <div class="card" style="padding:4px 12px;">
+                  <div class="list-row hoverable"><span class="row-value" style="width:18px;">1</span><img src="../assets/owners/grant-pomerenk.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">Grant P.</div><div class="row-sub">8-2 &middot; 1,240 PF</div></div><span class="trend up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 4v16M6 10l6-6 6 6"/></svg>2</span></div>
+                  <div class="list-row hoverable"><span class="row-value" style="width:18px;">2</span><img src="../assets/owners/tj.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">TJ</div><div class="row-sub">6-4 &middot; 1,180 PF</div></div><span class="trend flat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14"/></svg>0</span></div>
+                  <div class="list-row hoverable"><span class="row-value" style="width:18px;">3</span><img src="../assets/owners/aaron-wylie.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">Aaron W.</div><div class="row-sub">6-4 &middot; 1,150 PF</div></div><span class="trend down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 20V4M6 14l6 6 6-6"/></svg>1</span></div>
+                  <div class="list-row hoverable"><span class="row-value" style="width:18px;">4</span><img src="../assets/owners/lorenzo-cachia.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">Lorenzo C.</div><div class="row-sub">6-4 &middot; 1,102 PF</div></div><span class="trend up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 4v16M6 10l6-6 6 6"/></svg>1</span></div>
+                  <div class="list-row hoverable"><span class="row-value" style="width:18px;">5</span><img src="../assets/owners/clay-felice.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">Clay F.</div><div class="row-sub">5-5 &middot; 1,088 PF</div></div><span class="trend flat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14"/></svg>0</span></div>
+                </div>
+                <div class="flex-row" style="padding:6px 4px;gap:8px;"><div style="flex:1;height:1px;background:repeating-linear-gradient(90deg,var(--border) 0 6px,transparent 6px 12px);"></div><span class="small text-secondary" style="white-space:nowrap;">PLAYOFF LINE</span><div style="flex:1;height:1px;background:repeating-linear-gradient(90deg,var(--border) 0 6px,transparent 6px 12px);"></div></div>
+                <div class="card" style="padding:4px 12px;">
+                  <div class="list-row hoverable"><span class="row-value" style="width:18px;">6</span><img src="../assets/owners/james-hogan.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">James H.</div><div class="row-sub">5-5 &middot; 1,050 PF</div></div><span class="trend down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 20V4M6 14l6 6 6-6"/></svg>2</span></div>
+                  <div class="list-row hoverable"><span class="row-value" style="width:18px;">7</span><img src="../assets/owners/bailey-hawn.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">Bailey H.</div><div class="row-sub">4-6 &middot; 990 PF</div></div><span class="trend down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 20V4M6 14l6 6 6-6"/></svg>1</span></div>
+                  <div class="list-row hoverable"><span class="row-value" style="width:18px;">10</span><img src="../assets/owners/ian-parkinson.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">Ian P.</div><div class="row-sub">2-8 &middot; 890 PF</div></div><span class="badge warning">L5</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div data-pane-of="league" data-pane="activity" hidden>
+              <div class="stack">
+                <div class="list-row"><span class="badge accent">TRADE</span><div class="row-main"><div class="row-title">Clay F. &harr; Ian P.</div><div class="row-sub">2 hours ago</div></div></div>
+                <div class="list-row"><span class="badge">WAIVER</span><div class="row-main"><div class="row-title">Aaron W. added D. Achane</div><div class="row-sub">Yesterday</div></div></div>
+                <div class="list-row"><span class="badge">DROP</span><div class="row-main"><div class="row-title">Bailey H. dropped J. Conner</div><div class="row-sub">Yesterday</div></div></div>
+                <div class="list-row"><span class="badge warning">COMMISH</span><div class="row-main"><div class="row-title">TJ locked Week 3 scoring</div><div class="row-sub">2 days ago</div></div></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ MATCHUP ============ -->
+          <section class="screen" data-screen="matchup">
+            <div class="topbar"><div class="topbar-title">Matchup</div><span class="badge live"><span class="live-dot"></span> LIVE</span></div>
+            <div class="hero-pad">
+              <div class="scorebug">
+                <div class="scorebug-top">WEEK 3 &middot; Q3 8:41</div>
+                <div class="scorebug-teams">
+                  <div class="team-block"><img src="../assets/owners/tj.jpg" alt="" /><div class="team-name">Gridiron Mafia</div><div class="team-record">6-4</div><div class="team-score winning">118.4</div></div>
+                  <div class="vs-divider"></div>
+                  <div class="team-block"><img src="../assets/owners/ryan-horak.jpg" alt="" /><div class="team-name">Horak's Hogs</div><div class="team-record">5-5</div><div class="team-score">96.2</div></div>
+                </div>
+                <div class="win-prob"><div class="win-prob-fill" style="width:78%"></div><div class="win-prob-fill away" style="width:22%"></div></div>
+                <div class="win-prob-label"><span>78% WIN</span><span>22% WIN</span></div>
+              </div>
+            </div>
+            <div class="section-title">Scoring Plays</div>
+            <div class="stack">
+              <div class="card" style="padding:10px 14px;"><div class="flex-row" style="justify-content:space-between;"><span class="small">C. McCaffrey rush TD</span><span class="row-value">+6.4</span></div></div>
+              <div class="card" style="padding:10px 14px;"><div class="flex-row" style="justify-content:space-between;"><span class="small">T. Kelce 22yd reception</span><span class="row-value">+2.2</span></div></div>
+            </div>
+            <div class="section-title">Starters</div>
+            <div class="stack">
+              <div class="card" style="padding:8px 12px;">
+                <div class="list-row" data-open-sheet="player-sheet"><span class="pos-chip pos-RB">RB</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">C. McCaffrey</div><div class="row-sub">SF &middot; vs SEA</div></div><span class="row-value">24.6</span></div>
+                <div class="list-row" data-open-sheet="player-sheet"><span class="pos-chip pos-WR">WR</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">T. Hill</div><div class="row-sub">MIA &middot; @ NYJ</div></div><span class="row-value">18.2</span></div>
+                <div class="list-row" data-open-sheet="player-sheet"><span class="pos-chip pos-QB">QB</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">J. Allen</div><div class="row-sub">BUF &middot; vs KC</div></div><span class="row-value">21.9</span></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ MY TEAM ============ -->
+          <section class="screen" data-screen="myteam">
+            <div class="topbar"><div class="topbar-title">Gridiron Mafia</div><button class="icon-btn" data-nav-target="home" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button></div>
+            <div class="segmented" data-pane-group="myteam">
+              <button class="active" data-pane="roster">Roster</button>
+              <button data-pane="freeagents">Free Agents</button>
+              <button data-pane="tradespane">Trades</button>
+            </div>
+
+            <div data-pane-of="myteam" data-pane="roster">
+              <div class="hero-pad">
+                <div class="card card--live" style="padding:10px 14px;">
+                  <div class="flex-row" style="justify-content:space-between;">
+                    <div class="flex-row"><span class="badge live"><span class="live-dot"></span>DRAFT LIVE</span><span class="small">Round 4 &middot; Pick 7</span></div>
+                    <button class="btn btn-secondary" style="min-height:32px;padding:4px 12px;font-size:11px;" data-nav-target="draft">Enter</button>
+                  </div>
+                </div>
+              </div>
+              <div class="section-title">Starters</div>
+              <div class="stack">
+                <div class="card" style="padding:4px 12px;">
+                  <div class="list-row hoverable" data-open-sheet="player-sheet"><span class="pos-chip pos-QB">QB</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">J. Allen</div><div class="row-sub">BUF &middot; vs KC</div></div><span class="row-value">21.9</span></div>
+                  <div class="list-row hoverable" data-open-sheet="player-sheet"><span class="pos-chip pos-RB">RB</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">C. McCaffrey</div><div class="row-sub">SF &middot; vs SEA</div></div><span class="row-value">24.6</span></div>
+                  <div class="list-row hoverable" data-open-sheet="player-sheet"><span class="pos-chip pos-RB">RB</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">J. Conner</div><div class="row-sub">ARI &middot; @ LAR</div></div><span class="row-value">11.2</span></div>
+                  <div class="list-row hoverable" data-open-sheet="player-sheet"><span class="pos-chip pos-WR">WR</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">T. Hill</div><div class="row-sub">MIA &middot; @ NYJ</div></div><span class="row-value">18.2</span></div>
+                  <div class="list-row hoverable" data-open-sheet="player-sheet"><span class="pos-chip pos-WR">WR</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">A. St. Brown</div><div class="row-sub">DET &middot; vs GB</div></div><span class="row-value">14.8</span></div>
+                  <div class="list-row" style="align-items:center;"><span class="pos-chip" style="background:var(--text-secondary);">FLX</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">T. Kelce</div><div class="row-sub">KC &middot; vs BUF</div></div><button class="btn btn-destructive" style="min-height:32px;padding:4px 12px;font-size:11px;">Bench</button></div>
+                  <div class="list-row hoverable" data-open-sheet="player-sheet"><span class="pos-chip pos-K">K</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">J. Tucker</div><div class="row-sub">BAL &middot; vs CIN</div></div><span class="row-value">8.0</span></div>
+                  <div class="list-row hoverable" data-open-sheet="player-sheet"><span class="pos-chip pos-DEF">DEF</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">49ers D/ST</div><div class="row-sub">SF &middot; vs SEA</div></div><span class="row-value">6.0</span></div>
+                </div>
+              </div>
+              <div class="section-title">Bench</div>
+              <div class="stack">
+                <div class="card" style="padding:4px 12px;">
+                  <div class="list-row hoverable" data-open-sheet="player-sheet"><span class="pos-chip pos-WR">WR</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">D. Adams</div><div class="row-sub">Week 3 bye</div></div><span class="badge warning">BYE</span></div>
+                  <div class="list-row hoverable" data-open-sheet="player-sheet"><span class="pos-chip pos-RB">RB</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">A. Jones</div><div class="row-sub">MIN &middot; questionable</div></div><span class="badge warning">Q</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div data-pane-of="myteam" data-pane="freeagents" hidden>
+              <div class="section-title">Top Available</div>
+              <div class="stack">
+                <div class="card" style="padding:4px 12px;">
+                  <div class="list-row hoverable"><span class="pos-chip pos-WR">WR</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">R. Rice</div><div class="row-sub">KC &middot; 34% owned</div></div><button class="btn btn-secondary" style="min-height:36px;padding:0 12px;font-size:11px;">Add</button></div>
+                  <div class="list-row hoverable"><span class="pos-chip pos-RB">RB</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">T. Etienne</div><div class="row-sub">JAX &middot; 41% owned</div></div><button class="btn btn-secondary" style="min-height:36px;padding:0 12px;font-size:11px;">Add</button></div>
+                  <div class="list-row hoverable"><span class="pos-chip pos-TE">TE</span><img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:30px;height:30px;" /><div class="row-main"><div class="row-title">D. Njoku</div><div class="row-sub">CLE &middot; 22% owned</div></div><button class="btn btn-secondary" style="min-height:36px;padding:0 12px;font-size:11px;">Add</button></div>
+                </div>
+              </div>
+            </div>
+
+            <div data-pane-of="myteam" data-pane="tradespane" hidden>
+              <div class="empty-state">
+                <div class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 10l-4 4 4 4M3 14h13a4 4 0 0 0 4-4"/><path d="M17 14l4-4-4-4M21 10H8a4 4 0 0 0-4 4"/></svg></div>
+                <div class="empty-title">No open trades</div>
+                <div class="empty-body">Propose one from any player's card, or wait — someone usually blinks by Thursday.</div>
+                <button class="btn btn-secondary" style="margin-top:4px;">Propose a Trade</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ DRAFT ============ -->
+          <section class="screen" data-screen="draft">
+            <div class="broadcast-strap"><span class="dot"></span> LIVE DRAFT BROADCAST</div>
+            <div class="topbar"><div class="topbar-title">Round 4 &middot; Pick 7</div></div>
+            <div class="hero-pad">
+              <div class="card card--live" style="text-align:center;">
+                <div class="small text-secondary">ON THE CLOCK — GRANT P.</div>
+                <div class="draft-clock">00:47</div>
+              </div>
+            </div>
+            <div class="section-title">Recommended Pick</div>
+            <div class="hero-pad">
+              <div class="draft-player-card">
+                <img src="../assets/owners/tyler-dailey.jpg" alt="" />
+                <div class="team-name" style="font-size:18px;">B. Robinson</div>
+                <div class="small text-secondary">RB &middot; ATL &middot; ADP 34</div>
+                <div class="flex-row" style="justify-content:center;gap:16px;margin-top:10px;">
+                  <div><div class="row-value">14.2</div><div class="small text-secondary">Proj</div></div>
+                  <div><div class="row-value">#3</div><div class="small text-secondary">Pos Rank</div></div>
+                </div>
+                <button class="btn btn-primary btn-block" style="margin-top:12px;">Draft This Player</button>
+              </div>
+            </div>
+            <div class="section-title">Recent Picks</div>
+            <div class="stack">
+              <div class="draft-queue-row"><span class="draft-queue-num">4.6</span><span class="pos-chip pos-WR">WR</span><span class="small">A. St. Brown &rarr; Aaron W.</span></div>
+              <div class="draft-queue-row"><span class="draft-queue-num">4.5</span><span class="pos-chip pos-QB">QB</span><span class="small">L. Jackson &rarr; TJ</span></div>
+              <div class="draft-queue-row"><span class="draft-queue-num">4.4</span><span class="pos-chip pos-TE">TE</span><span class="small">S. LaPorta &rarr; Ian P.</span></div>
+            </div>
+            <div class="section-title">Your Queue</div>
+            <div class="stack">
+              <div class="draft-queue-row"><span class="draft-queue-num">1</span><span class="pos-chip pos-RB">RB</span><span class="small">J. Conner</span></div>
+              <div class="draft-queue-row"><span class="draft-queue-num">2</span><span class="pos-chip pos-WR">WR</span><span class="small">C. Lamb</span></div>
+            </div>
+          </section>
+
+          <!-- ============ GAMECAST ============ -->
+          <section class="screen" data-screen="gamecast">
+            <div class="broadcast-strap"><span class="dot"></span> GAMECAST — RED ZONE</div>
+            <div class="topbar"><div class="topbar-title">BUF @ KC</div></div>
+            <div class="hero-pad">
+              <div class="scorebug">
+                <div class="scorebug-top">Q3 &middot; 8:41 &middot; 2nd &amp; 6</div>
+                <div class="scorebug-teams">
+                  <div class="team-block"><img src="../assets/owners/aaron-roberts.jpg" alt="" /><div class="team-name">BUF</div><div class="team-score winning">21</div></div>
+                  <div class="vs-divider"></div>
+                  <div class="team-block"><img src="../assets/owners/ryan-horak.jpg" alt="" /><div class="team-name">KC</div><div class="team-score">17</div></div>
+                </div>
+              </div>
+              <div class="field-graphic"><div class="ball-marker" style="left:38%;"></div></div>
+              <div class="small text-secondary" style="text-align:center;margin-top:6px;">BUF ball &middot; Own 38 &middot; 2nd &amp; 6</div>
+            </div>
+            <div class="section-title">Fantasy Impact</div>
+            <div class="stack">
+              <div class="card" style="padding:10px 14px;"><div class="flex-row" style="justify-content:space-between;"><span class="small">J. Allen 14yd scramble</span><span class="row-value" style="color:var(--success)">+2.4 (your team)</span></div></div>
+            </div>
+            <div class="section-title">Drive Chart</div>
+            <div class="stack">
+              <div class="card" style="padding:10px 14px;"><span class="small text-secondary">1st &amp; 10 &middot; BUF 25 &middot; J. Allen pass complete +11</span></div>
+              <div class="card" style="padding:10px 14px;"><span class="small text-secondary">1st &amp; 10 &middot; BUF 36 &middot; J. Cook rush +2</span></div>
+            </div>
+          </section>
+
+          <!-- ============ CHAT ============ -->
+          <section class="screen" data-screen="chat">
+            <div class="topbar"><div class="topbar-title">The Sunday Slate</div><div class="avatar-stack"><img src="../assets/owners/tj.jpg" class="avatar" style="width:22px;height:22px;" /><img src="../assets/owners/grant-pomerenk.jpg" class="avatar" style="width:22px;height:22px;" /><img src="../assets/owners/aaron-wylie.jpg" class="avatar" style="width:22px;height:22px;" /></div></div>
+            <div class="chat-thread">
+              <div class="chat-date">Today 1:04 PM</div>
+              <div class="chat-name">Grant P.</div>
+              <div class="chat-row them"><img src="../assets/owners/grant-pomerenk.jpg" class="avatar" /><div class="bubble">bro McCaffrey is going OFF today</div></div>
+              <div class="chat-row them grouped"><img src="../assets/owners/grant-pomerenk.jpg" class="avatar" /><div class="bubble">Ryan you might be cooked</div></div>
+              <div class="chat-row me"><div class="bubble">we'll see about that 😤</div></div>
+              <div class="chat-row them"><img src="../assets/owners/ryan-horak.jpg" class="avatar" /><div class="bubble">still got the late game, relax</div></div>
+              <div class="typing-row"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>
+            </div>
+            <div class="chat-input-bar">
+              <div class="chat-input">iMessage</div>
+              <button class="icon-btn" style="background:var(--accent);color:#fff;border-color:transparent;" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+            </div>
+          </section>
+
+          <!-- ============ SETTINGS ============ -->
+          <section class="screen" data-screen="settings">
+            <div class="topbar"><div class="topbar-title">Settings</div><button class="icon-btn" data-nav-target="home" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button></div>
+
+            <div class="section-title">Account</div>
+            <div class="stack">
+              <div class="card"><div class="flex-row"><img src="../assets/owners/tj.jpg" class="avatar" style="width:44px;height:44px;" /><div class="row-main"><div class="row-title">TJ</div><div class="row-sub">Gridiron Mafia &middot; The Sunday Slate</div></div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--text-secondary);"><path d="M9 18l6-6-6-6"/></svg></div></div>
+            </div>
+
+            <div class="section-title">Appearance</div>
+            <div class="stack"><div class="card">
+              <div class="setting-row"><span class="small">Dark Mode</span><div class="toggle on"><div class="toggle-knob"></div></div></div>
+              <div class="setting-row"><span class="small">Broadcast Ticker</span><div class="toggle on"><div class="toggle-knob"></div></div></div>
+              <div class="setting-row"><span class="small">Reduce Motion</span><div class="toggle"><div class="toggle-knob"></div></div></div>
+            </div></div>
+
+            <div class="section-title">Notifications</div>
+            <div class="stack"><div class="card">
+              <div class="setting-row"><span class="small">Live Score Alerts</span><div class="toggle on"><div class="toggle-knob"></div></div></div>
+              <div class="setting-row"><span class="small">Chat Messages</span><div class="toggle on"><div class="toggle-knob"></div></div></div>
+              <div class="setting-row"><span class="small">Chug Reminders</span><div class="toggle on"><div class="toggle-knob"></div></div></div>
+              <div class="setting-row"><span class="small">Trade Offers</span><div class="toggle on"><div class="toggle-knob"></div></div></div>
+            </div></div>
+
+            <div class="section-title">Navigation Order</div>
+            <div class="stack"><div class="card" style="padding:4px 12px;">
+              <div class="list-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--text-secondary);"><path d="M8 6h8M8 12h8M8 18h8"/></svg><span class="small" style="flex:1;">Home</span></div>
+              <div class="list-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--text-secondary);"><path d="M8 6h8M8 12h8M8 18h8"/></svg><span class="small" style="flex:1;">League</span></div>
+              <div class="list-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--text-secondary);"><path d="M8 6h8M8 12h8M8 18h8"/></svg><span class="small" style="flex:1;">Matchup</span></div>
+              <div class="list-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--text-secondary);"><path d="M8 6h8M8 12h8M8 18h8"/></svg><span class="small" style="flex:1;">Live</span></div>
+              <div class="list-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--text-secondary);"><path d="M8 6h8M8 12h8M8 18h8"/></svg><span class="small" style="flex:1;">Chat</span></div>
+            </div></div>
+
+            <div class="section-title">Component States (preview)</div>
+            <div class="stack">
+              <div class="card">
+                <div class="flex-row" style="justify-content:space-between;">
+                  <span class="small">Offline banner</span>
+                  <button class="btn btn-secondary" style="min-height:32px;padding:4px 12px;font-size:11px;" data-toggle-target="demo-offline-a" data-toggle-label="Preview" data-toggle-label-on="Hide">Preview</button>
+                </div>
+                <div id="demo-offline-a" hidden style="margin-top:10px;border-radius:8px;overflow:hidden;">
+                  <div class="offline-banner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>You're offline — showing your last saved scores.</span><span class="retry">Retry</span></div>
+                </div>
+              </div>
+              <div class="card">
+                <div class="flex-row" style="justify-content:space-between;">
+                  <span class="small">Loading skeleton</span>
+                  <button class="btn btn-secondary" style="min-height:32px;padding:4px 12px;font-size:11px;" data-toggle-target="demo-skeleton-a" data-toggle-label="Preview" data-toggle-label-on="Hide">Preview</button>
+                </div>
+                <div id="demo-skeleton-a" hidden style="margin-top:10px;">
+                  <div class="flex-row"><div class="skeleton skeleton-avatar"></div><div style="flex:1;"><div class="skeleton skeleton-line w-40"></div><div class="skeleton skeleton-line w-90" style="margin-bottom:0;"></div></div></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- BOTTOM NAV -->
+        <nav class="bottomnav">
+          <button class="navitem active" data-nav-target="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg><span class="nav-label">Home</span></button>
+          <button class="navitem" data-nav-target="league"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/></svg><span class="nav-label">League</span></button>
+          <button class="navitem" data-nav-target="matchup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg><span class="nav-label">Matchup</span></button>
+          <button class="navitem" data-nav-target="gamecast" style="position:relative;"><span class="live-pip"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="13" rx="2"/><path d="M8 3l4 4 4-4"/></svg><span class="nav-label">Live</span></button>
+          <button class="navitem" data-nav-target="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-1 4 8.5 8.5 0 0 1-7.5 4.5 8.4 8.4 0 0 1-4-1L3 20l1-5.5a8.4 8.4 0 0 1-1-4 8.5 8.5 0 0 1 4.5-7.5 8.4 8.4 0 0 1 4-1h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="nav-label">Chat</span></button>
+        </nav>
+
+        <!-- PLAYER DETAIL SHEET -->
+        <div class="sheet-backdrop" id="player-sheet-backdrop" data-close-sheet="player-sheet"></div>
+        <div class="sheet" id="player-sheet">
+          <div class="sheet-handle"></div>
+          <div style="padding:0 20px 20px;text-align:center;">
+            <img src="../assets/owners/aaron-roberts.jpg" class="avatar" style="width:64px;height:64px;margin:0 auto 10px;" />
+            <div class="team-name" style="font-size:20px;">C. McCaffrey</div>
+            <div class="small text-secondary">RB &middot; SF &middot; vs SEA &middot; Q3 8:41</div>
+            <div class="flex-row" style="justify-content:center;gap:24px;margin:14px 0;">
+              <div><div class="row-value" data-countup="24.6">24.6</div><div class="small text-secondary">Fantasy Pts</div></div>
+              <div><div class="row-value">18</div><div class="small text-secondary">Carries</div></div>
+              <div><div class="row-value">2</div><div class="small text-secondary">TD</div></div>
+            </div>
+            <button class="btn btn-secondary btn-block" data-close-sheet="player-sheet">Close</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/shell.js"></script>
+</body>
+</html>

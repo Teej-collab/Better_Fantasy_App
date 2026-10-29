@@ -1,0 +1,69 @@
+<title>Watch Party Mockups</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #08090c;
+    --surface: #121419;
+    --border: #23262d;
+    --text: #eef0f2;
+    --text-secondary: #8a9099;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Source Sans 3', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 20px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  h1 {
+    margin: 0;
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    font-size: 20px;
+    white-space: nowrap;
+  }
+  p {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    min-width: 0;
+  }
+  .frame-wrap {
+    flex: 1;
+    min-height: 0;
+  }
+  iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: var(--bg);
+  }
+  @media (max-width: 640px) {
+    header { flex-direction: column; align-items: flex-start; gap: 4px; }
+    h1 { font-size: 17px; }
+  }
+</style>
+
+<header>
+  <h1>Watch Party Mockups</h1>
+  <p>Three interactive directions for THE WEEKEND's group video/voice feature — mobile + desktop, screen share included. Use the nav and buttons inside the frame below; scores simulate live.</p>
+</header>
+<div class="frame-wrap">
+  <iframe src="watch-party/index.html" title="Watch Party interactive mockups" allow="clipboard-write"></iframe>
+</div>

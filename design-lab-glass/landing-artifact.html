@@ -1,0 +1,160 @@
+<title>Glass Directions</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#08080a; --surface:#131316; --line:#242429; --text:#f2f1ee; --dim:#9a9a9e;
+    --c1:#F5A623; --c2:#45D9FF; --c3:#E8A33D; --c4:#39ff14;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 20px;}
+  header{padding:56px 20px 28px;text-align:center;}
+  .kicker{font-size:12px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:clamp(2.2rem,6.5vw,3.8rem);letter-spacing:0.01em;margin:8px 0 14px;line-height:0.98;text-transform:uppercase;}
+  header p{color:var(--dim);font-size:15px;max-width:600px;margin:0 auto;line-height:1.65;}
+  header p strong{color:var(--text);font-weight:600;}
+  .grid{display:grid;grid-template-columns:1fr;gap:20px;padding:24px 20px 80px;}
+  @media (min-width:700px){ .grid{grid-template-columns:repeat(2,1fr);} }
+  @media (min-width:1280px){ .grid{grid-template-columns:repeat(4,1fr);} }
+  .card{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;min-height:460px;transition:transform .25s ease, border-color .25s ease;}
+  .card:hover{transform:translateY(-4px);border-color:rgba(255,255,255,0.22);}
+  .preview{height:200px;position:relative;overflow:hidden;}
+  .tag{position:absolute;top:14px;left:14px;font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;padding:4px 9px;border-radius:20px;background:rgba(0,0,0,0.4);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.12);}
+  .body{padding:22px 22px 18px;display:flex;flex-direction:column;gap:10px;flex:1;}
+  .name{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.85rem;text-transform:uppercase;letter-spacing:0.01em;line-height:1;}
+  .pitch{font-size:13px;color:var(--dim);line-height:1.55;flex:1;}
+  .links{display:flex;flex-direction:column;gap:8px;padding:0 22px 22px;}
+  .btn{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;font-weight:600;letter-spacing:0.02em;text-decoration:none;color:inherit;padding:11px 14px;border-radius:12px;border:1px solid var(--line);transition:border-color .2s ease, background .2s ease;}
+  .btn svg{width:14px;height:14px;flex:none;opacity:0.7;}
+  .btn.primary{background:rgba(255,255,255,0.06);}
+  .btn:hover{border-color:rgba(255,255,255,0.3);background:rgba(255,255,255,0.08);}
+
+  /* Concept 1 preview — Under the Lights */
+  .p1{background:radial-gradient(circle at 30% 20%, rgba(245,166,35,0.35), transparent 55%), linear-gradient(180deg,#0c0906,#151210);}
+  .p1::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(100deg, transparent 0 36px, rgba(245,166,35,0.07) 36px 37px);}
+  .p1 .glassbar{position:absolute;bottom:16px;left:16px;right:16px;height:46px;border-radius:23px;background:rgba(20,16,10,0.55);backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(245,166,35,0.3);box-shadow:0 8px 24px -8px rgba(0,0,0,0.6);}
+  .p1 .score{position:absolute;top:52px;left:16px;font-family:'Barlow Condensed';font-weight:800;font-size:46px;color:#fff;letter-spacing:0.01em;}
+  .p1 .tag{color:var(--c1);}
+
+  /* Concept 2 preview — Command Deck */
+  .p2{background:radial-gradient(circle at 65% 25%, rgba(69,217,255,0.18), transparent 60%), #06070a;}
+  .p2::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(69,217,255,0.08) 1px, transparent 1px),linear-gradient(90deg, rgba(69,217,255,0.08) 1px, transparent 1px);background-size:22px 22px;}
+  .p2 .glassbar{position:absolute;top:16px;left:16px;right:16px;height:40px;border-radius:20px;background:rgba(10,14,18,0.5);backdrop-filter:blur(14px) saturate(170%);border:1px solid rgba(69,217,255,0.28);}
+  .p2 .dot{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--c2);box-shadow:0 0 14px var(--c2);bottom:58px;left:24px;}
+  .p2 .stat{position:absolute;bottom:24px;left:24px;font-family:'Barlow Condensed';font-weight:700;font-size:40px;color:#fff;}
+  .p2 .tag{color:var(--c2);}
+
+  /* Concept 3 preview — The Huddle */
+  .p3{background:radial-gradient(circle at 40% 70%, rgba(232,163,61,0.22), transparent 60%), linear-gradient(160deg,#160f09,#0c0805);}
+  .p3 .glassbar{position:absolute;bottom:16px;left:16px;right:16px;height:44px;border-radius:22px;background:rgba(28,18,10,0.55);backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(232,163,61,0.3);}
+  .p3 .bubble{position:absolute;top:44px;left:16px;max-width:200px;padding:8px 12px;border-radius:14px 14px 14px 4px;background:rgba(232,163,61,0.16);border:1px solid rgba(232,163,61,0.3);font-size:11px;color:#f2e6d3;}
+  .p3 .tag{color:var(--c3);}
+
+  /* Concept 4 preview — Neon Orbit */
+  .p4{background:radial-gradient(circle at 60% 15%, rgba(57,255,20,0.16), transparent 55%), linear-gradient(160deg,#0a0716,#131025);}
+  .p4::before{content:"";position:absolute;inset:0;background-image:radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.6), transparent),radial-gradient(1px 1px at 70% 20%, rgba(255,255,255,0.5), transparent),radial-gradient(1px 1px at 45% 60%, rgba(255,255,255,0.4), transparent),radial-gradient(1px 1px at 85% 70%, rgba(255,255,255,0.5), transparent),radial-gradient(1px 1px at 30% 80%, rgba(255,255,255,0.35), transparent);}
+  .p4 .ring{position:absolute;top:50px;left:24px;width:64px;height:64px;border-radius:50%;border:1.5px solid var(--c4);box-shadow:0 0 16px rgba(57,255,20,0.5), inset 0 0 10px rgba(57,255,20,0.2);}
+  .p4 .glassbar{position:absolute;bottom:16px;left:16px;right:16px;height:44px;border-radius:22px;background:rgba(14,10,26,0.55);backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(57,255,20,0.28);}
+  .p4 .tag{color:var(--c4);}
+
+  footer{padding:0 20px 60px;text-align:center;color:var(--dim);font-size:12px;}
+</style>
+
+<header class="wrap">
+  <div class="kicker">The Weekend — Design Lab, Round Two</div>
+  <h1>Built Mobile First.<br/>No Shrinking.</h1>
+  <p>Four liquid-glass sports concepts, each designed at a fixed 390px phone canvas from the first line of CSS — <strong>there is no desktop layout to fall back on</strong>. Glass is real material: lensing, refraction, and specular light on the navigation and floating chrome, with the content underneath left fully legible, not a flat blur slapped on every card. The fourth reuses THE WEEKEND's own real brand colors instead of an invented palette.</p>
+</header>
+
+<div class="grid wrap">
+  <div class="card concept1">
+    <div class="preview p1">
+      <span class="tag">Concept 01</span>
+      <div class="score">108<span style="font-size:20px;color:var(--dim);">.4</span></div>
+      <div class="glassbar"></div>
+    </div>
+    <div class="body">
+      <div class="name">Under the Lights</div>
+      <p class="pitch">Stadium-night broadcast energy — floodlight amber, scoreboard red reserved for live urgency, Bebas Neue impact type. The glass tab bar and score bug catch light like real floodlit glass.</p>
+    </div>
+    <div class="links">
+      <a class="btn primary" href="https://claude.ai/code/artifact/e402fb29-051d-4cdb-bd9c-3a4d08111382">
+        Phone frame preview
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+      <a class="btn" href="https://claude.ai/code/artifact/42aeea09-8f6d-4ec0-a13f-9164133717c9">
+        Open direct (best on an actual phone)
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <div class="card concept2">
+    <div class="preview p2">
+      <span class="tag">Concept 02</span>
+      <div class="dot"></div>
+      <div class="stat">62%</div>
+      <div class="glassbar"></div>
+    </div>
+    <div class="body">
+      <div class="name">Command Deck</div>
+      <p class="pitch">Near-black tactical precision — one signal-cyan accent spent only on live/urgent states, everything else desaturated so it actually reads as an alert. A coach's tablet, not a scoreboard.</p>
+    </div>
+    <div class="links">
+      <a class="btn primary" href="https://claude.ai/code/artifact/07c3cb87-328f-477b-9479-f90153051ba7">
+        Phone frame preview
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+      <a class="btn" href="https://claude.ai/code/artifact/525c5a6b-73c8-4ec6-9fee-6edcf0e17b88">
+        Open direct (best on an actual phone)
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <div class="card concept3">
+    <div class="preview p3">
+      <span class="tag">Concept 03</span>
+      <div class="bubble">"we all know what happened week 6..."</div>
+      <div class="glassbar"></div>
+    </div>
+    <div class="body">
+      <div class="name">The Huddle</div>
+      <p class="pitch">Warm worn-leather tones, gold and rally-red, Barlow Condensed confidence. Built around the league group chat and real rivalry history — glass on the composer and tab bar only.</p>
+    </div>
+    <div class="links">
+      <a class="btn primary" href="https://claude.ai/code/artifact/4fb0f440-a40b-4adb-b8f9-63da06c0efb6">
+        Phone frame preview
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+      <a class="btn" href="https://claude.ai/code/artifact/a66a7dde-bfcf-43fd-a91d-2d531cd0ce4e">
+        Open direct (best on an actual phone)
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <div class="card concept4">
+    <div class="preview p4">
+      <span class="tag">Concept 04</span>
+      <div class="ring"></div>
+      <div class="glassbar"></div>
+    </div>
+    <div class="body">
+      <div class="name">Neon Orbit</div>
+      <p class="pitch">THE WEEKEND's own real brand — neon green on a cosmic-violet ground, with the app's actual rotating border ring reserved for hero moments only. Sparse stars, not a busy starfield.</p>
+    </div>
+    <div class="links">
+      <a class="btn primary" href="https://claude.ai/code/artifact/65d4169f-2fb7-43c0-94df-9a4bbb53483f">
+        Phone frame preview
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+      <a class="btn" href="https://claude.ai/code/artifact/0285eea1-53b8-4f35-960b-fe83f4c543d3">
+        Open direct (best on an actual phone)
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>Interactive prototypes — tap around on either link. Nothing here is implemented in the production app yet.</footer>

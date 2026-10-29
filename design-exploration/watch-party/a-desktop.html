@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Direction A · Desktop</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css" />
+<style>
+  :root { --wl-accent: #39ff14; --wl-live: #ef4444; }
+  .wp-desktop { background: #000; display: flex; flex-direction: column; }
+  .lk-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; color: #fff; flex: 0 0 auto; }
+  .lk-header .name { font-family: 'Bebas Neue', sans-serif; letter-spacing: .04em; font-size: 19px; }
+  .lk-leave { background: rgba(255,255,255,.1); border: 0; color: #fff; font: 700 12px 'Source Sans 3'; padding: 7px 16px; border-radius: 999px; }
+  .lk-grid { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: 8px; padding: 8px; min-height: 0; }
+  .lk-tile { position: relative; border-radius: 10px; overflow: hidden; background: #14171c; }
+  .lk-tile img { width: 100%; height: 100%; object-fit: cover; }
+  .lk-tile.camoff img.feed { display: none; }
+  .lk-tile.camoff .fallback { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .lk-tile:not(.camoff) .fallback { display: none; }
+  .lk-tile.speaking { outline: 2px solid var(--wl-accent); outline-offset: -2px; }
+  .lk-name { position: absolute; left: 8px; bottom: 8px; display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #fff; }
+  .lk-bar { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 14px; padding: 14px; background: #0a0a0a; }
+  .lk-btn { width: 46px; height: 46px; border-radius: 50%; background: #1e1e1e; border: 0; color: #fff; font-size: 17px; display: flex; align-items: center; justify-content: center; }
+  .lk-btn.hangup { background: var(--wl-live); width: 58px; }
+  .lk-btn.on { background: var(--wl-accent); color: #06110a; }
+
+  /* Screen share — main tile + a vertical filmstrip, the natural desktop
+     layout (LiveKit's own does the same) rather than mobile's horizontal one. */
+  .share-view { flex: 1; display: flex; gap: 8px; padding: 8px; min-height: 0; }
+  .share-main { flex: 1; min-height: 0; }
+  .share-strip { width: 150px; flex: none; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+  .share-strip .lk-tile { aspect-ratio: 4/3; flex: none; }
+  .share-strip .lk-name { font-size: 10px; }
+
+  /* Desktop has room — the card sits in the corner instead of dead center over faces */
+  .ticker-wrap { position: absolute; top: 70px; right: 18px; z-index: 10; width: 300px; }
+  .ticker { display: flex; flex-direction: column; gap: 7px; border-radius: 16px; background: rgba(0,0,0,.72); backdrop-filter: blur(12px); padding: 12px; }
+  .ticker-label { padding: 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: rgba(255,255,255,.5); }
+  .ticker-row { display: flex; align-items: center; gap: 8px; border-radius: 12px; background: rgba(255,255,255,.06); padding: 7px 11px; }
+  .ticker-line { font-size: 13px; color: #fff; }
+  .ticker-tag { font-size: 11px; font-weight: 700; color: #f87171; }
+</style>
+</head>
+<body>
+<div class="wp-stage">
+  <div class="wp-eyebrow">THE WEEKEND — Watch Party Mockups</div>
+  <h1 class="wp-title">Direction A — Native Overlay · Desktop</h1>
+  <p class="wp-sub">Same concept, wider room: the digest card moves to the top-right corner instead of dead center, since desktop has space to spare and shouldn't cover a face just because it can.</p>
+  <div class="wp-nav">
+    <a href="index.html">&larr; All 6 mockups</a>
+    <a href="a-mobile.html">A · Mobile</a>
+    <a href="a-desktop.html" class="current">A · Desktop</a>
+    <a href="b-mobile.html">B · Mobile</a>
+    <a href="b-desktop.html">B · Desktop</a>
+    <a href="c-mobile.html">C · Mobile</a>
+    <a href="c-desktop.html">C · Desktop</a>
+  </div>
+
+  <div class="wp-controls">
+    <button class="wp-ctl on" data-wp-live-btn>▶ Simulate a live slate</button>
+    <button class="wp-ctl" data-wp-blowout-btn>Show a blowout (overlay hides)</button>
+    <button class="wp-ctl" data-wp-wire-btn>Force "down to the wire"</button>
+    <button class="wp-ctl" data-wp-share-btn>🖥️ Toggle screen share</button>
+  </div>
+
+  <div class="wp-desktop">
+    <div class="lk-header">
+      <span class="name">League Lounge</span>
+      <button class="lk-leave">Leave</button>
+    </div>
+
+    <div class="ticker-wrap" id="ticker-wrap">
+      <div class="ticker">
+        <span class="ticker-label">Sweating it out</span>
+        <div id="ticker-rows"></div>
+      </div>
+    </div>
+
+    <div class="lk-grid" id="normal-grid">
+      <div class="lk-tile speaking"><img class="feed" src="../assets/owners/grant-pomerenk.jpg" alt=""><span class="lk-name">Grant P.</span></div>
+      <div class="lk-tile"><img class="feed" src="../assets/owners/ryan-horak.jpg" alt=""><span class="lk-name">Ryan H.</span></div>
+      <div class="lk-tile camoff"><img class="fallback" src="../assets/owners/aaron-wylie.jpg" alt=""><span class="lk-name">🔇 Aaron W.</span></div>
+      <div class="lk-tile"><img class="feed" src="../assets/owners/tj.jpg" alt=""><span class="lk-name">TJ (You)</span></div>
+      <div class="lk-tile camoff"><img class="fallback" src="../assets/owners/clay-felice.jpg" alt=""><span class="lk-name">🔇 Clay F.</span></div>
+      <div class="lk-tile"><img class="feed" src="../assets/owners/lorenzo-cachia.jpg" alt=""><span class="lk-name">Lorenzo C.</span></div>
+    </div>
+
+    <div class="share-view" id="share-view" style="display:none">
+      <div class="share-main" id="share-main"></div>
+      <div class="share-strip">
+        <div class="lk-tile speaking"><img class="feed" src="../assets/owners/grant-pomerenk.jpg" alt=""><span class="lk-name">Grant P.</span></div>
+        <div class="lk-tile"><img class="feed" src="../assets/owners/ryan-horak.jpg" alt=""><span class="lk-name">Ryan H.</span></div>
+        <div class="lk-tile camoff"><img class="fallback" src="../assets/owners/aaron-wylie.jpg" alt=""><span class="lk-name">Aaron W.</span></div>
+        <div class="lk-tile camoff"><img class="fallback" src="../assets/owners/clay-felice.jpg" alt=""><span class="lk-name">Clay F.</span></div>
+        <div class="lk-tile"><img class="feed" src="../assets/owners/lorenzo-cachia.jpg" alt=""><span class="lk-name">Lorenzo C.</span></div>
+      </div>
+    </div>
+
+    <div class="lk-bar">
+      <button class="lk-btn">🎤</button>
+      <button class="lk-btn">📹</button>
+      <button class="lk-btn" data-wp-share-btn>🖥️</button>
+      <button class="lk-btn">💬</button>
+      <button class="lk-btn hangup">📞</button>
+    </div>
+  </div>
+  <p class="wp-note"><b>Interaction model:</b> unchanged from mobile — same card, same data, just repositioned for the room it has. <b>Screen share</b> uses the width desktop has to spare for a proper filmstrip (vertical, not a scroll strip) alongside the big shared tile.</p>
+</div>
+
+<script src="shared.js"></script>
+<script>
+  function render() {
+    const live = wpCloseMatchups(65, 3);
+    document.getElementById("ticker-wrap").style.display = live.length ? "block" : "none";
+    document.getElementById("ticker-rows").innerHTML = live.map(m => `
+      <div class="ticker-row">
+        <div style="min-width:0;flex:1;display:flex;flex-direction:column;">
+          <span class="ticker-line">${m.home} ${m.hs.toFixed(1)} · ${m.away} ${m.as.toFixed(1)}</span>
+          ${m.sweat.label ? `<span class="ticker-tag">${m.sweat.label}</span>` : ""}
+        </div>
+      </div>`).join("");
+
+    const sharing = !!wpShareOwner;
+    // Not .hidden — see a-mobile.html's identical comment: author CSS
+    // (.lk-grid{display:grid}) beats the UA [hidden] rule at equal
+    // specificity, so inline style is what actually has to win here.
+    document.getElementById("normal-grid").style.display = sharing ? "none" : "grid";
+    document.getElementById("share-view").style.display = sharing ? "flex" : "none";
+    if (sharing) document.getElementById("share-main").innerHTML = wpShareCanvasHTML();
+  }
+  wpOnRender(render);
+</script>
+</body>
+</html>

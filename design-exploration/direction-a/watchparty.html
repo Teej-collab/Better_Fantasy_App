@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Direction A — Watch Party</title>
+<link rel="stylesheet" href="../assets/shell.css" />
+<link rel="stylesheet" href="theme.css" />
+</head>
+<body>
+
+<div class="stage">
+  <div class="stage-header">
+    <div class="stage-eyebrow">THE WEEKEND — Watch Party Mockup</div>
+    <h1 class="stage-title">Direction A — Broadcast Desk</h1>
+    <p class="stage-sub">Reached from Chat: an always-open "League Lounge" room anyone can drop into, plus invite-only private parties. Video is optional — camera-off is a first-class state, not a fallback. While you're in a room, a collapsible strip keeps the live scores and "down to the wire" tension visible without covering the video.</p>
+    <nav class="stage-nav">
+      <a href="../index.html">&larr; All directions</a>
+      <a href="index.html">&larr; Direction A home</a>
+      <a href="watchparty.html" class="current">Watch Party</a>
+      <a href="../direction-c/watchparty.html">Direction C — Watch Party</a>
+    </nav>
+  </div>
+
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-screen-area">
+        <div class="statusbar"><span class="js-clock">1:04</span><span>THE WEEKEND</span><span>&#9679;&#9679;&#9679; 5G 100%</span></div>
+
+        <div class="screens">
+
+          <!-- LOBBY -->
+          <section class="screen active" data-screen="lobby">
+            <div class="topbar">
+              <a class="icon-btn" href="index.html?screen=chat" aria-label="Back to chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></a>
+              <div class="topbar-title">Watch Party</div>
+              <span></span>
+            </div>
+
+            <div class="broadcast-strap"><span class="dot"></span>THE SUNDAY SLATE IS WATCHING</div>
+
+            <div class="section-title">Live Now</div>
+            <div class="stack">
+              <button class="wp-room-card hoverable" data-nav-target="room">
+                <div class="wp-room-icon live">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg>
+                </div>
+                <div class="wp-room-main">
+                  <div class="wp-room-title">League Lounge <span class="badge live"><span class="live-dot"></span>LIVE</span></div>
+                  <div class="wp-room-sub">Always open &middot; 4 in the room right now</div>
+                </div>
+                <div class="wp-room-avatars">
+                  <img src="../assets/owners/tj.jpg" alt="" />
+                  <img src="../assets/owners/grant-pomerenk.jpg" alt="" />
+                  <img src="../assets/owners/ryan-horak.jpg" alt="" />
+                  <span class="wp-room-count">+1</span>
+                </div>
+              </button>
+            </div>
+
+            <div class="section-title">Private Parties <a data-toggle-target="wp-empty-a" data-open-sheet="start-party-sheet">New</a></div>
+            <div class="stack">
+              <button class="wp-room-card hoverable" data-nav-target="room">
+                <div class="wp-room-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </div>
+                <div class="wp-room-main">
+                  <div class="wp-room-title">Championship Watch</div>
+                  <div class="wp-room-sub">You + Grant P., Aaron W. &middot; kickoff at 4:25</div>
+                </div>
+                <div class="wp-room-avatars">
+                  <img src="../assets/owners/grant-pomerenk.jpg" alt="" />
+                  <img src="../assets/owners/aaron-wylie.jpg" alt="" />
+                </div>
+              </button>
+              <button class="wp-create-btn" data-open-sheet="start-party-sheet">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                Start a Party
+              </button>
+            </div>
+
+            <div class="section-title">How it works</div>
+            <div class="hero-pad">
+              <div class="card small text-secondary" style="line-height:1.6;">
+                Camera's always optional — join with video, audio only, or just lurk in the chat. The League Lounge never closes. A Party is a private room you invite specific people to, like starting a group call.
+              </div>
+            </div>
+          </section>
+
+          <!-- ROOM (in-call) -->
+          <section class="screen" data-screen="room">
+            <div class="wp-room-shell">
+              <div class="topbar">
+                <button class="icon-btn" data-nav-target="lobby" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+                <div class="topbar-title" style="font-size:16px;display:flex;align-items:center;gap:6px;">League Lounge <span class="badge live"><span class="live-dot"></span>LIVE</span></div>
+                <button class="icon-btn" data-open-sheet="start-party-sheet" aria-label="Invite"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6"/></svg></button>
+              </div>
+
+              <div class="wp-fantasy-strip" id="room-fantasy-strip">
+                <div class="wp-fantasy-card">
+                  <div class="wp-fantasy-head"><span>This Week &middot; Sweating It Out</span><span>2 close</span></div>
+                  <div class="wp-sweat-row">
+                    <span class="wp-sweat-matchup">TJ vs Ryan H.</span>
+                    <span class="wp-sweat-score">118.4 &ndash; 116.9</span>
+                  </div>
+                  <div class="wp-sweat-bar"><div class="wp-sweat-bar-fill" style="width:92%;"></div></div>
+                  <div class="wp-sweat-label"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5-3 9a4 4 0 0 0 8 0c0-2-1-3-1-3s2 1 2 5a6 6 0 1 1-12 0c0-6 5-7 6-11z"/></svg>Down to the wire &mdash; 1 player left</div>
+                </div>
+                <div class="wp-fantasy-card">
+                  <div class="wp-fantasy-head"><span>Fantasy Impact</span><span class="js-clock">1:04</span></div>
+                  <div class="wp-fantasy-play"><span class="small">C. McCaffrey &middot; 14-yd TD run</span><span class="row-value" style="color:var(--success)">+6.0</span></div>
+                  <div class="wp-fantasy-play"><span class="small">J. Allen &middot; INT thrown</span><span class="row-value" style="color:var(--live)">&minus;2.0</span></div>
+                </div>
+                <button class="wp-fantasy-collapse-btn" data-toggle-fantasy-strip="room-fantasy-strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>Hide fantasy info</button>
+              </div>
+
+              <div class="wp-tile-grid">
+                <div class="wp-tile camera-on speaking">
+                  <img class="wp-tile-feed" src="../assets/owners/grant-pomerenk.jpg" alt="" />
+                  <div class="wp-tile-namebar"><svg class="muted-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 1l22 22M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6M5 10v2a7 7 0 0 0 10.5 6.05M19 10v2a7 7 0 0 1-1 3.6M12 19v3"/></svg><svg class="unmuted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg><span>Grant P.</span></div>
+                </div>
+                <div class="wp-tile camera-on">
+                  <img class="wp-tile-feed" src="../assets/owners/ryan-horak.jpg" alt="" />
+                  <div class="wp-tile-namebar"><svg class="muted-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 1l22 22M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6M5 10v2a7 7 0 0 0 10.5 6.05M19 10v2a7 7 0 0 1-1 3.6M12 19v3"/></svg><svg class="unmuted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg><span>Ryan H.</span></div>
+                </div>
+                <div class="wp-tile camera-off">
+                  <img class="wp-tile-feed" src="../assets/owners/aaron-wylie.jpg" alt="" />
+                  <img class="wp-tile-avatar" src="../assets/owners/aaron-wylie.jpg" alt="" />
+                  <div class="wp-tile-namebar muted"><svg class="muted-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 1l22 22M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6M5 10v2a7 7 0 0 0 10.5 6.05M19 10v2a7 7 0 0 1-1 3.6M12 19v3"/></svg><span>Aaron W.</span></div>
+                </div>
+                <div class="wp-tile camera-off" id="tile-you">
+                  <img class="wp-tile-feed" src="../assets/owners/tj.jpg" alt="" />
+                  <img class="wp-tile-avatar" src="../assets/owners/tj.jpg" alt="" />
+                  <div class="wp-tile-you">You</div>
+                  <div class="wp-tile-namebar"><svg class="muted-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 1l22 22M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6M5 10v2a7 7 0 0 0 10.5 6.05M19 10v2a7 7 0 0 1-1 3.6M12 19v3"/></svg><svg class="unmuted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg><span>You</span></div>
+                </div>
+              </div>
+
+              <div class="wp-controls-bar">
+                <button class="wp-control-btn" data-toggle-mute="tile-you" aria-label="Mute microphone">
+                  <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg>
+                  <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 1l22 22M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6M5 10v2a7 7 0 0 0 10.5 6.05M19 10v2a7 7 0 0 1-1 3.6M12 19v3"/></svg>
+                </button>
+                <button class="wp-control-btn off" data-toggle-camera="tile-you" aria-label="Turn on camera">
+                  <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                  <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 1l22 22M23 7l-7 5-1.5-1.07M1 5.5V19a2 2 0 0 0 2 2h13.5"/><path d="M16 5H3a2 2 0 0 0-2 2v.5"/></svg>
+                </button>
+                <button class="wp-control-btn" data-open-sheet="room-chat-sheet" aria-label="Chat" style="position:relative;">
+                  <span class="pip"></span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-1 4 8.5 8.5 0 0 1-7.5 4.5 8.4 8.4 0 0 1-4-1L3 20l1-5.5a8.4 8.4 0 0 1-1-4 8.5 8.5 0 0 1 4.5-7.5 8.4 8.4 0 0 1 4-1h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                </button>
+                <button class="wp-control-btn leave" data-nav-target="lobby" aria-label="Leave room">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M16 8V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/><path d="M22 12H10M22 12l-4-4M22 12l-4 4"/></svg>
+                </button>
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- START A PARTY -->
+        <div class="sheet-backdrop" id="start-party-sheet-backdrop" data-close-sheet="start-party-sheet"></div>
+        <div class="sheet" id="start-party-sheet">
+          <div class="sheet-handle"></div>
+          <div style="padding:0 20px 20px;">
+            <div class="topbar-title" style="font-size:18px;margin-bottom:2px;">Start a Party</div>
+            <div class="small text-secondary" style="margin-bottom:14px;">Invite specific league members to a private room.</div>
+            <label class="field-label">Party name</label>
+            <input class="field-input" style="margin-bottom:16px;" value="Championship Watch" />
+            <label class="field-label">Invite</label>
+            <div class="wp-invite-row selected">
+              <img src="../assets/owners/grant-pomerenk.jpg" alt="" />
+              <div class="row-main"><div class="row-title">Grant P.</div></div>
+              <div class="wp-invite-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
+            </div>
+            <div class="wp-invite-row selected">
+              <img src="../assets/owners/aaron-wylie.jpg" alt="" />
+              <div class="row-main"><div class="row-title">Aaron W.</div></div>
+              <div class="wp-invite-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
+            </div>
+            <div class="wp-invite-row">
+              <img src="../assets/owners/lorenzo-cachia.jpg" alt="" />
+              <div class="row-main"><div class="row-title">Lorenzo C.</div></div>
+              <div class="wp-invite-check"></div>
+            </div>
+            <div class="wp-invite-row">
+              <img src="../assets/owners/james-hogan.jpg" alt="" />
+              <div class="row-main"><div class="row-title">James H.</div></div>
+              <div class="wp-invite-check"></div>
+            </div>
+            <button class="btn btn-primary btn-block" style="margin-top:16px;" data-close-sheet="start-party-sheet" data-nav-target="room">Create &amp; Start Party</button>
+          </div>
+        </div>
+
+        <!-- ROOM CHAT -->
+        <div class="sheet-backdrop" id="room-chat-sheet-backdrop" data-close-sheet="room-chat-sheet"></div>
+        <div class="sheet" id="room-chat-sheet" style="max-height:70%;">
+          <div class="sheet-handle"></div>
+          <div class="topbar" style="padding:0 16px 8px;">
+            <div class="topbar-title" style="font-size:15px;">League Lounge Chat</div>
+            <button class="icon-btn" data-close-sheet="room-chat-sheet" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div class="chat-thread">
+            <div class="chat-name">Grant P.</div>
+            <div class="chat-row them"><img src="../assets/owners/grant-pomerenk.jpg" class="avatar" /><div class="bubble">McCaffrey TD let's gooo</div></div>
+            <div class="chat-row me"><div class="bubble">that's my flex 😤</div></div>
+            <div class="chat-row them"><img src="../assets/owners/ryan-horak.jpg" class="avatar" /><div class="bubble">Allen just threw a pick, don't get comfortable</div></div>
+          </div>
+          <div class="chat-input-bar">
+            <div class="chat-input">iMessage</div>
+            <button class="icon-btn" style="background:var(--accent);color:#fff;border-color:transparent;" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/shell.js"></script>
+</body>
+</html>

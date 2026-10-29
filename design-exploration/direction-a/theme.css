@@ -1,0 +1,60 @@
+/* Direction A — "Broadcast Desk": premium sports-broadcast identity.
+   Team red + championship gold on near-black. Bebas Neue for shouted
+   broadcast-graphic headlines, Source Sans 3 for calm body text. */
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+
+:root {
+  --bg: #0b0d10;
+  --bg-elevated: #15181d;
+  --border: #262a31;
+  --text: #f5f4f1;
+  --text-secondary: #8b8f97;
+  --accent: #dc2626;
+  --accent-2: #eab308;
+  --on-accent: #ffffff;
+  --live: #ef4444;
+  --success: #22c55e;
+  --warning: #eab308;
+  --nav-bg: #0f1114;
+
+  --radius-card: 10px;
+  --radius-pill: 8px;
+  --card-padding: 16px;
+
+  --font-display: 'Bebas Neue', 'Oswald', sans-serif;
+  --font-body: 'Source Sans 3', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --tracking-display: 0.03em;
+  --display-case: uppercase;
+  --featured-glow: 0 0 28px rgba(234, 179, 8, 0.28);
+
+  --stage-bg: #060607;
+  --stage-text: #f5f4f1;
+  --stage-text-secondary: #93979f;
+  --stage-accent: #eab308;
+  --stage-border: #24262b;
+}
+
+body { background: var(--stage-bg); }
+
+/* Broadcast score-bug flourish: a bold gold-on-red "LIVE" strap */
+.broadcast-strap {
+  background: linear-gradient(90deg, var(--accent), #a91d1d);
+  color: #fff;
+  font-family: var(--font-display);
+  letter-spacing: var(--tracking-display);
+  font-size: 11px;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 2px solid var(--accent-2);
+}
+.broadcast-strap .dot { width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: pulse 1.4s infinite; }
+
+.gold-rule { height: 2px; background: linear-gradient(90deg, transparent, var(--accent-2), transparent); margin: 4px 16px 0; }
+
+.topbar-title { font-size: 22px; }
+.team-name { font-weight: 400; }
+.card--featured { background: linear-gradient(180deg, rgba(234,179,8,0.08), transparent 40%), var(--bg-elevated); }

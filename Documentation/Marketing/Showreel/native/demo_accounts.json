@@ -1,0 +1,104 @@
+{
+  "league_id": 2,
+  "invite_code": "5UUUHT",
+  "accounts": [
+    {
+      "owner": "Marcus",
+      "team": "Mahomes Alone",
+      "email": "marcus@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJvd25lcl9pZCI6MSwiZGlzY29yZF91c2VyX2lkIjpudWxsLCJpc19jb21taXNzaW9uZXIiOmZhbHNlLCJ0b2tlbl92ZXJzaW9uIjoxLCJleHAiOjE3OTUxMTI4Mjh9.QTqoTQNxpfkIWVHYWsnemzIjnyAOfJjgNNEWKoCktZk",
+      "team_id": 1
+    },
+    {
+      "owner": "Jordan",
+      "team": "Hurts Donut",
+      "email": "jordan@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjozLCJvd25lcl9pZCI6MiwiZGlzY29yZF91c2VyX2lkIjpudWxsLCJpc19jb21taXNzaW9uZXIiOmZhbHNlLCJ0b2tlbl92ZXJzaW9uIjoxLCJleHAiOjE3OTUxMTI4Mjl9.p2P70NCXcVXZCEEac64aor3hyUN7o51lmMWO3TZVPxA",
+      "team_id": 2
+    },
+    {
+      "owner": "Tyler",
+      "team": "Bijan Mustard",
+      "email": "tyler@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo0LCJvd25lcl9pZCI6MywiZGlzY29yZF91c2VyX2lkIjpudWxsLCJpc19jb21taXNzaW9uZXIiOmZhbHNlLCJ0b2tlbl92ZXJzaW9uIjoxLCJleHAiOjE3OTUxMTI4Mjl9.s6Zo_Rb6hPscKfHLocRO68y020t9V4jLcKo4_WJrSfw",
+      "team_id": 3
+    },
+    {
+      "owner": "Dre",
+      "team": "Kittle Me Elmo",
+      "email": "dre@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo1LCJvd25lcl9pZCI6NCwiZGlzY29yZF91c2VyX2lkIjpudWxsLCJpc19jb21taXNzaW9uZXIiOmZhbHNlLCJ0b2tlbl92ZXJzaW9uIjoxLCJleHAiOjE3OTUxMTI4Mjl9.u6NOd7MX1hI5J0uYhX3ZKQP84A54NfG2sHwOR7fe41Y",
+      "team_id": 4
+    },
+    {
+      "owner": "Chris",
+      "team": "Nacua Matata",
+      "email": "chris@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo2LCJvd25lcl9pZCI6NSwiZGlzY29yZF91c2VyX2lkIjpudWxsLCJpc19jb21taXNzaW9uZXIiOmZhbHNlLCJ0b2tlbl92ZXJzaW9uIjoxLCJleHAiOjE3OTUxMTI4Mjl9.HQrUMwLtZ5PtpwNJZaq5n_NsYIdqjOhQOsNsYuXHAM8",
+      "team_id": 5
+    },
+    {
+      "owner": "Nate",
+      "team": "Brock Lobster",
+      "email": "nate@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJvd25lcl9pZCI6NiwiZGlzY29yZF91c2VyX2lkIjpudWxsLCJpc19jb21taXNzaW9uZXIiOmZhbHNlLCJ0b2tlbl92ZXJzaW9uIjoxLCJleHAiOjE3OTUxMTI4MzB9.qDEz4B2tXSlVi-jg9C49EYo4nJaMjjqdlhGj7Jvvths",
+      "team_id": 6
+    },
+    {
+      "owner": "Sam",
+      "team": "Gibbs Me Liberty",
+      "email": "sam@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo4LCJvd25lcl9pZCI6NywiZGlzY29yZF91c2VyX2lkIjpudWxsLCJpc19jb21taXNzaW9uZXIiOmZhbHNlLCJ0b2tlbl92ZXJzaW9uIjoxLCJleHAiOjE3OTUxMTI4MzB9.M4n-OAA2si3hHeus_vt5j5FNiDLDJDYUYLOsWU5fu5o",
+      "team_id": 7
+    },
+    {
+      "owner": "Mike",
+      "team": "Chase the Bag",
+      "email": "mike@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo5LCJvd25lcl9pZCI6OCwiZGlzY29yZF91c2VyX2lkIjpudWxsLCJpc19jb21taXNzaW9uZXIiOmZhbHNlLCJ0b2tlbl92ZXJzaW9uIjoxLCJleHAiOjE3OTUxMTI4MzB9.lZu1Cr_o7S_QGAJ60FwFRY83RbZS1Ap2BEVoAJRYSBw",
+      "team_id": 8
+    },
+    {
+      "owner": "Luis",
+      "team": "Saquon & On",
+      "email": "luis@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMCwib3duZXJfaWQiOjksImRpc2NvcmRfdXNlcl9pZCI6bnVsbCwiaXNfY29tbWlzc2lvbmVyIjpmYWxzZSwidG9rZW5fdmVyc2lvbiI6MSwiZXhwIjoxNzk1MTEyODMwfQ.kQdoirv4nMldj1UNcY-d_SAeFxLqTAKD1UHMmqBzB_g",
+      "team_id": 9
+    },
+    {
+      "owner": "Kev",
+      "team": "Burrow Me a Title",
+      "email": "kev@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMSwib3duZXJfaWQiOjEwLCJkaXNjb3JkX3VzZXJfaWQiOm51bGwsImlzX2NvbW1pc3Npb25lciI6ZmFsc2UsInRva2VuX3ZlcnNpb24iOjEsImV4cCI6MTc5NTExMjgzMX0.W9mTtIH_5aARKq6qwAuA96fdB7ODzYatY1dew1jC_Fs",
+      "team_id": 10
+    },
+    {
+      "owner": "Derek",
+      "team": "Jefferson Airplane",
+      "email": "derek@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMiwib3duZXJfaWQiOjExLCJkaXNjb3JkX3VzZXJfaWQiOm51bGwsImlzX2NvbW1pc3Npb25lciI6ZmFsc2UsInRva2VuX3ZlcnNpb24iOjEsImV4cCI6MTc5NTExMjgzMX0.Si-9GPRDeYz0L_4FHY8iOXZEAGv4AmzakDfx6XbFPQQ",
+      "team_id": 11
+    },
+    {
+      "owner": "Ryan",
+      "team": "Henry the VIII",
+      "email": "ryan@sundaysyndicate.invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMywib3duZXJfaWQiOjEyLCJkaXNjb3JkX3VzZXJfaWQiOm51bGwsImlzX2NvbW1pc3Npb25lciI6ZmFsc2UsInRva2VuX3ZlcnNpb24iOjEsImV4cCI6MTc5NTExMjgzMX0.-m2CkqM84ztqDWwryPYil-XzkeJs10SckTvTPFWLmfQ",
+      "team_id": 12
+    }
+  ],
+  "draft_order": [
+    8,
+    12,
+    4,
+    11,
+    9,
+    5,
+    10,
+    2,
+    1,
+    7,
+    3,
+    6
+  ]
+}

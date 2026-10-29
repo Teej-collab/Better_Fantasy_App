@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Direction B · Desktop</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css" />
+<style>
+  :root { --wl-accent: #39ff14; --wl-live: #ef4444; --gold: #eab308; }
+  .cast { background: linear-gradient(160deg, #0b1a0f, #06090c 60%); }
+  .field { position: absolute; inset: 16px 26% 16px 16px; }
+  .field .wp-share-canvas, .field .wp-share-empty { border-radius: 12px; }
+
+  .cast-hosts { position: absolute; right: 16px; top: 16px; display: flex; flex-direction: column; gap: 10px; width: 21%; }
+  .host { position: relative; aspect-ratio: 4/3; border-radius: 9px; overflow: hidden; border: 1px solid rgba(255,255,255,.14); background: #10141a; }
+  .host img { width: 100%; height: 100%; object-fit: cover; }
+  .host.live { border-color: var(--wl-accent); box-shadow: 0 0 0 2px rgba(57,255,20,.35); }
+  .host .tag { position: absolute; left: 0; bottom: 0; right: 0; padding: 4px 7px; background: linear-gradient(transparent, rgba(0,0,0,.85)); font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .04em; }
+  .host .mic { position: absolute; top: 5px; right: 6px; font-size: 10px; }
+
+  .lower { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .bug { display: flex; align-items: stretch; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255,255,255,.12); background: rgba(6,8,10,.92); backdrop-filter: blur(8px); width: fit-content; max-width: 100%; }
+  .bug-flag { background: linear-gradient(180deg, var(--wl-live), #a91d1d); color: #fff; font-family: 'Bebas Neue', sans-serif; letter-spacing: .1em; font-size: 14px; display: flex; align-items: center; padding: 0 12px; border-bottom: 2px solid var(--gold); }
+  .bug-body { padding: 8px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 320px; }
+  .bug-teams { display: flex; align-items: center; justify-content: space-between; gap: 18px; font-size: 14px; }
+  .bug-teams .side { display: flex; align-items: center; gap: 8px; }
+  .bug-teams img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+  .bug-teams .pts { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 15px; }
+  .bug-teams .lead .pts { color: var(--wl-accent); }
+  .sweat-meter { height: 6px; border-radius: 999px; background: rgba(255,255,255,.12); overflow: hidden; }
+  .sweat-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #22c55e, var(--gold), var(--wl-live)); transition: width .6s ease; }
+  .sweat-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+  .sweat-caption .label { color: var(--wl-live); font-weight: 700; }
+  .sweat-caption .meta { color: rgba(255,255,255,.45); font-family: 'JetBrains Mono', monospace; }
+
+  .crawl { overflow: hidden; border-top: 1px solid rgba(255,255,255,.1); background: rgba(6,8,10,.92); border-radius: 4px; }
+  .crawl-track { display: flex; gap: 36px; white-space: nowrap; padding: 7px 0; width: max-content; animation: crawl 30s linear infinite; }
+  .crawl-item { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: rgba(255,255,255,.6); }
+  .crawl-item b { color: #fff; }
+  .crawl-item .up { color: var(--wl-accent); }
+  .crawl-item .down { color: var(--wl-live); }
+  @keyframes crawl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) { .crawl-track { animation: none; } }
+</style>
+</head>
+<body>
+<div class="wp-stage">
+  <div class="wp-eyebrow">THE WEEKEND — Watch Party Mockups</div>
+  <h1 class="wp-title">Direction B — Manning Cast · Desktop</h1>
+  <p class="wp-sub">Broadcast grammar borrowed from ESPN's alt-cast: hosts railed down the side like guest cams, a lower-third "sweat bug" with a live tension meter, and a score crawl. The video becomes the show; fantasy data becomes the graphics package on top of it.</p>
+  <div class="wp-nav">
+    <a href="index.html">&larr; All 6 mockups</a>
+    <a href="a-mobile.html">A · Mobile</a>
+    <a href="a-desktop.html">A · Desktop</a>
+    <a href="b-mobile.html">B · Mobile</a>
+    <a href="b-desktop.html" class="current">B · Desktop</a>
+    <a href="c-mobile.html">C · Mobile</a>
+    <a href="c-desktop.html">C · Desktop</a>
+  </div>
+
+  <div class="wp-controls">
+    <button class="wp-ctl on" data-wp-live-btn>▶ Simulate a live slate</button>
+    <button class="wp-ctl" data-wp-blowout-btn>Show a blowout</button>
+    <button class="wp-ctl" data-wp-wire-btn>Force "down to the wire"</button>
+    <button class="wp-ctl" data-wp-share-btn>🖥️ Toggle screen share</button>
+  </div>
+
+  <div class="wp-desktop cast">
+    <div class="field" id="field"></div>
+
+    <div class="cast-hosts">
+      <div class="host live"><img src="../assets/owners/grant-pomerenk.jpg" alt=""><span class="mic">🎙</span><span class="tag" id="host1">Grant P.</span></div>
+      <div class="host"><img src="../assets/owners/ryan-horak.jpg" alt=""><span class="mic">🔇</span><span class="tag" id="host2">Ryan H.</span></div>
+      <div class="host"><img src="../assets/owners/tj.jpg" alt=""><span class="mic">🎙</span><span class="tag" id="host3">TJ</span></div>
+    </div>
+
+    <div class="lower">
+      <div class="bug">
+        <div class="bug-flag">SWEAT</div>
+        <div class="bug-body">
+          <div class="bug-teams">
+            <span class="side" id="cast-home"><img id="cast-home-img" src="../assets/owners/tj.jpg" alt=""><span id="cast-home-name">Gridiron Mafia</span><span class="pts" id="cast-home-pts">118.4</span></span>
+            <span class="side" id="cast-away"><span class="pts" id="cast-away-pts">116.9</span><span id="cast-away-name">Horak's Hogs</span><img id="cast-away-img" src="../assets/owners/ryan-horak.jpg" alt=""></span>
+          </div>
+          <div class="sweat-meter"><div class="sweat-fill" id="cast-fill" style="width:92%"></div></div>
+          <div class="sweat-caption"><span class="label" id="cast-label">Down to the wire</span><span class="meta" id="cast-meta">SWEAT 97</span></div>
+        </div>
+      </div>
+      <div class="crawl"><div class="crawl-track" id="crawl"></div></div>
+    </div>
+  </div>
+  <p class="wp-note"><b>Interaction model:</b> passive/lean-back, like watching TV. Nothing to tap — the graphics package updates itself. Strongest on a big screen; the host-rail + lower-third combo needs real width to read (see the mobile adaptation). <b>Screen share</b> makes explicit what this direction always implied: that "field" is somebody's actual shared screen, not a magic broadcast feed — before anyone shares, it's an honest empty state instead.</p>
+</div>
+
+<script src="shared.js"></script>
+<script>
+  function render() {
+    document.getElementById("field").innerHTML = wpShareOwner
+      ? wpShareCanvasHTML()
+      : wpShareEmptyHTML("Share your screen to watch together");
+
+    const featured = wpCloseMatchups(0, 1)[0];
+    document.getElementById("cast-home-pts").textContent = featured.hs.toFixed(1);
+    document.getElementById("cast-away-pts").textContent = featured.as.toFixed(1);
+    document.getElementById("cast-home-name").textContent = featured.homeTeam;
+    document.getElementById("cast-away-name").textContent = featured.awayTeam;
+    document.getElementById("cast-home-img").src = wpOwnerImg(featured.home);
+    document.getElementById("cast-away-img").src = wpOwnerImg(featured.away);
+    document.getElementById("cast-fill").style.width = featured.sweat.score + "%";
+    document.getElementById("cast-meta").textContent = "SWEAT " + featured.sweat.score;
+    document.getElementById("cast-label").textContent = featured.sweat.label || "Comfortable lead";
+    document.getElementById("cast-home").classList.toggle("lead", featured.hs >= featured.as);
+    document.getElementById("cast-away").classList.toggle("lead", featured.as > featured.hs);
+
+    const items = wpAllMatchups().map(m => {
+      const cls = m.sweat.score >= 85 ? "down" : "up";
+      return `<span class="crawl-item"><b>${m.home}</b> ${m.hs.toFixed(1)} — ${m.as.toFixed(1)} <b>${m.away}</b> <span class="${cls}">SWEAT ${m.sweat.score}</span></span>`;
+    });
+    document.getElementById("crawl").innerHTML = [...items, ...items].join("");
+  }
+  wpOnRender(render);
+</script>
+</body>
+</html>

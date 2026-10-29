@@ -1,0 +1,859 @@
+/* ==========================================================================
+   THE WEEKEND — "Command Deck"
+   Vanilla JS hash-router SPA. Zero framework, zero build step.
+   ========================================================================== */
+
+/* ---------------------------------- Icons -------------------------------- */
+const ICON = {
+  home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>`,
+  bolt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>`,
+  shield: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3z"/></svg>`,
+  table: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M21 19H3"/></svg>`,
+  chat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-4.8 7.6 8.5 8.5 0 0 1-8.4-.3L3 20l1.3-4.2a8.5 8.5 0 0 1-.8-3.8 8.5 8.5 0 0 1 8.5-8.5h.2a8.5 8.5 0 0 1 8.8 8z"/></svg>`,
+  back: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
+  send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>`,
+  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  minus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>`,
+  chev: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`,
+  close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+  refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v6h-6"/></svg>`,
+  mark: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6 6 1-4.5 4.5L18 20l-6-3-6 3 1.5-6.5L3 9l6-1 3-6z"/></svg>`,
+};
+
+/* ---------------------------------- Data ---------------------------------- */
+const WEEK = 7;
+const USER_TEAM_ID = "turf-kings";
+
+const TEAMS = [
+  { id: "blitzkrieg", name: "Blitzkrieg Bop", owner: "Marcus", w: 5, l: 1, pf: 812.4, streak: "W4", trend: [5,4,3,2,1] },
+  { id: "turf-kings", name: "Turf Kings", owner: "Tyler", w: 4, l: 2, pf: 798.6, streak: "W2", trend: [6,6,4,3,2] },
+  { id: "air-yard-sale", name: "Air Yard Sale", owner: "Priya", w: 4, l: 2, pf: 790.4, streak: "L1", trend: [2,3,3,4,3] },
+  { id: "gridiron-bandits", name: "Gridiron Bandits", owner: "Sam", w: 4, l: 2, pf: 781.2, streak: "W1", trend: [7,6,5,5,4] },
+  { id: "legion-of-zoom", name: "Legion of Zoom", owner: "Devon", w: 3, l: 3, pf: 774.0, streak: "W1", trend: [8,7,6,6,5] },
+  { id: "hail-mary-poppins", name: "Hail Mary Poppins", owner: "Ava", w: 3, l: 3, pf: 766.9, streak: "L2", trend: [4,5,6,7,6] },
+  { id: "red-zone-rejects", name: "Red Zone Rejects", owner: "Liam", w: 3, l: 3, pf: 758.0, streak: "W1", trend: [9,8,8,7,7] },
+  { id: "pick-six-appeal", name: "Pick Six Appeal", owner: "Casey", w: 3, l: 3, pf: 751.0, streak: "L1", trend: [3,2,7,8,8] },
+  { id: "sunday-scaries", name: "Sunday Scaries", owner: "Jordan", w: 2, l: 4, pf: 744.7, streak: "L1", trend: [10,9,9,9,9] },
+  { id: "fumble-rooski", name: "Fumble Rooski", owner: "Ben", w: 2, l: 4, pf: 730.5, streak: "W1", trend: [11,11,10,10,10] },
+  { id: "couch-potatoes", name: "Couch Potatoes", owner: "Nora", w: 1, l: 5, pf: 702.1, streak: "L4", trend: [9,10,11,11,11] },
+  { id: "draft-day-regret", name: "Draft Day Regret", owner: "Riley", w: 0, l: 6, pf: 675.3, streak: "L6", trend: [12,12,12,12,12] },
+];
+
+const MATCHUP = {
+  home: "turf-kings",
+  away: "air-yard-sale",
+  homeScore: 108.4,
+  awayScore: 96.1,
+  quarter: "Q3",
+  clock: "8:42",
+  winProbHome: 73,
+  winProbHistory: [50, 54, 49, 58, 61, 57, 66, 70, 73],
+  rivalry: "The Sunday Massacre — Turf Kings lead all-time 4-2",
+};
+
+const NFL_GAMES = [
+  { away: "BUF", homeAb: "KC", awayScore: 24, homeScore: 17, status: "Q3 8:42", note: "BUF ball, 2nd & 6 at KC 34" },
+  { away: "DAL", homeAb: "PHI", awayScore: 10, homeScore: 13, status: "Q2", note: "" },
+  { away: "CIN", homeAb: "BAL", awayScore: 21, homeScore: 14, status: "Q3", note: "Chase 6 rec, 88 yds, 1 TD" },
+  { away: "ATL", homeAb: "CAR", awayScore: 17, homeScore: 10, status: "Q3", note: "Bijan 14 car, 71 yds" },
+];
+
+const PLAY_BY_PLAY = [
+  { time: "Q3 8:42", key: true, text: "Win probability swings to Turf Kings 73% after Chase's slant for the score." },
+  { time: "Q3 8:51", key: true, text: "Ja'Marr Chase hauls in a 14-yd TD slant — 6th catch of the day, 22.8 pts and climbing." },
+  { time: "Q3 11:20", key: false, text: "Bijan Robinson stuffed for no gain on 1st and 10 vs CAR." },
+  { time: "Q2 14:02", key: false, text: "Garrett Wilson's day is over — final line locks in at 11.2 pts." },
+  { time: "Q2 6:15", key: false, text: "Travis Kelce checkdown good for 9 yards, KC now trailing by 7." },
+  { time: "Q1 9:15", key: false, text: "Herbert to Wilson for 22 yards on the opening drive." },
+];
+
+const CHAT_MESSAGES = [
+  { id: "pin", pinned: true, owner: "Commish's Corner", text: "📌 Waiver processing moved to Wednesday 8pm this week.", time: "9:02 AM", mine: false },
+  { id: "c1", owner: "Sam", text: "anyone else's Bijan not showing live?", time: "1:14 PM", mine: false },
+  { id: "c2", owner: "Priya", text: "mine's fine… unlike your matchup lol", time: "1:15 PM", mine: false },
+  { id: "c3", owner: "Devon", text: "Chase just went off, 21 and counting 🔥", time: "1:41 PM", mine: false },
+  { id: "c4", owner: "Tyler", text: "told y'all Round 1 Pick 3 was the move", time: "1:42 PM", mine: true },
+  { id: "c5", owner: "Liam", text: "Turf Kings really about to run away with this one", time: "1:44 PM", mine: false },
+  { id: "c6", owner: "Priya", text: "Q3 isn't over Tyler, relax", time: "1:45 PM", mine: false },
+  { id: "c7", owner: "Ben", text: "meanwhile Couch Potatoes and I are fighting for our lives down here", time: "1:47 PM", mine: false },
+];
+
+const ROSTER = {
+  starters: [
+    { id: "herbert", slot: "QB", name: "Justin Herbert", nfl: "LAC", actual: 24.6, proj: 21.3, status: "FINAL" },
+    { id: "bijan", slot: "RB", name: "Bijan Robinson", nfl: "ATL", actual: 14.8, proj: 18.2, status: "LIVE" },
+    { id: "henry", slot: "RB", name: "Derrick Henry", nfl: "BAL", actual: 0, proj: 0, status: "BYE" },
+    { id: "chase", slot: "WR", name: "Ja'Marr Chase", nfl: "CIN", actual: 22.8, proj: 16.5, status: "LIVE" },
+    { id: "wilson", slot: "WR", name: "Garrett Wilson", nfl: "NYJ", actual: 11.2, proj: 14.0, status: "FINAL" },
+    { id: "kelce", slot: "TE", name: "Travis Kelce", nfl: "KC", actual: 9.4, proj: 12.8, status: "LIVE" },
+    { id: "odunze", slot: "FLEX", name: "Rome Odunze", nfl: "CHI", actual: 13.7, proj: 10.5, status: "FINAL" },
+    { id: "broncos-dst", slot: "DST", name: "Broncos", nfl: "DEN", actual: 8.0, proj: 7.0, status: "FINAL" },
+    { id: "butker", slot: "K", name: "Harrison Butker", nfl: "KC", actual: 3.9, proj: 8.0, status: "LIVE" },
+  ],
+  bench: [
+    { id: "charbonnet", slot: "BN", name: "Zach Charbonnet", nfl: "SEA", actual: 6.4, proj: 9.0, status: "FINAL" },
+    { id: "waddle", slot: "BN", name: "Jaylen Waddle", nfl: "MIA", actual: 15.1, proj: 13.2, status: "FINAL" },
+    { id: "murray", slot: "BN", name: "Kyler Murray", nfl: "ARI", actual: 0, proj: 16.8, status: "NOT YET" },
+  ],
+};
+
+const PLAYERS = {
+  herbert: { pos: "QB", nfl: "LAC", oppLine: "FINAL · LAC 27–20 vs LV", seasonAvg: 22.1, last5: [19.4, 26.8, 15.2, 28.1, 24.6],
+    stats: [["Pass Yds","312"],["Pass TD","3"],["INT","0"],["Rush Yds","14"]],
+    note: "Third straight game over 24 pts, torching a banged-up Raiders secondary.",
+    news: "Herbert's WR2 Wilson exited briefly with cramps but returned to finish the game." },
+  bijan: { pos: "RB", nfl: "ATL", oppLine: "LIVE · Q3 8:42 · ATL 17 – CAR 10", seasonAvg: 19.4, last5: [22.1, 14.0, 18.9, 21.4, 14.8],
+    stats: [["Car","14"],["Rush Yds","71"],["Rec","2"],["Rec Yds","18"]],
+    note: "5.1 YPC against a Panthers front missing two starting D-linemen.",
+    news: "Committee usage trimmed near the goal line — watch Allgeier vulture a score." },
+  henry: { pos: "RB", nfl: "BAL", oppLine: "BYE WEEK", seasonAvg: 17.2, last5: [21.0, 12.4, 24.8, 16.1, 0],
+    stats: [["Season Car","112"],["Season Rush Yds","588"],["Season TD","6"],["Next Up","Wk 9 vs CLE"]],
+    note: "On bye. Back in the lineup Week 9 against Cleveland.",
+    news: "No injury concerns — pure scheduled rest." },
+  chase: { pos: "WR", nfl: "CIN", oppLine: "LIVE · Q3 · CIN 21 – BAL 14", seasonAvg: 18.0, last5: [16.4, 12.8, 20.1, 14.6, 22.8],
+    stats: [["Rec","6"],["Tgt","8"],["Rec Yds","88"],["TD","1"]],
+    note: "Beating Baltimore's top corner deep twice already — clear alpha usage.",
+    news: "Chase is at 22.8 pts with a full quarter still to play." },
+  wilson: { pos: "WR", nfl: "NYJ", oppLine: "FINAL · NYJ 20 – NE 23", seasonAvg: 14.9, last5: [11.0, 18.2, 9.4, 17.7, 11.2],
+    stats: [["Rec","5"],["Tgt","9"],["Rec Yds","79"],["TD","0"]],
+    note: "Target hog, but this week's red-zone TDs went to the backfield instead.",
+    news: "Nine targets is a season high — efficiency was the only issue." },
+  kelce: { pos: "TE", nfl: "KC", oppLine: "LIVE · Q3 8:42 · BUF 24 – KC 17", seasonAvg: 13.6, last5: [10.2, 15.8, 11.4, 9.9, 9.4],
+    stats: [["Rec","4"],["Tgt","6"],["Rec Yds","44"],["TD","0"]],
+    note: "KC trailing by 7 and leaning pass-heavy — garbage-time upside still intact.",
+    news: "Volume has been steady even as the big plays have dried up." },
+  odunze: { pos: "WR", nfl: "CHI", oppLine: "FINAL · CHI 24 – GB 20", seasonAvg: 11.8, last5: [8.4, 9.1, 19.8, 12.0, 13.7],
+    stats: [["Rec","7"],["Tgt","10"],["Rec Yds","101"],["TD","0"]],
+    note: "Ten targets and a season-high yardage total from the FLEX spot.",
+    news: "Emerging as Chicago's clear WR1 over the last three weeks." },
+  "broncos-dst": { pos: "DST", nfl: "DEN", oppLine: "FINAL · DEN 20 – LV 9", seasonAvg: 8.9, last5: [12, 4, 10, 6, 8],
+    stats: [["Sacks","3"],["INT","1"],["Pts Allowed","17"],["FF","1"]],
+    note: "A steady floor play all season — top-8 defense in points allowed.",
+    news: "Continues to face bottom-tier offensive lines down the stretch." },
+  butker: { pos: "K", nfl: "KC", oppLine: "LIVE · Q3 8:42 · BUF 24 – KC 17", seasonAvg: 9.0, last5: [11, 6, 9, 12, 3.9],
+    stats: [["FG","1/2"],["Long","41"],["XP","1/1"]],
+    note: "Red-zone struggles in Buffalo have capped him at a single field goal so far.",
+    news: "One more red-zone trip this half would push him back to a normal week." },
+  charbonnet: { pos: "RB", nfl: "SEA", oppLine: "FINAL · SEA 16 – LAR 19", seasonAvg: 8.1, last5: [4, 9, 6, 11, 6.4],
+    stats: [["Car","11"],["Rush Yds","44"],["Rec","2"],["Rec Yds","20"]],
+    note: "Change-of-pace role behind the starter — touchdown-dependent for spike weeks.",
+    news: "Best left on your bench unless the starter's workload dips." },
+  waddle: { pos: "WR", nfl: "MIA", oppLine: "FINAL · MIA 27 – NYG 17", seasonAvg: 12.4, last5: [9, 14, 8, 13, 15.1],
+    stats: [["Rec","6"],["Tgt","8"],["Rec Yds","81"],["TD","1"]],
+    note: "Outscored your entire bench this week — a tough one to have parked.",
+    news: "Trending up over the last three weeks as the clear WR1 in Miami." },
+  murray: { pos: "QB", nfl: "ARI", oppLine: "NOT YET · 4:05 PM ET vs SF", seasonAvg: 20.8, last5: [24, 17, 22, 19, null],
+    stats: [["Season Pass Yds","1,822"],["Season Pass TD","12"],["Season Rush Yds","210"],["Kickoff","4:05 PM ET"]],
+    note: "Hasn't played yet — part of the late Sunday afternoon slate.",
+    news: "Facing a 49ers pass rush that's rattled three straight opposing QBs." },
+};
+
+const WAIVERS = [
+  { id: "spears", name: "Tyjae Spears", pos: "RB", nfl: "TEN", note: "Backfield touches climbing with the starter banged up.", suggested: 18 },
+  { id: "pearsall", name: "Ricky Pearsall", pos: "WR", nfl: "SF", note: "Target share up to 24% over the last two games.", suggested: 11 },
+  { id: "corum", name: "Blake Corum", pos: "RB", nfl: "LAR", note: "Goal-line role emerging behind a banged-up starter.", suggested: 9 },
+  { id: "okonkwo", name: "Chig Okonkwo", pos: "TE", nfl: "TEN", note: "Matchup-proof streaming option the next three weeks.", suggested: 4 },
+  { id: "mwilson", name: "Michael Wilson", pos: "WR", nfl: "ARI", note: "Murray's new favorite target inside the 10.", suggested: 6 },
+  { id: "bigsby", name: "Tank Bigsby", pos: "RB", nfl: "JAX", note: "Handcuff value spiking after Wednesday's injury report.", suggested: 3 },
+];
+const FAAB_TOTAL = 100;
+const FAAB_SPENT = 58;
+
+/* ---------------------------------- State ---------------------------------- */
+const state = {
+  cameFrom: "#/team",
+  matchupTab: "graph",     // 'graph' | 'plays'
+  leagueTab: "standings",  // 'standings' | 'waivers'
+  teamTab: "starters",     // 'starters' | 'bench'
+  chat: CHAT_MESSAGES.slice(),
+  claims: {},              // waiverId -> bid amount
+  sheetOpen: false,
+  sheetPlayerId: null,
+  bidDraft: 0,
+  liveTimerId: null,
+  liveSecondsAgo: 0,
+};
+
+/* ---------------------------------- Helpers ---------------------------------- */
+function team(id) { return TEAMS.find(t => t.id === id); }
+function initials(name) {
+  return name.split(" ").filter(Boolean).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+}
+function fmt1(n) { return (Math.round(n * 10) / 10).toFixed(1); }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+function sparkPath(values, w, h, pad) {
+  pad = pad == null ? 3 : pad;
+  const clean = values.filter(v => v != null);
+  const min = Math.min(...clean), max = Math.max(...clean);
+  const range = (max - min) || 1;
+  const stepX = (w - pad * 2) / (values.length - 1);
+  let d = "";
+  values.forEach((v, i) => {
+    if (v == null) return;
+    const x = pad + i * stepX;
+    const y = pad + (h - pad * 2) * (1 - (v - min) / range);
+    d += (d === "" ? "M" : " L") + x.toFixed(1) + "," + y.toFixed(1);
+  });
+  return d;
+}
+function sparkSvg(values, opts) {
+  opts = opts || {};
+  const w = opts.w || 64, h = opts.h || 24;
+  const path = sparkPath(values, w, h);
+  const color = opts.color || "var(--accent)";
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none">
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+function statusPill(status) {
+  if (status === "LIVE") return `<span class="pill pill--accent"><span class="dot-live"></span>LIVE</span>`;
+  if (status === "BYE") return `<span class="pill">BYE</span>`;
+  if (status === "NOT YET") return `<span class="pill">NOT YET</span>`;
+  return `<span class="pill">FINAL</span>`;
+}
+
+/* ---------------------------------- Chrome ---------------------------------- */
+function renderTopbar({ mode = "home", title, sub, back = "#/home", live = false }) {
+  const backBtn = mode === "back"
+    ? `<button class="topbar__back" data-nav="${back}" aria-label="Back">${ICON.back}</button>`
+    : "";
+  return `
+  <header class="topbar glass">
+    <div class="specular" id="topbarSpecular"></div>
+    <div class="topbar__left">
+      ${backBtn}
+      <div style="min-width:0;">
+        <div class="topbar__title">${title}</div>
+        <div class="topbar__sub">${sub}</div>
+      </div>
+    </div>
+    ${live ? `<div class="topbar__live"><span class="dot-live"></span>LIVE</div>` : ""}
+  </header>`;
+}
+
+const TABS = [
+  { route: "#/home", icon: ICON.home, label: "Home" },
+  { route: "#/matchup", icon: ICON.bolt, label: "Live" },
+  { route: "#/team", icon: ICON.shield, label: "Team" },
+  { route: "#/league", icon: ICON.table, label: "League" },
+  { route: "#/chat", icon: ICON.chat, label: "Chat" },
+];
+function renderTabbar(activeRoute) {
+  return `
+  <nav class="tabbar glass">
+    <div class="specular" id="tabbarSpecular"></div>
+    ${TABS.map(t => `
+      <button class="tab" data-nav="${t.route}" data-active="${t.route === activeRoute}">
+        ${t.icon}
+        <span>${t.label}</span>
+      </button>`).join("")}
+  </nav>`;
+}
+
+/* ---------------------------------- Views ---------------------------------- */
+function viewSplash() {
+  const me = team(USER_TEAM_ID);
+  return `
+  <div class="splash">
+    <div class="splash__glow"></div>
+    <div class="splash__brand">
+      <div class="splash__mark glass">${ICON.mark}</div>
+      <h1 class="display splash__title">THE WEEKEND</h1>
+      <p class="splash__tag">Command Deck · Week ${WEEK}</p>
+    </div>
+
+    <div class="splash__panel glass">
+      <div class="specular" id="splashSpecular"></div>
+      <div class="eyebrow accent-text">This week's marquee</div>
+      <div class="row" style="margin-top:8px;">
+        <div class="h2">Turf Kings <span class="muted">vs</span> Air Yard Sale</div>
+      </div>
+      <div class="splash__stat-row">
+        <div class="splash__stat">
+          <span class="num-lg">${fmt1(MATCHUP.homeScore)}</span>
+          <span class="eyebrow">Turf Kings</span>
+        </div>
+        <div class="splash__stat" style="text-align:right;">
+          <span class="num-lg">${fmt1(MATCHUP.awayScore)}</span>
+          <span class="eyebrow">Air Yard Sale</span>
+        </div>
+      </div>
+      <div class="winprob-bar">
+        <div class="winprob-bar__fill" style="width:${MATCHUP.winProbHome}%"></div>
+        <div class="winprob-bar__rest"></div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <span class="muted" style="font-size:11.5px;">${MATCHUP.quarter} · ${MATCHUP.clock}</span>
+        <span class="accent-text" style="font-size:11.5px;font-weight:700;">${MATCHUP.winProbHome}% win prob</span>
+      </div>
+    </div>
+
+    <div class="splash__cta">
+      <button class="btn btn--primary btn--block" data-nav="#/home">Enter Command Deck</button>
+      <button class="btn btn--ghost btn--block">Continue with SSO</button>
+      <p class="splash__fineprint">Signed in as ${me.owner} · ${me.name}</p>
+    </div>
+  </div>`;
+}
+
+function viewHome() {
+  const home = team(MATCHUP.home), away = team(MATCHUP.away);
+  const me = team(USER_TEAM_ID);
+  const top3 = TEAMS.slice().sort((a,b) => (b.pf) - (a.pf)).slice(0,3);
+  return `
+  ${renderTopbar({ mode: "home", title: "Command Deck", sub: `Week ${WEEK} · Sun 1:00 PM slate`, live: true })}
+  <div class="screen">
+    <div class="card hero-matchup glass" data-nav="#/matchup">
+      <div class="specular" id="heroSpecular"></div>
+      <div class="row">
+        <span class="eyebrow accent-text">Your live matchup</span>
+        <span class="pill pill--accent"><span class="dot-live"></span>${MATCHUP.quarter} · ${MATCHUP.clock}</span>
+      </div>
+      <div class="hero-matchup__teams">
+        <div class="hero-team">
+          <span class="hero-team__name">${home.name}</span>
+          <span class="hero-team__owner">${home.owner} · ${home.w}-${home.l}</span>
+          <span class="hero-score">${fmt1(MATCHUP.homeScore)}</span>
+        </div>
+        <span class="hero-vs">VS</span>
+        <div class="hero-team hero-team--right">
+          <span class="hero-team__name">${away.name}</span>
+          <span class="hero-team__owner">${away.owner} · ${away.w}-${away.l}</span>
+          <span class="hero-score">${fmt1(MATCHUP.awayScore)}</span>
+        </div>
+      </div>
+      <div class="winprob-bar">
+        <div class="winprob-bar__fill" style="width:${MATCHUP.winProbHome}%"></div>
+        <div class="winprob-bar__rest"></div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <span class="muted" style="font-size:11px;">${MATCHUP.rivalry}</span>
+        <span class="tap-affordance accent-text" style="font-size:11.5px;font-weight:700;">Gamecast ${ICON.chev}</span>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:2px;">
+      <span class="eyebrow">Quick actions</span>
+    </div>
+    <div class="row" style="gap:10px;">
+      <div class="card card--tap glass" style="flex:1;padding:14px;" data-nav="#/waivers">
+        <div class="eyebrow accent-text">Waiver Wire</div>
+        <div class="h2" style="margin-top:6px;">${Object.keys(state.claims).length} pending ${Object.keys(state.claims).length === 1 ? "claim" : "claims"}</div>
+        <div class="muted" style="font-size:11.5px;margin-top:3px;">$${FAAB_TOTAL - FAAB_SPENT} FAAB left</div>
+      </div>
+      <div class="card card--tap glass" style="flex:1;padding:14px;" data-nav="#/team">
+        <div class="eyebrow accent-text">Lineup Check</div>
+        <div class="h2" style="margin-top:6px;">All starters set</div>
+        <div class="muted" style="font-size:11.5px;margin-top:3px;">Kyler Murray not yet locked</div>
+      </div>
+    </div>
+
+    <div class="card card--tap glass" style="margin-top:2px;" data-nav="#/league">
+      <div class="row">
+        <span class="eyebrow">League pulse</span>
+        <span class="tap-affordance muted" style="font-size:11px;">Standings ${ICON.chev}</span>
+      </div>
+      <div class="stack" style="margin-top:10px;">
+        ${top3.map((t,i) => `
+          <div class="row">
+            <div class="row" style="gap:8px;">
+              <span class="standings-rank">${i+1}</span>
+              <span style="font-size:13px;font-weight:600;">${t.name}</span>
+              ${t.id === USER_TEAM_ID ? `<span class="pill pill--accent">You</span>` : ""}
+            </div>
+            <span class="num-lg" style="font-size:15px;">${t.pf.toFixed(1)}</span>
+          </div>`).join("")}
+      </div>
+    </div>
+
+    <div class="card glass" data-nav="#/chat">
+      <div class="row">
+        <span class="eyebrow">League chat</span>
+        <span class="muted" style="font-size:11px;">${state.chat.length - 1} new</span>
+      </div>
+      <p style="margin-top:8px;font-size:13px;"><strong>Devon:</strong> Chase just went off, 21 and counting 🔥</p>
+    </div>
+  </div>
+  ${renderTabbar("#/home")}
+  <button class="fab glass" data-nav="#/matchup" aria-label="Jump to live gamecast">${ICON.bolt}</button>
+  `;
+}
+
+function viewMatchup() {
+  const home = team(MATCHUP.home), away = team(MATCHUP.away);
+  return `
+  ${renderTopbar({ mode: "home", title: "Turf Kings vs Air Yard Sale", sub: `${MATCHUP.quarter} · ${MATCHUP.clock} · updated ${state.liveSecondsAgo}s ago`, live: true })}
+  <div class="screen">
+    <div class="card hero-matchup glass">
+      <div class="specular" id="heroSpecular"></div>
+      <div class="hero-matchup__teams">
+        <div class="hero-team">
+          <span class="hero-team__name">${home.name}</span>
+          <span class="hero-team__owner">${home.owner}</span>
+          <span class="hero-score accent-text">${fmt1(MATCHUP.homeScore)}</span>
+        </div>
+        <span class="hero-vs">Q3</span>
+        <div class="hero-team hero-team--right">
+          <span class="hero-team__name">${away.name}</span>
+          <span class="hero-team__owner">${away.owner}</span>
+          <span class="hero-score">${fmt1(MATCHUP.awayScore)}</span>
+        </div>
+      </div>
+      <div class="winprob-bar">
+        <div class="winprob-bar__fill" style="width:${MATCHUP.winProbHome}%"></div>
+        <div class="winprob-bar__rest"></div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <span class="muted" style="font-size:11px;">${MATCHUP.rivalry}</span>
+        <span class="accent-text" style="font-size:11.5px;font-weight:700;">${MATCHUP.winProbHome}% Turf Kings</span>
+      </div>
+    </div>
+
+    <div class="segmented">
+      <button data-action="matchup-tab" data-value="graph" data-active="${state.matchupTab === 'graph'}">Win Prob</button>
+      <button data-action="matchup-tab" data-value="plays" data-active="${state.matchupTab === 'plays'}">Key Plays</button>
+    </div>
+
+    ${state.matchupTab === "graph" ? `
+    <div class="card glass">
+      <div class="eyebrow">Win probability · Turf Kings</div>
+      <div class="spark-wrap" style="margin-top:12px;">
+        <svg class="spark" viewBox="0 0 342 110" width="100%" height="110" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="wpFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="rgba(69,217,255,0.45)"/>
+              <stop offset="100%" stop-color="rgba(69,217,255,0)"/>
+            </linearGradient>
+          </defs>
+          <path d="${sparkPath(MATCHUP.winProbHistory, 342, 110, 6)} L336,104 L6,104 Z" fill="url(#wpFill)" stroke="none"/>
+          <path d="${sparkPath(MATCHUP.winProbHistory, 342, 110, 6)}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="row" style="margin-top:2px;">
+          <span class="muted" style="font-size:10.5px;">Q1</span>
+          <span class="muted" style="font-size:10.5px;">Q2</span>
+          <span class="muted" style="font-size:10.5px;">Q3</span>
+          <span class="muted" style="font-size:10.5px;">Q4</span>
+        </div>
+      </div>
+    </div>` : `
+    <div class="card glass">
+      <div class="eyebrow">Live play feed</div>
+      <div class="stack" style="margin-top:8px;gap:0;">
+        ${PLAY_BY_PLAY.map(p => `
+          <div class="play-item ${p.key ? "play-item--key" : ""}">
+            <span class="play-item__time">${p.time}</span>
+            <span class="play-item__dot"></span>
+            <span class="play-item__text">${p.text}</span>
+          </div>`).join("")}
+      </div>
+    </div>`}
+
+    <div class="card glass">
+      <div class="eyebrow">NFL slate</div>
+      <div class="stack" style="margin-top:8px;">
+        ${NFL_GAMES.map(g => `
+          <div class="scorebug card--flat" style="background:rgba(255,255,255,0.03);border:1px solid var(--card-border);">
+            <div class="scorebug__team"><span class="scorebug__logo"></span>${g.away} <span class="scorebug__score">${g.awayScore}</span></div>
+            <span class="muted" style="font-size:10.5px;">${g.status}</span>
+            <div class="scorebug__team">${g.homeAb} <span class="scorebug__score">${g.homeScore}</span><span class="scorebug__logo"></span></div>
+          </div>`).join("")}
+      </div>
+    </div>
+  </div>
+  ${renderTabbar("#/matchup")}
+  `;
+}
+
+function viewTeam() {
+  const me = team(USER_TEAM_ID);
+  const list = state.teamTab === "starters" ? ROSTER.starters : ROSTER.bench;
+  const totalActual = ROSTER.starters.reduce((s,p) => s + p.actual, 0);
+  const totalProj = ROSTER.starters.reduce((s,p) => s + p.proj, 0);
+  return `
+  ${renderTopbar({ mode: "home", title: "My Team", sub: `${me.name} · Week ${WEEK}`, live: true })}
+  <div class="screen">
+    <div class="card glass">
+      <div class="row">
+        <div>
+          <span class="eyebrow">This week</span>
+          <div class="num-xl accent-text" style="margin-top:2px;">${fmt1(totalActual)}</div>
+        </div>
+        <div style="text-align:right;">
+          <span class="eyebrow">Projected</span>
+          <div class="num-lg" style="margin-top:8px;">${fmt1(totalProj)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="segmented">
+      <button data-action="team-tab" data-value="starters" data-active="${state.teamTab === 'starters'}">Starters</button>
+      <button data-action="team-tab" data-value="bench" data-active="${state.teamTab === 'bench'}">Bench</button>
+    </div>
+
+    <div class="card glass">
+      <div class="stack" style="gap:0;">
+        ${list.map(p => `
+          <div class="player-row card--tap" data-nav="#/player/${p.id}">
+            <span class="slot-tag">${p.slot}</span>
+            <div class="player-row__avatar">${initials(p.name)}</div>
+            <div class="player-row__mid">
+              <div class="player-row__name">${p.name}</div>
+              <div class="player-row__meta">${p.nfl} · ${statusPill(p.status)}</div>
+            </div>
+            <div class="player-row__pts">
+              <span class="num-lg">${p.status === "BYE" ? "—" : fmt1(p.actual)}</span>
+              <span class="muted">proj ${fmt1(p.proj)}</span>
+            </div>
+          </div>
+          <hr class="divider">`).join("")}
+      </div>
+    </div>
+  </div>
+  ${renderTabbar("#/team")}
+  `;
+}
+
+function viewLeague() {
+  const sorted = TEAMS.slice().sort((a,b) => b.w - a.w || b.pf - a.pf);
+  return `
+  ${renderTopbar({ mode: "home", title: "League", sub: "The Weekend League · 12 teams" })}
+  <div class="screen">
+    <div class="segmented">
+      <button data-nav="#/league" data-active="true">Standings</button>
+      <button data-nav="#/waivers" data-active="false">Waivers</button>
+    </div>
+
+    <div class="card glass">
+      <div class="standings-head">
+        <span>#</span><span>Team</span><span>Rec</span><span>Strk</span><span style="text-align:right;">PF</span>
+      </div>
+      ${sorted.map((t, i) => `
+        <div class="standings-row ${t.id === USER_TEAM_ID ? "standings-row--me" : ""}">
+          <span class="standings-rank">${i+1}</span>
+          <div class="standings-team">
+            <div class="standings-team__name">${t.name}</div>
+            <div class="standings-team__owner">${t.owner}</div>
+          </div>
+          <span class="standings-rec">${t.w}-${t.l}</span>
+          <span class="standings-rec ${t.streak[0] === 'W' ? 'streak-w' : 'streak-l'}">${t.streak}</span>
+          <span class="standings-pf">${t.pf.toFixed(1)}</span>
+        </div>`).join("")}
+    </div>
+
+    <div class="card glass">
+      <div class="eyebrow">Power-rank trend · last 5 weeks</div>
+      <div class="stack" style="margin-top:10px;">
+        ${TEAMS.slice(0,5).map(t => `
+          <div class="row">
+            <span style="font-size:12.5px;font-weight:600;flex:1;">${t.name}</span>
+            ${sparkSvg(t.trend.map(r => 13 - r), { w: 72, h: 22 })}
+          </div>`).join("")}
+      </div>
+    </div>
+
+    <div class="card glass">
+      <div class="eyebrow accent-text">Records &amp; Awards</div>
+      <div class="stack" style="margin-top:10px;gap:10px;">
+        <div class="row"><span class="muted" style="font-size:12.5px;">Highest single-week score</span><span style="font-size:12.5px;font-weight:700;">Blitzkrieg Bop, 184.6</span></div>
+        <div class="row"><span class="muted" style="font-size:12.5px;">2026 MVP pace</span><span style="font-size:12.5px;font-weight:700;">Marcus</span></div>
+        <div class="row"><span class="muted" style="font-size:12.5px;">Biggest blowout ever</span><span style="font-size:12.5px;font-weight:700;">187.2–61.4</span></div>
+      </div>
+    </div>
+  </div>
+  ${renderTabbar("#/league")}
+  `;
+}
+
+function viewWaivers() {
+  const remaining = FAAB_TOTAL - FAAB_SPENT;
+  return `
+  ${renderTopbar({ mode: "back", back: "#/league", title: "Waiver Wire", sub: `FAAB · $${remaining} of $${FAAB_TOTAL} left` })}
+  <div class="screen">
+    <div class="segmented">
+      <button data-nav="#/league" data-active="false">Standings</button>
+      <button data-nav="#/waivers" data-active="true">Waivers</button>
+    </div>
+
+    <div class="card glass">
+      <div class="eyebrow">Free agents worth a look</div>
+      <div class="stack" style="margin-top:6px;gap:0;">
+        ${WAIVERS.map(p => {
+          const claimed = state.claims[p.id];
+          return `
+          <div class="waiver-row">
+            <div class="player-row__avatar">${initials(p.name)}</div>
+            <div class="player-row__mid">
+              <div class="player-row__name">${p.name} <span class="muted" style="font-weight:500;">· ${p.pos} ${p.nfl}</span></div>
+              <div class="player-row__meta">${p.note}</div>
+            </div>
+            <button class="bid-btn" data-action="open-bid" data-id="${p.id}" data-claimed="${!!claimed}">
+              ${claimed ? `$${claimed} bid` : `Bid $${p.suggested}`}
+            </button>
+          </div>
+          <hr class="divider">`;
+        }).join("")}
+      </div>
+    </div>
+  </div>
+  ${renderTabbar("#/league")}
+  ${renderBidSheet()}
+  `;
+}
+
+function renderBidSheet() {
+  if (!state.sheetPlayerId) return `<div class="sheet-scrim" data-open="false"></div>`;
+  const p = WAIVERS.find(w => w.id === state.sheetPlayerId);
+  return `
+  <div class="sheet-scrim" data-open="${state.sheetOpen}" data-action="close-sheet"></div>
+  <div class="sheet glass" data-open="${state.sheetOpen}">
+    <div class="specular" id="sheetSpecular"></div>
+    <div class="sheet__handle"></div>
+    <div class="row">
+      <div>
+        <div class="h2">${p.name}</div>
+        <div class="muted" style="font-size:12px;">${p.pos} · ${p.nfl}</div>
+      </div>
+      <button class="topbar__back" data-action="close-sheet" aria-label="Close">${ICON.close}</button>
+    </div>
+    <p class="muted" style="font-size:13px;margin-top:10px;">${p.note}</p>
+    <div class="eyebrow" style="margin-top:18px;text-align:center;">FAAB bid</div>
+    <div class="stepper">
+      <button class="stepper__btn" data-action="bid-dec">${ICON.minus}</button>
+      <span class="stepper__val">$${state.bidDraft}</span>
+      <button class="stepper__btn" data-action="bid-inc">${ICON.plus}</button>
+    </div>
+    <button class="btn btn--primary btn--block" data-action="submit-bid" data-id="${p.id}">Submit Claim</button>
+  </div>`;
+}
+
+function viewChat() {
+  return `
+  ${renderTopbar({ mode: "home", title: "League Chat", sub: "12 members · The Weekend League" })}
+  <div class="screen" style="padding-bottom:110px;">
+    <div class="chat-scroll">
+      ${state.chat.map(m => m.pinned ? `
+        <div class="chat-pin">
+          <div class="row"><span class="eyebrow accent-text">${m.owner}</span><span class="muted" style="font-size:10.5px;">${m.time}</span></div>
+          <p style="font-size:13px;margin-top:4px;">${escapeHtml(m.text)}</p>
+        </div>` : `
+        <div class="chat-row ${m.mine ? 'chat-row--me' : ''}">
+          <div class="bubble ${m.mine ? 'bubble--me' : 'bubble--them'}">
+            <div class="bubble__meta">${m.owner}</div>
+            ${escapeHtml(m.text)}
+          </div>
+        </div>`).join("")}
+    </div>
+  </div>
+  <form id="chatForm" class="chat-composer glass">
+    <input id="chatInput" type="text" placeholder="Talk trash…" autocomplete="off" />
+    <button type="submit" aria-label="Send">${ICON.send}</button>
+  </form>
+  ${renderTabbar("#/chat")}
+  `;
+}
+
+function viewPlayer(id) {
+  const p = PLAYERS[id];
+  const roster = [...ROSTER.starters, ...ROSTER.bench].find(r => r.id === id);
+  if (!p || !roster) return viewNotFound();
+  return `
+  ${renderTopbar({ mode: "back", back: state.cameFrom, title: roster.name, sub: `${p.pos} · ${p.nfl}` })}
+  <div class="screen">
+    <div class="card player-hero glass">
+      <div class="specular" id="heroSpecular"></div>
+      <div class="player-hero__avatar">${initials(roster.name)}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="h1" style="font-size:19px;">${roster.name}</div>
+        <div class="muted" style="font-size:12px;margin-top:2px;">${p.oppLine}</div>
+        ${statusPill(roster.status)}
+      </div>
+    </div>
+
+    <div class="row" style="gap:10px;">
+      <div class="card glass" style="flex:1;text-align:center;">
+        <div class="eyebrow">Actual</div>
+        <div class="num-xl accent-text" style="margin-top:4px;">${roster.status === "BYE" || roster.status === "NOT YET" ? "—" : fmt1(roster.actual)}</div>
+      </div>
+      <div class="card glass" style="flex:1;text-align:center;">
+        <div class="eyebrow">Projected</div>
+        <div class="num-xl" style="margin-top:4px;">${fmt1(roster.proj)}</div>
+      </div>
+    </div>
+
+    <div class="card glass">
+      <div class="row">
+        <span class="eyebrow">Last 5 games</span>
+        <span class="muted" style="font-size:11px;">Season avg ${fmt1(p.seasonAvg)}</span>
+      </div>
+      <div style="margin-top:10px;">
+        ${sparkSvg(p.last5, { w: 342, h: 60 })}
+      </div>
+    </div>
+
+    <div class="card glass">
+      <div class="eyebrow">Box score</div>
+      <div class="stat-grid" style="margin-top:10px;">
+        ${p.stats.map(([label, val]) => `
+          <div class="stat-tile card--flat" style="background:rgba(255,255,255,0.03);">
+            <span class="num-lg">${val}</span>
+            <span class="eyebrow">${label}</span>
+          </div>`).join("")}
+      </div>
+    </div>
+
+    <div class="card glass">
+      <div class="eyebrow accent-text">Matchup context</div>
+      <p style="font-size:13.5px;margin-top:8px;">${p.note}</p>
+    </div>
+
+    <div class="card glass">
+      <div class="eyebrow">Latest</div>
+      <p style="font-size:13.5px;margin-top:8px;">${p.news}</p>
+    </div>
+  </div>
+  ${renderTabbar("")}
+  `;
+}
+
+function viewNotFound() {
+  return `
+  ${renderTopbar({ mode: "back", back: "#/home", title: "Not found", sub: "" })}
+  <div class="screen"><div class="card glass">That view doesn't exist yet.</div></div>
+  ${renderTabbar("")}
+  `;
+}
+
+/* ---------------------------------- Router ---------------------------------- */
+function parseRoute() {
+  const hash = location.hash || "#/splash";
+  const parts = hash.replace(/^#\//, "").split("/");
+  return { hash, parts };
+}
+
+function stopLiveTimer() {
+  if (state.liveTimerId) { clearInterval(state.liveTimerId); state.liveTimerId = null; }
+}
+function startLiveTimer() {
+  stopLiveTimer();
+  state.liveSecondsAgo = 0;
+  state.liveTimerId = setInterval(() => {
+    state.liveSecondsAgo += 1;
+    const sub = document.querySelector(".topbar__sub");
+    if (sub) sub.textContent = `${MATCHUP.quarter} · ${MATCHUP.clock} · updated ${state.liveSecondsAgo}s ago`;
+  }, 1000);
+}
+
+function render() {
+  const { hash, parts } = parseRoute();
+  const root = document.getElementById("app-shell");
+  const view = document.getElementById("view");
+  const routeName = parts[0] || "splash";
+  root.setAttribute("data-route", routeName);
+  stopLiveTimer();
+
+  let html = "";
+  switch (routeName) {
+    case "splash": html = viewSplash(); break;
+    case "home": html = viewHome(); break;
+    case "matchup": html = viewMatchup(); startLiveTimer(); break;
+    case "team": state.cameFrom = "#/team"; html = viewTeam(); break;
+    case "league": state.cameFrom = "#/league"; html = viewLeague(); break;
+    case "waivers": html = viewWaivers(); break;
+    case "chat": html = viewChat(); break;
+    case "player": html = viewPlayer(parts[1]); break;
+    default: html = viewNotFound();
+  }
+  view.innerHTML = html;
+  window.scrollTo(0, 0);
+  if (routeName === "chat") {
+    const scrollEl = view.querySelector(".chat-scroll");
+    if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+  }
+}
+
+/* ---------------------------------- Interactions ---------------------------------- */
+function openBidSheet(id) {
+  const p = WAIVERS.find(w => w.id === id);
+  state.sheetPlayerId = id;
+  state.bidDraft = state.claims[id] || p.suggested;
+  state.sheetOpen = false;
+  render();
+  requestAnimationFrame(() => {
+    state.sheetOpen = true;
+    const scrim = document.querySelector(".sheet-scrim");
+    const sheet = document.querySelector(".sheet");
+    if (scrim) scrim.setAttribute("data-open", "true");
+    if (sheet) sheet.setAttribute("data-open", "true");
+  });
+}
+function closeBidSheet() {
+  const scrim = document.querySelector(".sheet-scrim");
+  const sheet = document.querySelector(".sheet");
+  if (scrim) scrim.setAttribute("data-open", "false");
+  if (sheet) sheet.setAttribute("data-open", "false");
+  state.sheetOpen = false;
+  setTimeout(() => { state.sheetPlayerId = null; render(); }, 260);
+}
+
+function handleAction(el) {
+  const action = el.dataset.action;
+  const remaining = FAAB_TOTAL - FAAB_SPENT;
+  if (action === "matchup-tab") { state.matchupTab = el.dataset.value; render(); }
+  else if (action === "team-tab") { state.teamTab = el.dataset.value; render(); }
+  else if (action === "open-bid") { openBidSheet(el.dataset.id); }
+  else if (action === "close-sheet") { closeBidSheet(); }
+  else if (action === "bid-inc") { state.bidDraft = Math.min(remaining, state.bidDraft + 1); updateStepper(); }
+  else if (action === "bid-dec") { state.bidDraft = Math.max(1, state.bidDraft - 1); updateStepper(); }
+  else if (action === "submit-bid") {
+    state.claims[el.dataset.id] = state.bidDraft;
+    closeBidSheet();
+  }
+}
+function updateStepper() {
+  const val = document.querySelector(".stepper__val");
+  if (val) val.textContent = `$${state.bidDraft}`;
+}
+
+function handleChatSubmit(e) {
+  e.preventDefault();
+  const input = document.getElementById("chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+  state.chat.push({ id: "u" + Date.now(), owner: "Tyler", text, time: "now", mine: true });
+  input.value = "";
+  render();
+}
+
+document.addEventListener("click", (e) => {
+  const navEl = e.target.closest("[data-nav]");
+  if (navEl) {
+    e.preventDefault();
+    const target = navEl.getAttribute("data-nav");
+    if (target && target !== location.hash) location.hash = target;
+    else render();
+    return;
+  }
+  const actionEl = e.target.closest("[data-action]");
+  if (actionEl) { handleAction(actionEl); return; }
+});
+document.addEventListener("submit", (e) => {
+  if (e.target && e.target.id === "chatForm") handleChatSubmit(e);
+});
+window.addEventListener("hashchange", render);
+window.addEventListener("DOMContentLoaded", () => {
+  render();
+  setupSpecular();
+});
+
+/* ---------------------------------- Specular highlight (glass lensing) ---------------------------------- */
+function setupSpecular() {
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const finePointer = window.matchMedia("(pointer: fine)").matches;
+  if (reduceMotion || !finePointer) return; // touch / reduced-motion: stays static
+  document.addEventListener("pointermove", (e) => {
+    const pct = (e.clientX / window.innerWidth) * 70 - 35;
+    document.documentElement.style.setProperty("--sweep-x", pct.toFixed(1) + "%");
+  });
+}

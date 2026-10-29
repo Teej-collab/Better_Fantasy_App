@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Lobster&family=Satisfy&family=IBM+Plex+Sans:wght@500;600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  #stage { position: relative; overflow: hidden; background: #000; }
+  .layer { position: absolute; inset: 0; overflow: hidden; }
+  .layer img { position: absolute; left: 0; top: 0; transform-origin: 0 0; image-rendering: auto; }
+  .panelwrap { position: absolute; inset: 0; perspective: 2400px; perspective-origin: 50% 45%; }
+  .panel { position: absolute; left: 50%; top: 50%; overflow: hidden; border-radius: 14px; transform-style: preserve-3d;
+           box-shadow: 0 60px 140px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.06), 0 0 120px rgba(255,23,68,.18); }
+  .panel img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+  .bgglow { position: absolute; inset: 0; }
+  .fx { position: absolute; inset: 0; pointer-events: none; }
+  #grain { position: absolute; inset: -50%; width: 200%; height: 200%; opacity: .07; mix-blend-mode: overlay; }
+  #vignette { background: radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%); }
+  .title { position: absolute; left: 0; right: 0; text-align: center; font-family: Anton, sans-serif; color: #fff; letter-spacing: .06em; white-space: nowrap; }
+  .lower { position: absolute; font-family: Anton, sans-serif; color: #fff; letter-spacing: .08em; white-space: nowrap; }
+  .lower .bar { display: block; height: 4px; background: #ff1744; box-shadow: 0 0 18px #ff1744; margin-bottom: 14px; transform-origin: 0 50%; }
+  .neon { font-family: Lobster, cursive; color: #fff; text-shadow: 0 0 4px rgba(255,255,255,.9), 0 0 10px rgba(255,255,255,.6), 0 0 22px rgba(236,72,153,.8), 0 0 40px rgba(56,189,248,.6), 0 0 65px rgba(249,115,22,.45), 0 0 95px rgba(236,72,153,.3); }
+  .sub { font-family: Satisfy, cursive; color: #7dd3fc; text-shadow: 0 0 6px rgba(56,189,248,.9), 0 0 18px rgba(56,189,248,.6); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bgglow" id="bg"></div>
+  <div id="layers"></div>
+  <div class="fx" id="overlay"></div>
+  <div class="fx" id="text"></div>
+  <div class="fx" id="flash"></div>
+  <div class="fx" id="vignette"></div>
+  <canvas id="grain"></canvas>
+</div>
+<script>
+const FMT = new URLSearchParams(location.search).get("fmt") || "h";
+const W = FMT === "h" ? 1920 : 1080, H = FMT === "h" ? 1080 : 1920;
+const stage = document.getElementById("stage");
+stage.style.width = W + "px"; stage.style.height = H + "px";
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, p) => a + (b - a) * p;
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const easeIn = (x) => x * x * x;
+let CLIPS = {};
+const imgCache = {};
+function frameUrl(clip, ms) {
+  const list = CLIPS[clip];
+  let lo = 0, hi = list.length - 1;
+  if (ms <= list[0]) return `clips/${clip}/f_${String(list[0]).padStart(7, "0")}.jpg`;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (list[mid] <= ms) lo = mid; else hi = mid - 1; }
+  return `clips/${clip}/f_${String(list[lo]).padStart(7, "0")}.jpg`;
+}
+function srcSize(url) { const im = imgCache[url]; return im ? [im.naturalWidth, im.naturalHeight] : [W, H]; }
+async function getImg(url) {
+  if (!imgCache[url]) { const im = new Image(); im.src = url; imgCache[url] = im; }
+  const im = imgCache[url]; if (!im.complete || !im.naturalWidth) await im.decode().catch(() => {});
+  return im;
+}
+// grain
+const gc = document.getElementById("grain"); gc.width = W / 2; gc.height = H / 2;
+const gctx = gc.getContext("2d"); const noiseFrames = [];
+for (let k = 0; k < 6; k++) { const id = gctx.createImageData(gc.width, gc.height); for (let i = 0; i < id.data.length; i += 4) { const v = Math.random() * 255; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 255; } noiseFrames.push(id); }
+
+// ---- shot rendering
+// shot: { t0, t1, src: {clip, ms:(g)=>} | {still}, cam:(p,g)=>({x,y,w}), panel:(p,g)=>({rx,ry,rz,s}), filter:(p,g)=>string, opacity:(g)=>num }
+async function drawShot(el, shot, g) {
+  const p = clamp((g - shot.t0) / (shot.t1 - shot.t0));
+  const url = shot.src.still ? `stills/${shot.src.still}` : frameUrl(shot.src.clip, shot.src.ms(g));
+  const im = await getImg(url);
+  el.innerHTML = "";
+  const [iw, ih] = [im.naturalWidth, im.naturalHeight];
+  let node = im.cloneNode();
+  if (shot.panel) {
+    const pc = shot.panel(p, g);
+    const wrap = document.createElement("div"); wrap.className = "panelwrap";
+    const pan = document.createElement("div"); pan.className = "panel";
+    const cam = shot.cam ? shot.cam(p, g) : { x: iw / 2, y: ih / 2, w: iw };
+    const pw = W * pc.s, ph = pc.h ? H * pc.h : pw * (H / W);
+    pan.style.width = pw + "px"; pan.style.height = ph + "px";
+    pan.style.transform = `translate(-50%,-50%) translate(${pc.tx || 0}px,${pc.ty || 0}px) rotateX(${pc.rx}deg) rotateY(${pc.ry}deg) rotateZ(${pc.rz || 0}deg)`;
+    const s = pw / cam.w; node.style.width = iw * s + "px"; node.style.height = ih * s + "px";
+    node.style.left = pw / 2 - cam.x * s + "px"; node.style.top = ph / 2 - cam.y * s + "px";
+    pan.appendChild(node); wrap.appendChild(pan); el.appendChild(wrap);
+  } else {
+    const cam = shot.cam(p, g);
+    const s = W / cam.w;
+    node.style.transform = `translate(${W / 2 - cam.x * s + (cam.sx || 0)}px, ${H / 2 - cam.y * s + (cam.sy || 0)}px) scale(${s})`;
+    el.appendChild(node);
+  }
+  el.style.filter = shot.filter ? shot.filter(p, g) : "";
+  el.style.opacity = shot.opacity ? shot.opacity(g) : 1;
+}
+
+let EDL = null;
+async function render(g) {
+  const layers = document.getElementById("layers");
+  const active = EDL.shots.filter((s) => g >= s.t0 - (s.fadeIn || 0) && g < s.t1 + (s.fadeOut || 0));
+  while (layers.children.length < active.length) { const d = document.createElement("div"); d.className = "layer"; layers.appendChild(d); }
+  while (layers.children.length > active.length) layers.lastChild.remove();
+  await Promise.all(active.map((s, i) => drawShot(layers.children[i], s, g)));
+  document.getElementById("bg").style.background = EDL.bg(g);
+  document.getElementById("flash").style.background = EDL.flash(g);
+  document.getElementById("overlay").style.background = EDL.overlay ? EDL.overlay(g) : "";
+  document.getElementById("text").innerHTML = EDL.text(g);
+  gctx.putImageData(noiseFrames[Math.floor(g * 60) % noiseFrames.length], 0, 0);
+  if (document.fonts) await document.fonts.ready;
+  return true;
+}
+async function init() {
+  CLIPS = await (await fetch("clips.json")).json();
+  await new Promise((r) => { const s = document.createElement("script"); s.src = `edl_${FMT}.js?t=${Date.now()}`; s.onload = r; document.body.appendChild(s); });
+  EDL = window.EDL = window.makeEDL({ W, H, clamp, lerp, ease, easeOut, easeIn });
+  // preload stills
+  await Promise.all(EDL.stills.map((s) => getImg(`stills/${s}`)));
+  await document.fonts.load("100px Anton"); await document.fonts.load("100px Lobster"); await document.fonts.load("60px Satisfy");
+  window.READY = true;
+}
+window.render = render;
+init();
+</script>
+</body>
+</html>

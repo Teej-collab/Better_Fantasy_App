@@ -26,3 +26,6 @@ backend/app/chug_analyzer/models/
 
 # Week in 30 seconds video tool (tools/week_video) has its own venv.
 tools/week_video/.venv/
+
+# Marketing showreel renders: too big for git, kept locally
+Documentation/Marketing/**/*.mp4

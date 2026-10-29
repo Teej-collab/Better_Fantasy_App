@@ -1,0 +1,80 @@
+/* Direction C — "Stadium Lights": dark, immersive, futuristic sports
+   entertainment. True OLED black, frosted glass panels, cyan + violet
+   floodlight accents (a disciplined, 2-color descendant of the app's
+   retired "Cosmic" theme and 7-color neon picker — not a full return
+   to the old always-lit rainbow nav, which the team already found
+   didn't work). Space Grotesk, single family, tracked uppercase. */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+:root {
+  --bg: #050507;
+  --bg-elevated: #101018;
+  --border: rgba(255,255,255,0.09);
+  --text: #eef0ff;
+  --text-secondary: #9393ad;
+  --accent: #22d3ee;
+  --accent-2: #a855f7;
+  --on-accent: #04141a;
+  --live: #ff3864;
+  --success: #39ff14;
+  --warning: #facc15;
+  --nav-bg: rgba(10,10,16,0.82);
+
+  --radius-card: 18px;
+  --radius-pill: 999px;
+  --card-padding: 16px;
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Space Grotesk', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+  --tracking-display: 0.01em;
+  --display-case: uppercase;
+  --featured-glow: 0 0 40px rgba(168,85,247,0.35), 0 0 80px rgba(34,211,238,0.15);
+
+  --stage-bg: #030304;
+  --stage-text: #eef0ff;
+  --stage-text-secondary: #93939a;
+  --stage-accent: #22d3ee;
+  --stage-border: rgba(255,255,255,0.08);
+}
+
+body {
+  background: var(--stage-bg);
+}
+
+/* Glass surfaces */
+.phone-screen-area { background: radial-gradient(120% 60% at 50% -10%, rgba(168,85,247,0.18), transparent 60%), var(--bg); }
+.card, .scorebug, .draft-player-card, .bubble {
+  background: rgba(255,255,255,0.045);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.chat-row.me .bubble { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #04141a; }
+.bottomnav, .dock, .nav-bg, .drawer, .topbar { }
+.dock, .bottomnav { background: var(--nav-bg); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.drawer { background: rgba(12,12,20,0.96); backdrop-filter: blur(24px); }
+
+/* Floodlight beams behind hero content — static (no animation) to respect
+   the same "glow is a signal, never a background" rule the other two
+   directions carry, and to avoid the perf/battery cost that got the old
+   rotating ring disabled app-wide in production. */
+.floodlights {
+  position: relative;
+}
+.floodlights::before {
+  content: "";
+  position: absolute;
+  top: -60px; left: -40px; right: -40px; height: 220px;
+  background:
+    radial-gradient(closest-side, rgba(34,211,238,0.22), transparent),
+    radial-gradient(closest-side, rgba(168,85,247,0.2), transparent) ;
+  background-position: 20% 0, 80% 0;
+  background-size: 60% 100%, 60% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 0;
+}
+.floodlights > * { position: relative; z-index: 1; }
+
+.team-score { text-shadow: 0 0 18px currentColor; }
+.login-word { text-shadow: 0 0 24px rgba(34,211,238,0.5); }

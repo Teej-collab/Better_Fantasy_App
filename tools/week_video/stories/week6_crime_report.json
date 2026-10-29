@@ -1,0 +1,55 @@
+{
+  "title": "Fantasy Crime Report",
+  "league": "Weekend League",
+  "week": 6,
+  "site": "weekend-league-web.vercel.app/waitlist",
+  "scenes": [
+    {
+      "type": "hook", "seconds": 3.0,
+      "say": "We have a crime to report. This team scored seventy eight points, and almost won.",
+      "kicker": "FANTASY CRIME REPORT", "headline": "WEEK 6"
+    },
+    {
+      "type": "mugshot", "seconds": 5.4,
+      "say": "Givin Me A Chubb. Missed his projection by forty two. His tight end scored zero. Meltdown and choke of the week.",
+      "suspect": "GIVIN ME A CHUBB",
+      "charges": ["Missed his projection by 42.7", "Tight end scored 0.0", "Meltdown AND Choke of the Week"],
+      "stamp": "GUILTY"
+    },
+    {
+      "type": "scoreline", "seconds": 4.8,
+      "say": "And he still only lost by one point eight four. A waiver pickup beat the spread.",
+      "kicker": "THE TWIST", "left": "Baby~Back Gibbs", "left_score": 80.64, "right": "Givin Me A Chubb", "right_score": 78.80,
+      "stamp": "ROBBED?"
+    },
+    {
+      "type": "verdict", "seconds": 4.2,
+      "say": "Meanwhile, Allen Key Set benched sixteen and a half points. Guilty.",
+      "kicker": "ALSO ARRESTED", "who": "Allen Key Set", "line": "Benched Carnell Tate", "big": "+16.5", "big_label": "points left on the bench",
+      "stamp": "BENCH CRIME"
+    },
+    {
+      "type": "scoreline", "seconds": 3.6, "shake": true,
+      "say": "Team Solari won by thirty one. No survivors.",
+      "kicker": "THE MASSACRE", "left": "Team Solari", "left_score": 121.86, "right": "Catch That Poke-Amon", "right_score": 90.38,
+      "stamp": "NO SURVIVORS"
+    },
+    {
+      "type": "phone", "seconds": 5.0,
+      "say": "And our app wrote all of this. About our league. Every single week.",
+      "kicker": "THE WEEKEND · WEEK 6 RECAP",
+      "text": "Six games, 109.9 points a team, and somehow three different guys won with a waiver pickup that outscored their entire margin of victory. Let's start with the carnage. 78.8 — dead last, missed his projection by 42.7, which is both Meltdown and Choke of the Week, the fantasy equivalent of getting flagged twice for the same play.",
+      "highlight": "the fantasy equivalent of getting flagged twice for the same play"
+    },
+    {
+      "type": "cliffhanger", "seconds": 3.6,
+      "say": "Week seven. Sleeper App is Better versus Baby Back Gibbs. Who's going down? Comment.",
+      "kicker": "NEXT WEEK", "left": "Sleeper App is Better", "right": "Baby~Back Gibbs", "ask": "Who's going down? Comment."
+    },
+    {
+      "type": "plug", "seconds": 3.8,
+      "say": "Get The Weekend for your league. Link in bio.",
+      "line1": "GET THIS FOR", "line2": "YOUR LEAGUE", "sub": "Part 2 drops Tuesday"
+    }
+  ]
+}

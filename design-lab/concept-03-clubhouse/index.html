@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>THE CLUBHOUSE — THE WEEKEND</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Bodoni:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app-shell">
+  <header class="masthead" id="masthead" hidden>
+    <div class="masthead__kicker"><span>EST. 2019</span><span>·</span><span>WEEK 7</span></div>
+    <h1 class="masthead__title">THE <em>WEEKEND</em></h1>
+  </header>
+  <nav class="contents-strip" id="contents-strip" hidden>
+    <a href="#/home" data-route="home">Home</a>
+    <a href="#/league" data-route="league">League</a>
+    <a href="#/matchup" data-route="matchup">Matchup</a>
+    <a href="#/draft" data-route="draft">Draft</a>
+    <a href="#/gamecast" data-route="gamecast">Gamecast</a>
+    <a href="#/chat" data-route="chat">Clubhouse</a>
+    <a href="#/standings" data-route="standings">Standings</a>
+    <a href="#/activity" data-route="activity">Activity</a>
+    <a href="#/profile" data-route="profile">Profile</a>
+  </nav>
+  <main id="view"></main>
+  <a href="#/myteam" class="corner-tab" id="corner-tab" hidden>
+    <svg class="icon" viewBox="0 0 24 24"><path d="M4 20v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/><circle cx="12" cy="7" r="4"/></svg>
+    My Team
+  </a>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
