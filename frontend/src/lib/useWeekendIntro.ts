@@ -62,6 +62,10 @@ export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
   // second hold on every single hard load forever. 2026-09-01 audit's
   // #1 finding (8.45s to real content on Home, every visit).
   const [fast, setFast] = useState(false);
+  // The quick open with sound on (Home's Welcome Back after the day's
+  // full intro), as opposed to a skip or reduced motion: Home plays the
+  // Hive Toss (HiveTossOpen.tsx) for it.
+  const [quick, setQuick] = useState(false);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const { playLightSwitch, playCanThenPour } = useIntroSound(sound);
 
@@ -99,6 +103,7 @@ export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
         // with the word-by-word buildup they're timed to, not just the
         // visuals.
         setFast(true);
+        setQuick(sound && !prefersReducedMotion());
         setStage("final");
         return;
       }
@@ -155,5 +160,5 @@ export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
     }
   }
 
-  return { stage, wordIndex, fast, skip, markSeen };
+  return { stage, wordIndex, fast, quick, skip, markSeen };
 }

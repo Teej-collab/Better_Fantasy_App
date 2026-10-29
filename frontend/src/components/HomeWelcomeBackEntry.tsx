@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Anton, Satisfy } from "next/font/google";
 import { useRouter } from "next/navigation";
+import { HiveTossOpen } from "@/components/HiveTossOpen";
 import { IntroSeasonDecor } from "@/components/IntroSeasonDecor";
 import { TheWordmark } from "@/components/TheWordmark";
 import { WelcomeBackStage } from "@/components/WelcomeBackStage";
@@ -86,7 +87,9 @@ export function HomeWelcomeBackEntry({
   children: ReactNode;
 }) {
   const router = useRouter();
-  const { stage, wordIndex, fast, skip, markSeen } = useWeekendIntro();
+  const { stage, wordIndex, fast, quick, skip, markSeen } = useWeekendIntro();
+  // The Hive Toss stands in for the plain wordmark on a quick open.
+  const toss = quick && !needsLeague;
   const [revealing, setRevealing] = useState(false);
   const [revealedAfterBoot, setRevealedAfterBoot] = useState(false);
   // A fresh visit's intro opens onto the league picker (/start), like the
@@ -116,7 +119,7 @@ export function HomeWelcomeBackEntry({
   const revealed = alreadyBooted || revealedAfterBoot;
 
   useEffect(() => {
-    if (revealed || stage !== "final" || needsLeague) return;
+    if (revealed || stage !== "final" || needsLeague || toss) return;
     const holdMs = fast ? FAST_HOLD_MS : EXTENDED_HOLD_MS;
     const holdTimeout = setTimeout(() => {
       setRevealing(true);
@@ -141,7 +144,7 @@ export function HomeWelcomeBackEntry({
     // of ever letting it complete. Same omission AppEntry.tsx's
     // identical effect already makes for the same reason.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, revealed, needsLeague, fast]);
+  }, [stage, revealed, needsLeague, fast, toss]);
 
   useEffect(() => {
     if (revealed) return;
@@ -179,6 +182,22 @@ export function HomeWelcomeBackEntry({
   }
 
   if (revealed && !leaving) return <>{children}</>;
+
+  if (toss) {
+    const done = () => {
+      markSeen();
+      finishIntro();
+    };
+    // Opening onto the dashboard, the toss's hexagon iris reveals it
+    // underneath; opening onto the league picker, the last frame holds
+    // until /start loads, like the wordmark's bloom does.
+    return (
+      <>
+        {!pickLeague && children}
+        <HiveTossOpen displayName={displayName} iris={!pickLeague} onDone={done} onSkip={done} />
+      </>
+    );
+  }
 
   const showFinal = stage === "final";
 

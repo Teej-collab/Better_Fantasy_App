@@ -14,6 +14,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
+import { HiveTossOpen } from '@/components/HiveTossOpen';
 import { IntroSeasonDecor } from '@/components/IntroSeasonDecor';
 import { haptics } from '@/lib/haptics';
 import { takeFullIntro } from '@/lib/introSound';
@@ -140,28 +141,33 @@ function useIntroSounds(enabled: boolean) {
   };
 }
 
-export function IntroOverlay({
-  displayName = null,
-  onDone,
-  mode = 'welcome',
-  footer,
-}: {
+type IntroProps = {
   displayName?: string | null;
   onDone: () => void;
   mode?: 'welcome' | 'enter';
   footer?: ReactNode;
-}) {
+};
+
+export function IntroOverlay(props: IntroProps) {
   const reduceMotion = useReducedMotion();
+  // The full show (about 8 seconds, with sound) plays on the first open
+  // of the day, or per Settings > Appearance > Intro Sound. Every other
+  // Welcome Back is the Hive Toss (HiveTossOpen.tsx); the front door's
+  // quick version and Reduce Motion keep the plain wordmark.
+  const [full] = useState(() => !reduceMotion && takeFullIntro());
+  if ((props.mode ?? 'welcome') === 'welcome' && !full && !reduceMotion) {
+    return <HiveTossOpen displayName={props.displayName ?? null} onDone={props.onDone} />;
+  }
+  return <WordmarkIntro {...props} full={full} />;
+}
+
+function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, full }: IntroProps & { full: boolean }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [stage, setStage] = useState<Stage>('dark');
   const [wordIndex, setWordIndex] = useState(0);
   const [revealing, setRevealing] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  // The full show (about 8 seconds, with sound) plays on the first open
-  // of the day, or per Settings > Appearance > Intro Sound; every other
-  // open gets the quick version.
-  const [full] = useState(() => !reduceMotion && takeFullIntro());
   const sounds = useIntroSounds(full);
 
   const ambient = useSharedValue(0);
@@ -273,7 +279,7 @@ export function IntroOverlay({
     opacity: league.get(),
     transform: [{ translateY: 8 * (1 - league.get()) }, { rotate: `${-10 + 3 * league.get()}deg` }],
   }));
-  // Orange in October, red in winter, like the logo.
+  // Orange in October, ice blue in winter, like the logo.
   const season = currentSeason();
   const seasonTint = season === 'Halloween' ? styles.theHalloween : season === 'Winter' ? styles.theWinter : null;
   const welcomeStyle = useAnimatedStyle(() => ({
@@ -423,7 +429,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 18,
   },
   theHalloween: { color: '#ffd2a6', textShadowColor: '#ff7a1a' },
-  theWinter: { color: '#ffe3e6', textShadowColor: '#ff4d5a' },
+  theWinter: { color: '#eaf8ff', textShadowColor: '#5fb4ff' },
   welcome: {
     fontFamily: 'Anton_400Regular',
     fontSize: 26,

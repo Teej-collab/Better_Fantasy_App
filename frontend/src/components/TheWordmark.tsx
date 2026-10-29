@@ -2,7 +2,7 @@ import { currentSeason } from "@/lib/seasonal";
 import styles from "./TheWordmark.module.css";
 
 /** "The", in script, above the WEEKEND neon — The Weekend's wordmark in
- * the app-entry intro. Tinted for the season (orange in October, red in
+ * the app-entry intro. Tinted for the season (orange in October, ice blue in
  * winter) like the logo. */
 export function TheWordmark({ className }: { className?: string }) {
   const season = currentSeason();

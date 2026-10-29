@@ -2574,3 +2574,47 @@ svg.wx-wind{position:absolute;inset:0;width:100%;height:100%;border:0;background
   .wx-fx *{animation:none!important}
   .wx-speck,.wx-bead,.wx-flake,.wx-bflake,.wx-flash,.wx-bolt,.wx-edge,svg.wx-wind{display:none}
 }
+
+/* The Hive Toss quick open (components/HiveTossOpen.tsx, 2026-10-29). */
+@property --ht-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.ht-gate{position:fixed;inset:0;z-index:50;overflow:hidden;background:radial-gradient(60% 40% at 50% 42%,rgba(57,255,20,.12),transparent 70%),radial-gradient(30% 20% at 66% 34%,rgba(255,122,26,.14),transparent 70%),#0d1016;--ox:50vw;--oy:40vh}
+.ht-halloween{background:radial-gradient(60% 40% at 50% 42%,rgba(140,60,255,.15),transparent 70%),radial-gradient(34% 24% at 66% 34%,rgba(255,110,10,.2),transparent 70%),#0d1016}
+.ht-winter{background:radial-gradient(60% 40% at 50% 42%,rgba(120,200,255,.14),transparent 70%),radial-gradient(30% 20% at 66% 34%,rgba(220,245,255,.12),transparent 70%),#0d1016}
+.ht-iris{animation:ht-iris .7s 2.65s cubic-bezier(.6,0,.4,1) forwards;clip-path:polygon(evenodd,0 0,100% 0,100% 100%,0 100%,0 0,var(--ox) calc(var(--oy) - var(--ht-r)),calc(var(--ox) + var(--ht-r) * .866) calc(var(--oy) - var(--ht-r) * .5),calc(var(--ox) + var(--ht-r) * .866) calc(var(--oy) + var(--ht-r) * .5),var(--ox) calc(var(--oy) + var(--ht-r)),calc(var(--ox) - var(--ht-r) * .866) calc(var(--oy) + var(--ht-r) * .5),calc(var(--ox) - var(--ht-r) * .866) calc(var(--oy) - var(--ht-r) * .5))}
+.ht-iris .ht-stage{animation:ht-stage-out .3s 2.65s ease-in forwards}
+.ht-stage{position:absolute;inset:0}
+.ht-center{--s:min(86vw,50vh,400px);position:absolute;left:50%;top:42%;width:var(--s);height:var(--s);transform:translate(-50%,-50%)}
+.ht-toss{position:absolute;inset:0;perspective:900px;animation:ht-toss 1s .15s cubic-bezier(.3,.6,.4,1) both}
+.ht-coin{position:relative;width:100%;height:100%;transform-style:preserve-3d;animation:ht-flip 1s .15s cubic-bezier(.25,.6,.35,1) both}
+.ht-face{position:absolute;inset:0;width:100%;height:100%;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.ht-back{transform:rotateX(180deg)}
+.ht-cells{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.ht-cell{opacity:0;animation:ht-cell .3s both}
+.ht-logo{position:absolute;inset:0;width:100%;height:100%;opacity:0;animation:ht-logo .32s 1.82s ease-out forwards}
+.ht-ground{position:absolute;left:50%;top:90%;width:0;height:0}
+.ht-shadow{position:absolute;left:-80px;top:-12px;width:160px;height:24px;border-radius:50%;background:radial-gradient(rgba(0,0,0,.85),transparent 70%);animation:ht-shadow 1s .15s cubic-bezier(.3,.6,.4,1) both}
+.ht-ring{position:absolute;left:-90px;top:-28px;width:180px;height:56px;border:3px solid #39ff14;border-radius:50%;opacity:0;box-shadow:0 0 18px rgba(57,255,20,.8);animation:ht-ring .7s 1.03s ease-out forwards}
+.ht-spark{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c);opacity:0;animation:ht-burst .7s 1.03s cubic-bezier(.2,.8,.3,1) forwards}
+.ht-halloween .ht-ring{border-color:#ff8a2a;box-shadow:0 0 18px rgba(255,120,20,.8)}
+.ht-halloween .ht-spark{width:26px;height:26px;left:-13px;top:-13px;background:rgba(150,90,255,.45);box-shadow:none;filter:blur(5px)}
+.ht-winter .ht-ring{border-color:#dff3ff;box-shadow:0 0 18px rgba(160,220,255,.9)}
+.ht-winter .ht-spark{--c:#f4fbff}
+.ht-welcome{position:absolute;left:50%;top:98%;width:max-content;max-width:calc(100vw - 32px);margin:0;transform:translate(-50%,14px);text-align:center;font-size:clamp(26px,4vw,40px);letter-spacing:.5px;opacity:0;animation:ht-rise .5s 1.95s cubic-bezier(.2,.8,.2,1) forwards}
+.ht-welcome span{background:linear-gradient(100deg,#39ff14 0%,#39ff14 42%,#f2ffe9 50%,#39ff14 58%,#39ff14 100%);background-size:300% 100%;background-position:100% 0;-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 10px rgba(57,255,20,.6));animation:ht-sweep 1s 2.05s ease-in-out forwards}
+.ht-halloween .ht-welcome span{background-image:linear-gradient(100deg,#ff8a2a 0%,#ff8a2a 42%,#fff1e0 50%,#ff8a2a 58%,#ff8a2a 100%);filter:drop-shadow(0 0 10px rgba(255,120,20,.65))}
+.ht-winter .ht-welcome span{background-image:linear-gradient(100deg,#e6f6ff 0%,#e6f6ff 42%,#fff 50%,#e6f6ff 58%,#e6f6ff 100%);filter:drop-shadow(0 0 10px rgba(120,200,255,.75))}
+@keyframes ht-iris{to{--ht-r:160vmax}}
+@keyframes ht-stage-out{to{opacity:0;transform:scale(1.3)}}
+@keyframes ht-toss{0%{transform:translateY(70vh) scale(.6)}48%{transform:translateY(-14vh) scale(1.04)}88%{transform:translateY(0) scale(1)}93%{transform:translateY(4px) scale(1.03,.96)}100%{transform:none}}
+@keyframes ht-flip{0%{transform:rotateX(0)}88%,100%{transform:rotateX(1800deg)}}
+@keyframes ht-shadow{0%{opacity:0;transform:scale(.3)}48%{opacity:.25;transform:scale(.5)}88%,100%{opacity:1;transform:scale(1)}}
+@keyframes ht-ring{0%{opacity:1;transform:scale(.6)}100%{opacity:0;transform:scale(2.4)}}
+@keyframes ht-burst{0%{opacity:1;transform:translate(0,0) scale(1)}100%{opacity:0;transform:translate(var(--x),var(--y)) scale(.4)}}
+@keyframes ht-cell{0%{opacity:0}25%{opacity:.85}45%{opacity:.15}70%,100%{opacity:1}}
+@keyframes ht-logo{from{opacity:0;transform:scale(1.06)}to{opacity:1;transform:none}}
+@keyframes ht-rise{to{opacity:1;transform:translate(-50%,0)}}
+@keyframes ht-sweep{to{background-position:0 0}}

@@ -48,11 +48,11 @@
     0 0 42px rgba(255, 122, 26, 0.4);
 }
 .winter {
-  color: #ffe3e6;
+  color: #eaf8ff;
   text-shadow:
-    0 0 6px rgba(255, 77, 90, 0.9),
-    0 0 18px rgba(255, 77, 90, 0.65),
-    0 0 42px rgba(255, 77, 90, 0.4);
+    0 0 6px rgba(95, 180, 255, 0.9),
+    0 0 18px rgba(95, 180, 255, 0.65),
+    0 0 42px rgba(95, 180, 255, 0.4);
 }
 @media (prefers-reduced-motion: reduce) {
   .the {
