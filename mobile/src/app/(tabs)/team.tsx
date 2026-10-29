@@ -246,7 +246,7 @@ function TeamSubNav() {
       ? [{ label: 'Matchup', go: () => router.push({ pathname: '/matchup/[id]', params: { id: String(matchupId) } }) }]
       : []),
     { label: 'War Room', go: () => router.push('/war-room' as Href) },
-    { label: 'Free Agents', go: () => router.push('/players' as Href) },
+    { label: 'Free Agents', go: () => router.push('/free-agents' as Href) },
     { label: 'Trades', go: () => router.push('/trades') },
   ];
   return (

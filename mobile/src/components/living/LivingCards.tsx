@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
@@ -263,7 +263,7 @@ export function ClaimResultsCard({ run, color, others = [] }: { run: WaiverClaim
           Set {won[0].add_player_name} in your lineup →
         </LinkText>
       ) : (
-        <LinkText color={color} onPress={() => router.navigate('/players')}>
+        <LinkText color={color} onPress={() => router.push('/free-agents' as Href)}>
           Browse free agents →
         </LinkText>
       )}

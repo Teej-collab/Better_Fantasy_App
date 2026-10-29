@@ -446,7 +446,7 @@ export function FreeAgentsCard({ players, by, title, color }: { players: FreeAge
         />
         </Pressable>
       ))}
-      <LinkText color={color} onPress={() => router.navigate('/players')}>
+      <LinkText color={color} onPress={() => router.push('/free-agents' as Href)}>
         All free agents →
       </LinkText>
     </Panel>

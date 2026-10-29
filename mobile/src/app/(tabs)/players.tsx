@@ -40,7 +40,7 @@ const IDP_POSITIONS: { label: string; value: string | undefined }[] = [
   { label: 'DB', value: 'DB' },
 ];
 
-function PlayersScreenContent() {
+export function PlayersScreenContent() {
   const scrollRef = useTabScrollRef<FlatList<FreeAgent>>();
   const tabBarScroll = useTabBarScroll();
   const idp = useMe().data?.league_format?.roster_preset === 'idp';
