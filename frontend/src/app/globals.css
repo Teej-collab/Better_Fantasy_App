@@ -2544,8 +2544,11 @@ button.wx-pane:focus-visible{outline:2px solid #4cc3ff;outline-offset:2px}
 .wx-content{position:relative;display:block;padding:10px 12px}
 .wx-fx{position:absolute;inset:0;pointer-events:none}
 .wx-cloud{position:absolute;left:-10%;right:-10%;top:-36px;height:90px;background:radial-gradient(40% 60% at 20% 40%,rgba(70,75,110,.55),transparent 70%),radial-gradient(45% 70% at 60% 30%,rgba(60,62,95,.6),transparent 70%),radial-gradient(35% 60% at 90% 45%,rgba(70,75,110,.5),transparent 70%);animation:wx-drift 9s ease-in-out infinite alternate}
-.wx-rain{position:absolute;inset:-40px -40px 0 -40px;background:repeating-linear-gradient(105deg,transparent 0 9px,rgba(170,190,255,.22) 9px 10px,transparent 10px 23px);background-size:100% 60px;animation:wx-rain .45s linear infinite}
-.wx-rain-soft{background:repeating-linear-gradient(100deg,transparent 0 13px,rgba(140,200,255,.18) 13px 14px,transparent 14px 31px);background-size:100% 80px;animation-duration:.7s}
+.wx-speck{position:absolute;border-radius:50%;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.9),rgba(170,210,255,.45) 45%,rgba(170,210,255,0) 72%);opacity:0;animation:wx-speck 1.4s ease-out infinite}
+.wx-k-storm .wx-speck{background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.95),rgba(190,180,255,.5) 45%,rgba(190,180,255,0) 72%)}
+.wx-whiteout{position:absolute;inset:0;background:radial-gradient(90% 80% at 30% 50%,rgba(235,245,255,.3),rgba(235,245,255,.05) 70%);animation:wx-whiteout 3.2s ease-in-out infinite}
+.wx-bflake{position:absolute;border-radius:50%;background:#fff;box-shadow:0 0 5px rgba(255,255,255,.9);animation:wx-bliz linear infinite}
+.wx-wind-white path{stroke:rgba(240,250,255,.55)}
 .wx-flash{position:absolute;inset:0;background:radial-gradient(80% 90% at 70% 0%,rgba(225,220,255,.55),rgba(150,140,255,.12) 60%,transparent);opacity:0;animation:wx-flash 5.5s 1.5s infinite}
 .wx-bolt{position:absolute;right:64px;top:-4px;width:30px;height:68px;opacity:0;animation:wx-bolt 5.5s 1.5s infinite;filter:drop-shadow(0 0 6px #d9d4ff) drop-shadow(0 0 16px #8f7bff)}
 .wx-edge{position:absolute;inset:0;border-radius:16px;box-shadow:inset 0 0 0 1.5px rgba(190,180,255,.9),0 0 24px rgba(150,130,255,.7);opacity:0;animation:wx-flash 5.5s 1.5s infinite}
@@ -2557,7 +2560,9 @@ button.wx-pane:focus-visible{outline:2px solid #4cc3ff;outline-offset:2px}
 svg.wx-wind{position:absolute;inset:0;width:100%;height:100%;border:0;background:none}
 .wx-wind path{fill:none;stroke:rgba(140,255,230,.45);stroke-width:2;stroke-linecap:round;stroke-dasharray:60 400;stroke-dashoffset:460;animation:wx-gust 2.6s cubic-bezier(.4,0,.3,1) infinite;vector-effect:non-scaling-stroke}
 .wx-poked .wx-wind path{animation:wx-gust .7s linear 3,wx-gust 2.6s cubic-bezier(.4,0,.3,1) 2.1s infinite;stroke:rgba(170,255,240,.75);stroke-width:3}
-@keyframes wx-rain{to{background-position:-16px 60px}}
+@keyframes wx-speck{0%{opacity:0;transform:scale(.2)}8%{opacity:1;transform:scale(1.15)}18%{transform:scale(1)}100%{opacity:0;transform:translateY(3px)}}
+@keyframes wx-whiteout{0%,100%{opacity:.5}50%{opacity:1}}
+@keyframes wx-bliz{from{transform:translate(0,-20px)}to{transform:translate(440px,60px)}}
 @keyframes wx-drift{to{transform:translateX(6%)}}
 @keyframes wx-flash{0%,58%,100%{opacity:0}60%{opacity:1}62%{opacity:.1}64%{opacity:.85}70%{opacity:0}}
 @keyframes wx-bolt{0%,59%,100%{opacity:0}60%{opacity:1}63%{opacity:.2}64%{opacity:1}68%{opacity:0}}
@@ -2567,5 +2572,5 @@ svg.wx-wind{position:absolute;inset:0;width:100%;height:100%;border:0;background
 @keyframes wx-gust{to{stroke-dashoffset:0}}
 @media (prefers-reduced-motion:reduce){
   .wx-fx *{animation:none!important}
-  .wx-rain,.wx-bead,.wx-flake,.wx-flash,.wx-bolt,.wx-edge,svg.wx-wind{display:none}
+  .wx-speck,.wx-bead,.wx-flake,.wx-bflake,.wx-flash,.wx-bolt,.wx-edge,svg.wx-wind{display:none}
 }

@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { submitLineupSwap, type MatchupContextSide, type NflGame, type RosterEntry, type RosterPlayer, type WatchPartyRoom, type WeekMatchupContextItem, type YourWeekMatchup } from "@/lib/api";
 import { fmt, isStarter, when } from "@/lib/livingHome";
 import { Big, Chip, DOWN, Kicker, LinkText, Panel, Row, Small, UP } from "@/components/living/LivingParts";
-import { WeatherPane, windLine, windy } from "@/components/living/WeatherFx";
+import { weatherLabel, WeatherPane, windLine, windy } from "@/components/living/WeatherFx";
 
 // Lineup and game-time cards (the website's copy of the app's
 // mobile/src/components/living/LineupTools.tsx and LiveTools.tsx).
@@ -205,7 +205,7 @@ export function WeatherCard({ games, roster }: { games: NflGame[]; roster: Roste
           const w = g.weather!;
           const yours = roster.filter((p) => isStarter(p.lineup_slot) && (p.pro_team === g.home_team || p.pro_team === g.away_team));
           const names = yours.map((p) => p.player_name).join(", ");
-          const headline = [w.condition, w.temperature != null ? `${w.temperature}°` : null].filter(Boolean).join(" · ");
+          const headline = [weatherLabel(w), w.temperature != null ? `${w.temperature}°` : null].filter(Boolean).join(" · ");
           const wind = windLine(w);
           return (
             <WeatherPane key={g.id} weather={w} label={`${g.away_team} at ${g.home_team}, ${headline}${wind ? `, ${wind}` : ""}. ${names}`}>

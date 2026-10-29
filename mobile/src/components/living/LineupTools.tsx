@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { Chip, Kicker, LinkText, Panel, Row } from '@/components/living/LivingCards';
-import { kindColor, WeatherPane, windLine, windy } from '@/components/living/WeatherFx';
+import { kindColor, weatherLabel, WeatherPane, windLine, windy } from '@/components/living/WeatherFx';
 import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
@@ -209,7 +209,7 @@ export function WeatherCard({ games, roster }: { games: NflGame[]; roster: Roste
           const w = g.weather!;
           const yours = roster.filter((p) => isStarter(p.lineup_slot) && (p.pro_team === g.home_team || p.pro_team === g.away_team));
           const names = yours.map((p) => p.player_name).join(', ');
-          const headline = [w.condition, w.temperature != null ? `${w.temperature}°` : null].filter(Boolean).join(' · ');
+          const headline = [weatherLabel(w), w.temperature != null ? `${w.temperature}°` : null].filter(Boolean).join(' · ');
           const wind = windLine(w);
           return (
             <WeatherPane key={g.id} weather={w} label={`${g.away_team} at ${g.home_team}, ${headline}${wind ? `, ${wind}` : ''}. ${names}`}>

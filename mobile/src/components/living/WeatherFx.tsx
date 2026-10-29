@@ -20,11 +20,12 @@ import type { NflGame } from '@/lib/types';
 
 // Weather Watch's living panes (Niko's idea, 2026-10-29 "Weather Watch ·
 // animated" mockup; the web's twin is frontend/src/components/living/
-// WeatherFx.tsx): each game's row sits on its own weather. Storms rain
-// and flash with lightning (tap one to make it strike), rain beads on the
-// glass, snow falls with frost in the corners, and wind blows swirls
-// across, over any of the others too (tap for a gust). With Reduce
-// Motion on, just the still tint.
+// WeatherFx.tsx): each game's row sits on its own weather. Rain speckles
+// the glass (Niko: drops hitting the screen, not falling lines) and
+// storms flash with lightning too (tap one to make it strike); snow falls
+// with frost in the corners, from a few flurries up to a sideways
+// blizzard; and wind blows swirls across, over any of the others too (tap
+// for a gust). With Reduce Motion on, just the still tint.
 
 type Weather = NonNullable<NflGame['weather']>;
 export type WeatherKind = 'storm' | 'snow' | 'rain' | 'wind' | 'cold';
@@ -50,6 +51,25 @@ export function weatherKind(w: Weather): WeatherKind {
   return 'cold';
 }
 
+export type SnowLevel = 'flurries' | 'snow' | 'blizzard';
+
+export function snowLevel(w: Weather): SnowLevel {
+  const c = w.condition?.toLowerCase() ?? '';
+  if (/blizzard|heavy snow/.test(c) || (w.wind_mph ?? 0) >= 20 || (w.wind_gust_mph ?? 0) >= 35) return 'blizzard';
+  if (/flurr|light snow|snow shower/.test(c)) return 'flurries';
+  return 'snow';
+}
+
+/** What the pane calls the weather: ESPN's words, except "Windy" when the
+ *  wind is the story (ESPN would say "Partly cloudy") and "Blizzard" for
+ *  snow in a gale. */
+export function weatherLabel(w: Weather): string | null {
+  const kind = weatherKind(w);
+  if (kind === 'wind') return 'Windy';
+  if (kind === 'snow' && snowLevel(w) === 'blizzard') return 'Blizzard';
+  return w.condition;
+}
+
 export function kindColor(kind: WeatherKind): string {
   return kind === 'storm' ? STORM : kind === 'rain' ? RAIN : kind === 'wind' ? WIND : ICE;
 }
@@ -65,6 +85,7 @@ export function WeatherPane({ weather, label, children }: { weather: Weather; la
   const reduceMotion = useReducedMotion();
   const kind = weatherKind(weather);
   const blowing = windy(weather);
+  const level = kind === 'snow' ? snowLevel(weather) : null;
   const [size, setSize] = useState({ w: 0, h: 0 });
   // Bumped by a tap: a strike for storms, a gust for wind.
   const [poke, setPoke] = useState(0);
@@ -78,8 +99,9 @@ export function WeatherPane({ weather, label, children }: { weather: Weather; la
       {!reduceMotion && (kind === 'storm' || kind === 'rain') && <Rain w={size.w} h={size.h} heavy={kind === 'storm'} />}
       {!reduceMotion && kind === 'rain' && <Beads w={size.w} h={size.h} />}
       {(kind === 'snow' || kind === 'cold') && <Frost w={size.w} h={size.h} still={reduceMotion} />}
-      {!reduceMotion && kind === 'snow' && <Snow w={size.w} h={size.h} />}
-      {!reduceMotion && blowing && <Wind w={size.w} h={size.h} poke={poke} />}
+      {kind === 'snow' && level === 'blizzard' && <Whiteout still={reduceMotion} />}
+      {!reduceMotion && level && <Snow w={size.w} h={size.h} level={level} />}
+      {!reduceMotion && (blowing || level === 'blizzard') && <Wind w={size.w} h={size.h} poke={poke} white={kind === 'snow'} />}
       {!reduceMotion && kind === 'storm' && <Lightning w={size.w} poke={poke} />}
     </View>
   );
@@ -186,22 +208,37 @@ function Lightning({ w, poke }: { w: number; poke: number }) {
 
 // ---- Rain ----
 
+// Drops hitting the glass: each speck lands, swells, and fades where it hit.
 function Rain({ w, h, heavy }: { w: number; h: number; heavy: boolean }) {
-  const count = heavy ? 16 : 10;
+  const count = heavy ? 26 : 14;
+  const duration = heavy ? 1100 : 1800;
   return (
     <>
       {Array.from({ length: count }, (_, i) => (
-        <Streak key={i} x={((i * 61) % 100) / 100 * (w + 40) - 20} h={h} offset={((i * 37) % 100) / 100} heavy={heavy} />
+        <Speck key={i} x={((i * 47 + 9) % 97) / 100 * w} y={((i * 31 + 5) % 90) / 100 * h} size={3 + ((i * 7) % 5)} offset={((i * 0.29) % 1)} duration={duration} heavy={heavy} />
       ))}
     </>
   );
 }
 
-function Streak({ x, h, offset, heavy }: { x: number; h: number; offset: number; heavy: boolean }) {
-  const t = useLoop(heavy ? 520 : 800, offset);
-  const len = heavy ? 18 : 12;
-  const style = useAnimatedStyle(() => ({ transform: [{ translateY: -len + t.get() * (h + len) }, { translateX: -t.get() * 14 }, { rotate: '15deg' }] }));
-  return <Animated.View style={[{ position: 'absolute', top: 0, left: x, width: 1, height: len, backgroundColor: heavy ? 'rgba(170,190,255,0.35)' : 'rgba(140,200,255,0.3)' }, style]} />;
+function Speck({ x, y, size, offset, duration, heavy }: { x: number; y: number; size: number; offset: number; duration: number; heavy: boolean }) {
+  const t = useLoop(duration, offset);
+  const style = useAnimatedStyle(() => {
+    const p = t.get();
+    return {
+      opacity: p < 0.08 ? p / 0.08 : 1 - (p - 0.08) / 0.92,
+      transform: [{ translateY: p * 3 }, { scale: p < 0.08 ? 0.2 + (p / 0.08) * 0.95 : p < 0.18 ? 1.15 - ((p - 0.08) / 0.1) * 0.15 : 1 }],
+    };
+  });
+  return (
+    <Animated.View
+      style={[
+        styles.speck,
+        { left: x, top: y, width: size, height: size, borderRadius: size, backgroundColor: heavy ? 'rgba(205,200,255,0.55)' : 'rgba(190,225,255,0.5)' },
+        style,
+      ]}
+    />
+  );
 }
 
 function Beads({ w, h }: { w: number; h: number }) {
@@ -256,20 +293,54 @@ function Frost({ w, h, still }: { w: number; h: number; still: boolean }) {
   );
 }
 
-function Snow({ w, h }: { w: number; h: number }) {
+const SNOW = {
+  flurries: { count: 9, base: 4600, step: 800 },
+  snow: { count: 18, base: 3200, step: 600 },
+  blizzard: { count: 40, base: 900, step: 250 },
+} as const;
+
+function Snow({ w, h, level }: { w: number; h: number; level: SnowLevel }) {
+  const { count, base, step } = SNOW[level];
   return (
     <>
-      {Array.from({ length: 16 }, (_, i) => (
-        <Flake key={i} x={((i * 37 + 9) % 100) / 100 * w} h={h} size={2 + (i % 3)} offset={((i * 0.71) % 4) / 4} duration={3200 + (i % 5) * 600} />
+      {Array.from({ length: count }, (_, i) => (
+        <Flake
+          key={i}
+          x={((i * 37 + 9) % 100) / 100 * w}
+          y={((i * 23) % 100) / 100 * h}
+          w={w}
+          h={h}
+          size={2 + (i % (level === 'blizzard' ? 4 : 3))}
+          offset={((i * 0.71) % 4) / 4}
+          duration={base + (i % 5) * step}
+          sideways={level === 'blizzard'}
+        />
       ))}
     </>
   );
 }
 
-function Flake({ x, h, size, offset, duration }: { x: number; h: number; size: number; offset: number; duration: number }) {
+function Flake({ x, y, w, h, size, offset, duration, sideways }: { x: number; y: number; w: number; h: number; size: number; offset: number; duration: number; sideways: boolean }) {
   const t = useLoop(duration, offset);
-  const style = useAnimatedStyle(() => ({ transform: [{ translateY: -8 + t.get() * (h + 16) }, { translateX: t.get() * 14 }] }));
-  return <Animated.View style={[{ position: 'absolute', top: 0, left: x, width: size, height: size, borderRadius: size, backgroundColor: '#fff', opacity: 0.8 }, style]} />;
+  // Falling, or in a blizzard driven sideways across the whole pane.
+  const style = useAnimatedStyle(() =>
+    sideways
+      ? { transform: [{ translateX: -x - 10 + t.get() * (w + 20) }, { translateY: -y * 0.4 + t.get() * h * 0.6 }] }
+      : { transform: [{ translateY: -y - 8 + t.get() * (h + 16) }, { translateX: t.get() * 14 }] },
+  );
+  return <Animated.View style={[{ position: 'absolute', top: y, left: x, width: size, height: size, borderRadius: size, backgroundColor: '#fff', opacity: 0.8 }, style]} />;
+}
+
+// A blizzard's white haze, thickening and thinning.
+function Whiteout({ still }: { still: boolean }) {
+  const v = useSharedValue(0.75);
+  useEffect(() => {
+    if (still) return;
+    v.set(withRepeat(withTiming(0.35, { duration: 1600, easing: Easing.inOut(Easing.sin) }), -1, true));
+    return () => cancelAnimation(v);
+  }, [v, still]);
+  const style = useAnimatedStyle(() => ({ opacity: v.get() }));
+  return <Animated.View style={[StyleSheet.absoluteFill, styles.whiteout, style]} />;
 }
 
 // ---- Wind ----
@@ -277,7 +348,7 @@ function Flake({ x, h, size, offset, duration }: { x: number; h: number; size: n
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const SWIRL_DASH = 460;
 
-function Wind({ w, h, poke }: { w: number; h: number; poke: number }) {
+function Wind({ w, h, poke, white }: { w: number; h: number; poke: number; white: boolean }) {
   // Paths drawn for a 390 × 120 pane, scaled to this one.
   const paths = [
     'M-20 34 C60 18 120 46 190 30 S300 12 330 26 C350 36 335 52 318 46',
@@ -287,13 +358,13 @@ function Wind({ w, h, poke }: { w: number; h: number; poke: number }) {
   return (
     <Svg width={w} height={h} viewBox="0 0 390 120" preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
       {paths.map((d, i) => (
-        <Swirl key={i} d={d} delay={i * 870} poke={poke} />
+        <Swirl key={i} d={d} delay={i * 870} poke={poke} color={white ? '#f0faff' : '#8cffe6'} />
       ))}
     </Svg>
   );
 }
 
-function Swirl({ d, delay, poke }: { d: string; delay: number; poke: number }) {
+function Swirl({ d, delay, poke, color }: { d: string; delay: number; poke: number; color: string }) {
   const t = useSharedValue(0);
   // 0 → 1 while a tapped gust blows: brighter, thicker swirls.
   const gust = useSharedValue(0);
@@ -316,12 +387,14 @@ function Swirl({ d, delay, poke }: { d: string; delay: number; poke: number }) {
     strokeOpacity: 0.45 + 0.3 * gust.get(),
     strokeWidth: 2 + gust.get(),
   }));
-  return <AnimatedPath d={d} fill="none" stroke="#8cffe6" strokeLinecap="round" strokeDasharray={[60, 400]} animatedProps={props} />;
+  return <AnimatedPath d={d} fill="none" stroke={color} strokeLinecap="round" strokeDasharray={[60, 400]} animatedProps={props} />;
 }
 
 const styles = StyleSheet.create({
   pane: { borderRadius: 16, borderWidth: 1, backgroundColor: PANE_BG, overflow: 'hidden' },
   content: { paddingHorizontal: 12, paddingVertical: 10 },
   edge: { borderRadius: 16, borderWidth: 1.5, borderColor: 'rgba(190,180,255,0.9)' },
+  speck: { position: 'absolute' },
+  whiteout: { backgroundColor: 'rgba(230,242,255,0.16)' },
   bead: { position: 'absolute', width: 5, height: 7, borderRadius: 3, backgroundColor: 'rgba(200,230,255,0.45)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.6)' },
 });
