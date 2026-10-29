@@ -26,6 +26,7 @@ is worth, which other games to root for, and how often points for ends
 up deciding their spot.
 """
 import asyncio
+import logging
 import random
 import time
 import zlib
@@ -33,6 +34,8 @@ from collections import OrderedDict
 from statistics import mean, pstdev
 
 from app.domain.playoffs import get_playoff_world
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SIMS = 10000
 # Prior games' weight when shrinking a team's numbers toward the league
@@ -93,8 +96,19 @@ def _team_models(world: dict, scenario: dict) -> dict[int, dict]:
 
 def simulate(world: dict, scenario: dict, focus_team: int | None, sims: int, seed: int) -> dict:
     rng = random.Random(seed)
-    models = _team_models(world, scenario)
     team_ids = [t["team_id"] for t in world["teams"]]
+    # Only games between this season's teams, and a focus team that's one
+    # of them (2026-10-29: "KeyError: 1" on .../playoffs/odds, a schedule
+    # game or ?team= naming a team this league's season doesn't have).
+    known = set(team_ids)
+    schedule = [g for g in world["schedule"] if g["home_team_id"] in known and g["away_team_id"] in known]
+    if len(schedule) < len(world["schedule"]):
+        stray = sorted({t for g in world["schedule"] for t in (g["home_team_id"], g["away_team_id"])} - known)
+        logger.warning("Playoff odds: skipping %d games with teams not in the season (%s)", len(world["schedule"]) - len(schedule), stray)
+        world = {**world, "schedule": schedule}
+    if focus_team not in known:
+        focus_team = None
+    models = _team_models(world, scenario)
     count = world["playoff_team_count"]
     by_points = world.get("rank_by") == "points"
     bowl_line = count + 4
