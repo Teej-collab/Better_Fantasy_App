@@ -978,6 +978,18 @@ export const api = {
     recaps: () => request<A.AdminRecaps>('/admin/recaps'),
     waitlist: () => request<A.AdminWaitlist>('/admin/waitlist'),
     taps: (days = 30) => request<A.AdminTaps>(`/admin/taps?days=${days}`),
+    inbox: () => request<A.AdminInbox>('/admin/inbox'),
+    claim: (kind: A.AdminInboxKind, ref: string, mine: boolean) =>
+      request<{ ok: true }>(mine ? '/admin/inbox/claim' : '/admin/inbox/unclaim', { method: 'POST', body: JSON.stringify({ kind, ref }) }),
+    setDone: (kind: A.AdminInboxKind, ref: string, done: boolean) =>
+      request<{ ok: true }>('/admin/inbox/done', { method: 'POST', body: JSON.stringify({ kind, ref, done }) }),
+    // One of the jobs in components/admin/AdminJobs.tsx's JOBS.
+    // A full ESPN sync can take minutes, longer than the usual timeout.
+    runJob: (path: string) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5 * 60_000);
+      return request<Record<string, unknown>>(path, { method: 'POST', signal: controller.signal }).finally(() => clearTimeout(timer));
+    },
   },
   playerView: (view: Exclude<PlayerViewKey, 'matchup'>, playerIds: string[]) =>
     request<PlayerViewData>(`/me/team/player-views/${view}?ids=${encodeURIComponent(playerIds.join(','))}`),

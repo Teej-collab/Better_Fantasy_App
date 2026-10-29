@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, type GestureResponderEvent } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Polygon, Polyline, Stop } from 'react-native-svg';
@@ -7,6 +8,7 @@ import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { api } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
 import { useMe } from '@/lib/queries';
 
@@ -20,6 +22,11 @@ const WARN = '#f59e0b';
 const BAD = '#ef4444';
 
 export const WINDOW_OPTIONS = [7, 30, 90] as const;
+
+// The last 24 hours' crash, error and failed sign-in counts (GET /admin/badges).
+export function useAdminBadges() {
+  return useQuery({ queryKey: ['admin', 'badges'], queryFn: api.admin.badges, refetchInterval: 60_000 });
+}
 
 // Site owner only; every /admin endpoint re-checks this server-side.
 export function AdminScreen({ children }: { children: ReactNode }) {

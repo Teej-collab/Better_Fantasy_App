@@ -144,7 +144,15 @@ export type AdminUserDetail = AdminUserRow & {
   delete_blockers: string[];
 };
 
-export type AdminLeagueRow = { id: number; name: string; created_at: string; member_count: number; recent_events: number };
+export type AdminLeagueRow = {
+  id: number;
+  name: string;
+  created_at: string;
+  member_count: number;
+  recent_events: number;
+  active_members: number;
+  source: 'espn' | 'sleeper' | 'app';
+};
 
 export type AdminLeagueList = { window_days: number; leagues: AdminLeagueRow[] };
 
@@ -302,3 +310,19 @@ export type AdminAiUsage = {
   by_feature: { feature: string; calls: number; input_tokens: number; output_tokens: number; cost: number }[];
   by_league: { league_id: number | null; name: string; calls: number; cost: number }[];
 };
+
+// GET /admin/inbox (2026-10-28): what needs a person, with who claimed
+// each item (backend app/queries/admin_inbox.py).
+export type AdminInboxKind = 'error' | 'crash' | 'feedback' | 'waitlist' | 'join' | 'league';
+export type AdminInboxItem = {
+  kind: AdminInboxKind;
+  ref: string;
+  title: string;
+  detail: string;
+  at: string;
+  link: { screen: 'error' | 'crashes' | 'feedback' | 'waitlist' | 'league'; id?: string; image_url?: string | null };
+  done: boolean;
+  claimed_by: { user_id: number; name: string } | null;
+  done_by: string | null;
+};
+export type AdminInbox = { me: number; items: AdminInboxItem[] };

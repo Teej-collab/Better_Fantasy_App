@@ -12,6 +12,8 @@ the closest real signal available today. `feature` events that ARE
 inherently league-scoped (league_switched) do carry a real league_id
 and could sharpen this in a later phase.
 """
+from app.config import DEFAULT_LEAGUE_ID
+
 ACTIVE_WINDOW_DAYS = 7
 
 
@@ -25,7 +27,18 @@ async def list_leagues(conn, days: int) -> list[dict]:
                    JOIN owner_users ou ON ou.owner_id = ae.owner_id
                    JOIN league_members lm ON lm.user_id = ou.user_id AND lm.league_id = l.id
                    WHERE ae.created_at >= now() - interval '{int(days)} days'
-               ) AS recent_events
+               ) AS recent_events,
+               (
+                   SELECT count(DISTINCT ae.owner_id) FROM analytics_events ae
+                   JOIN owner_users ou ON ou.owner_id = ae.owner_id
+                   JOIN league_members lm ON lm.user_id = ou.user_id AND lm.league_id = l.id
+                   WHERE ae.created_at >= now() - interval '{int(days)} days'
+               ) AS active_members,
+               CASE
+                   WHEN l.id = {int(DEFAULT_LEAGUE_ID)} OR EXISTS (SELECT 1 FROM league_espn_connections c WHERE c.league_id = l.id) THEN 'espn'
+                   WHEN EXISTS (SELECT 1 FROM league_sleeper_connections c WHERE c.league_id = l.id) THEN 'sleeper'
+                   ELSE 'app'
+               END AS source
         FROM leagues l
         ORDER BY recent_events DESC, l.created_at DESC
         """

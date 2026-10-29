@@ -3268,7 +3268,15 @@ export type AdminUserDetail = AdminUserRow & {
   delete_blockers: string[];
 };
 
-export type AdminLeagueRow = { id: number; name: string; created_at: string; member_count: number; recent_events: number };
+export type AdminLeagueRow = {
+  id: number;
+  name: string;
+  created_at: string;
+  member_count: number;
+  recent_events: number;
+  active_members: number;
+  source: "espn" | "sleeper" | "app";
+};
 export type AdminLeagueList = { window_days: number; leagues: AdminLeagueRow[] };
 
 export type AdminLeagueMember = {
@@ -3627,4 +3635,64 @@ export type AdminTaps = { window_days: number; total_taps: number; targets: Admi
 
 export async function getAdminTapsServer(sessionCookie: string | undefined, days: number): Promise<AdminTaps | null> {
   return getServer<AdminTaps>(`/admin/taps?days=${days}`, sessionCookie).catch(() => null);
+}
+
+// Admin inbox (2026-10-28): what needs a person, with who claimed each
+// item so two admins don't both chase it (backend app/queries/admin_inbox.py).
+export type AdminInboxKind = "error" | "crash" | "feedback" | "waitlist" | "join" | "league";
+export type AdminInboxItem = {
+  kind: AdminInboxKind;
+  ref: string;
+  title: string;
+  detail: string;
+  at: string;
+  link: { screen: "error" | "crashes" | "feedback" | "waitlist" | "league"; id?: string; image_url?: string | null };
+  done: boolean;
+  claimed_by: { user_id: number; name: string } | null;
+  done_by: string | null;
+};
+export type AdminInbox = { me: number; items: AdminInboxItem[] };
+
+export async function getAdminInboxServer(sessionCookie: string | undefined): Promise<AdminInbox | null> {
+  return getServer<AdminInbox>("/admin/inbox", sessionCookie).catch(() => null);
+}
+
+export function getAdminInbox(): Promise<AdminInbox> {
+  return _adminGet("/admin/inbox");
+}
+
+export function claimInboxItem(kind: AdminInboxKind, ref: string, mine: boolean) {
+  return sendJson<{ ok: true }>(mine ? "/admin/inbox/claim" : "/admin/inbox/unclaim", "POST", { kind, ref });
+}
+
+export function setInboxItemDone(kind: AdminInboxKind, ref: string, done: boolean) {
+  return sendJson<{ ok: true }>("/admin/inbox/done", "POST", { kind, ref, done });
+}
+
+// One of AdminJobs.tsx's JOBS (ESPN sync, weekly scoring, players, projections).
+export function runAdminJob(path: string) {
+  return sendJson<Record<string, unknown>>(path, "POST");
+}
+
+// Admin > AI Costs (GET /admin/ai-usage).
+export type AdminAiUsage = {
+  days: number;
+  since: string | null;
+  total_cost: number;
+  calls: number;
+  per_league_per_week: number | null;
+  by_feature: { feature: string; calls: number; input_tokens: number; output_tokens: number; cost: number }[];
+  by_league: { league_id: number | null; name: string; calls: number; cost: number }[];
+};
+
+export async function getAdminAiUsageServer(sessionCookie: string | undefined, days = 30): Promise<AdminAiUsage | null> {
+  return getServer<AdminAiUsage>(`/admin/ai-usage?days=${days}`, sessionCookie).catch(() => null);
+}
+
+export function getAdminAiUsage(days = 7): Promise<AdminAiUsage> {
+  return _adminGet(`/admin/ai-usage?days=${days}`);
+}
+
+export async function getAdminBadgesServer(sessionCookie: string | undefined): Promise<AdminBadges | null> {
+  return getServer<AdminBadges>("/admin/badges", sessionCookie).catch(() => null);
 }

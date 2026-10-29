@@ -44,6 +44,7 @@ from app.queries import admin_recaps
 from app.queries import (
     admin_analytics,
     admin_engagement,
+    admin_inbox,
     admin_leagues,
     admin_monitoring,
     admin_overview,
@@ -754,3 +755,64 @@ async def get_league_detail(league_id: int, request: Request, days: int = 7):
     if league is None:
         raise HTTPException(status_code=404, detail="No league found")
     return league
+
+
+# ---- Admin inbox (2026-10-28): what needs a person, with claiming so two
+# admins don't both chase the same thing (app/queries/admin_inbox.py).
+
+
+class InboxItemRequest(BaseModel):
+    kind: str
+    ref: str = Field(min_length=1, max_length=200)
+
+
+class InboxDoneRequest(InboxItemRequest):
+    done: bool = True
+
+
+def _check_kind(kind: str) -> None:
+    if kind not in admin_inbox.KINDS:
+        raise HTTPException(status_code=400, detail=f"kind must be one of {list(admin_inbox.KINDS)}")
+
+
+@router.get("/inbox")
+async def get_inbox(request: Request):
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        items = await admin_inbox.get_inbox(conn)
+    return {"me": payload["user_id"], "items": items}
+
+
+@router.post("/inbox/claim")
+async def claim_inbox_item(body: InboxItemRequest, request: Request):
+    payload = _require_session(request)
+    _check_kind(body.kind)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        await admin_inbox.claim(conn, body.kind, body.ref, payload["user_id"])
+    return {"ok": True}
+
+
+@router.post("/inbox/unclaim")
+async def unclaim_inbox_item(body: InboxItemRequest, request: Request):
+    payload = _require_session(request)
+    _check_kind(body.kind)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        await admin_inbox.claim(conn, body.kind, body.ref, None)
+    return {"ok": True}
+
+
+@router.post("/inbox/done")
+async def mark_inbox_item_done(body: InboxDoneRequest, request: Request):
+    payload = _require_session(request)
+    _check_kind(body.kind)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        await admin_inbox.set_done(conn, body.kind, body.ref, payload["user_id"], body.done)
+    return {"ok": True}
