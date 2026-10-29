@@ -17,12 +17,13 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { InjuryTag } from '@/components/players/InjuryTag';
 import { PlayerHeadshot } from '@/components/PlayerHeadshot';
 import { PositionStripe } from '@/components/PositionStripe';
 import { PreviewLink } from '@/components/PreviewLink';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
-import { formatGameTime, formatPoints } from '@/lib/format';
+import { formatGameTimeShort, formatPoints } from '@/lib/format';
 import { haptics } from '@/lib/haptics';
 import { trackTap } from '@/lib/analytics';
 import { lineupAdvice, moveTargets, openStarterSlots, type Advice, type MoveTarget } from '@/lib/lineupMoves';
@@ -417,9 +418,12 @@ function PlayerRow({
     };
   });
 
+  // The slot pill already says the position when he's playing it.
+  const position = entry.position === 'DEF' ? 'D/ST' : entry.position;
+  const samePosition = slotDisplayLabel(entry.lineup_slot ?? '') === position;
   const detail = [
-    `${entry.position === 'DEF' ? 'D/ST' : entry.position}${entry.pro_team ? ` · ${entry.pro_team}` : ''}`,
-    entry.on_bye ? 'Bye' : entry.next_opponent && (entry.game_time ? `${entry.next_opponent} ${formatGameTime(entry.game_time)}` : entry.next_opponent),
+    [samePosition ? null : position, entry.pro_team].filter(Boolean).join(' · '),
+    entry.on_bye ? 'Bye' : entry.next_opponent && (entry.game_time ? `${entry.next_opponent} ${formatGameTimeShort(entry.game_time)}` : entry.next_opponent),
   ]
     .filter(Boolean)
     .join('  ·  ');
@@ -431,7 +435,7 @@ function PlayerRow({
           <Text style={styles.name} numberOfLines={1}>
             {entry.player_name}
           </Text>
-          {entry.injury_status && <Text style={styles.injury}>{entry.injury_status}</Text>}
+          <InjuryTag status={entry.injury_status} />
           {entry.is_locked && <Text style={styles.locked}>Locked</Text>}
         </View>
         <Text style={styles.detail} numberOfLines={1}>
@@ -625,7 +629,6 @@ const styles = StyleSheet.create({
   player: { flex: 1, minWidth: 0, gap: 2 },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   name: { color: Colors.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
-  injury: { color: Colors.loss, fontSize: 11, fontWeight: '700' },
   locked: { color: Colors.textSecondary, fontSize: 11 },
   detail: { color: Colors.textSecondary, fontSize: 12, fontVariant: ['tabular-nums'] },
   right: { alignItems: 'flex-end', minWidth: 56 },

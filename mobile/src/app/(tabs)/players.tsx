@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
+import { InjuryTag } from '@/components/players/InjuryTag';
 import { PreviewLink } from '@/components/PreviewLink';
 import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { Text } from '@/components/Text';
@@ -12,7 +13,7 @@ import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/pl
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
-import { formatGameTime, formatPoints } from '@/lib/format';
+import { formatGameTimeShort, formatPoints } from '@/lib/format';
 import { proposeTradeFor } from '@/lib/tradeLinks';
 import { openPlayer, useFreeAgents, useMe } from '@/lib/queries';
 import type { FreeAgent } from '@/lib/types';
@@ -229,7 +230,7 @@ function PlayerRow({ player, onAdd }: { player: FreeAgent; onAdd: () => void }) 
     `${player.position === 'DEF' ? 'D/ST' : player.position}${player.pro_team ? ` · ${player.pro_team}` : ''}`,
     isRostered(player)
       ? ownerLabel(player)
-      : player.next_opponent && (player.game_time ? `${player.next_opponent} ${formatGameTime(player.game_time)}` : player.next_opponent),
+      : player.next_opponent && (player.game_time ? `${player.next_opponent} ${formatGameTimeShort(player.game_time)}` : player.next_opponent),
   ]
     .filter(Boolean)
     .join('  ·  ');
@@ -253,7 +254,7 @@ function PlayerRow({ player, onAdd }: { player: FreeAgent; onAdd: () => void }) 
           <Text style={styles.name} numberOfLines={1}>
             {player.full_name}
           </Text>
-          {player.injury_status && <Text style={styles.injury}>{player.injury_status}</Text>}
+          <InjuryTag status={player.injury_status} />
           {onWaivers && !isRostered(player) && <Text style={styles.waiver}>W</Text>}
         </View>
         <Text style={styles.detail} numberOfLines={1}>
@@ -318,7 +319,6 @@ const styles = StyleSheet.create({
   rowPressed: { backgroundColor: Colors.tileRaised },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   name: { color: Colors.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
-  injury: { color: Colors.loss, fontSize: 11, fontWeight: '700' },
   waiver: {
     color: Colors.bg,
     backgroundColor: Colors.textSecondary,

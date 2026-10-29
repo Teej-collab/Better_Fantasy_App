@@ -146,14 +146,26 @@ export function humanizeStatCategory(key: string): string {
   return parts.join(' ');
 }
 
-const INJURY_SHORT_CODE: Record<string, string> = { QUESTIONABLE: 'Q', DOUBTFUL: 'D', OUT: 'O', IR: 'IR', PUP: 'PUP', SUSPENDED: 'S' };
+const INJURY_SHORT_CODE: Record<string, string> = {
+  QUESTIONABLE: 'Q',
+  DOUBTFUL: 'D',
+  OUT: 'O',
+  IR: 'IR',
+  'INJURED RESERVE': 'IR',
+  INJURY_RESERVE: 'IR',
+  PUP: 'PUP',
+  SUSPENDED: 'SUS',
+  'DAY-TO-DAY': 'DTD',
+};
 
+// ESPN and Sleeper spell these in different cases ("Questionable",
+// "QUESTIONABLE"); both get the same short tag.
 export function injuryShortCode(status: string): string {
-  return INJURY_SHORT_CODE[status] ?? status.slice(0, 1);
+  return INJURY_SHORT_CODE[status.toUpperCase()] ?? status.slice(0, 1).toUpperCase();
 }
 
 export function hasInjuryBadge(status: string | null | undefined): status is string {
-  return Boolean(status) && status !== 'ACTIVE';
+  return Boolean(status) && !['ACTIVE', 'HEALTHY', 'NORMAL'].includes(status!.toUpperCase());
 }
 
 export const IN_GAME_INJURY_LABELS = {

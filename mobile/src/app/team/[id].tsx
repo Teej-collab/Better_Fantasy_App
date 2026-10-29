@@ -2,6 +2,7 @@ import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { InjuryTag } from '@/components/players/InjuryTag';
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { openOwner } from '@/components/league/LeagueUI';
 import { PlayerHeadshot } from '@/components/PlayerHeadshot';
@@ -10,7 +11,7 @@ import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState, SectionTitle, TeamAvatar } from '@/components/ui';
 import { WeekStepper } from '@/components/WeekStepper';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { formatGameTime, formatPoints } from '@/lib/format';
+import { formatGameTimeShort, formatPoints } from '@/lib/format';
 import { haptics } from '@/lib/haptics';
 import { openPlayer, useMe, useSeasonWeek, useTeamDetail, useTeamRoster } from '@/lib/queries';
 import { slotDisplayLabel } from '@/lib/rosterSlots';
@@ -143,7 +144,7 @@ function PlayerRow({ player: p, divided }: { player: RosterPlayer; divided: bool
   const position = p.position ?? '';
   const detail = [
     `${position === 'DEF' ? 'D/ST' : position}${p.pro_team ? ` · ${p.pro_team}` : ''}`,
-    p.on_bye ? 'Bye week' : p.next_opponent && (p.game_time ? `${p.next_opponent} ${formatGameTime(p.game_time)}` : p.next_opponent),
+    p.on_bye ? 'Bye week' : p.next_opponent && (p.game_time ? `${p.next_opponent} ${formatGameTimeShort(p.game_time)}` : p.next_opponent),
   ]
     .filter(Boolean)
     .join('  ·  ');
@@ -161,7 +162,7 @@ function PlayerRow({ player: p, divided }: { player: RosterPlayer; divided: bool
             {p.is_boom ? ' 🔥' : ''}
             {p.is_bust ? ' 🥶' : ''}
           </Text>
-          {p.injury_status && <Text style={styles.injury}>{p.injury_status}</Text>}
+          <InjuryTag status={p.injury_status} />
         </View>
         <Text style={styles.detail} numberOfLines={1}>
           {detail}
@@ -201,7 +202,6 @@ const styles = StyleSheet.create({
   player: { flex: 1, minWidth: 0, gap: 2 },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
-  injury: { color: Colors.loss, fontSize: 11, fontWeight: '700' },
   detail: { color: Colors.textSecondary, fontSize: 12 },
   proj: { width: 48, textAlign: 'right', color: 'rgba(255,255,255,0.55)', fontSize: 14, fontVariant: ['tabular-nums'] },
   score: { width: 48, textAlign: 'right', color: Colors.text, fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] },
