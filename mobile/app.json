@@ -140,7 +140,7 @@
         "expo-alternate-app-icons",
         [
           {
-            "name": "Halloween",
+            "name": "HalloweenHive",
             "ios": "./assets/images/app-icon-halloween.png",
             "android": {
               "foregroundImage": "./assets/images/android-icon-foreground-halloween.png",
@@ -148,7 +148,7 @@
             }
           },
           {
-            "name": "Winter",
+            "name": "WinterIce",
             "ios": "./assets/images/app-icon-winter.png",
             "android": {
               "foregroundImage": "./assets/images/android-icon-foreground-winter.png",

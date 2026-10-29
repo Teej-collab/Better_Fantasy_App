@@ -2,6 +2,8 @@ import { requireOptionalNativeModule } from 'expo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ImageSourcePropType } from 'react-native';
 
+import { hasSkia } from '@/lib/skia';
+
 // Seasonal logos (like Snapchat's spider-web icon each October) — kept
 // in step with the web's frontend/src/lib/seasonal.ts. Each season names
 // a date window, its own copy of the in-app emblem, and an alternate
@@ -54,6 +56,15 @@ export async function seasonalIconEnabled(): Promise<boolean> {
   }
 }
 
+// The home-screen icons were redrawn for build 10 (the Hive Mark) under
+// new names: iOS caches an alternate icon by name, so the old names kept
+// showing the old pictures. Builds before 10 (no Skia, which came in the
+// same build) only have the old names.
+function iconName(season: Season): string {
+  if (!hasSkia) return season;
+  return season === 'Halloween' ? 'HalloweenHive' : 'WinterIce';
+}
+
 // Puts the season's icon on the home screen (or back to the normal one
 // once the season's over). iOS shows its own "You have changed the icon"
 // notice each time, so this only switches when the icon is actually
@@ -63,7 +74,8 @@ export async function syncSeasonalAppIcon(): Promise<void> {
   try {
     const mod = icons();
     if (!mod.supportsAlternateIcons) return;
-    const wanted = (await seasonalIconEnabled()) ? currentSeason() : null;
+    const season = (await seasonalIconEnabled()) ? currentSeason() : null;
+    const wanted = season ? iconName(season) : null;
     if (mod.getAppIconName() === wanted) return;
     await mod.setAlternateAppIcon(wanted);
   } catch {
