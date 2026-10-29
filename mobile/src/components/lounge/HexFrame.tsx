@@ -1,8 +1,9 @@
-import { memo, useState, type ReactNode } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
 
+import { GlowBox } from '@/components/fx/Glow';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
 import { teamGlow, type ScoringHit } from '@/lib/scoringHighlights';
@@ -96,14 +97,14 @@ export function HexFrame({
   const loss = !!hit && hit.points < 0;
   const lightStyle = useAnimatedStyle(() => ({ opacity: withTiming(hit ? (loss ? 0.4 : 1) : 0, { duration: 600 }) }));
   const chipStyle = useAnimatedStyle(() => ({ opacity: withTiming(hit ? 1 : 0, { duration: 400 }) }));
+  // The team-color light spilling out around the tile on a scoring play.
+  const halo = useSharedValue(0);
+  useEffect(() => {
+    halo.set(withTiming(hit && !loss ? 1 : 0, { duration: hit ? 250 : 600 }));
+  }, [halo, hit, loss]);
 
   return (
-    <View
-      style={[
-        { width, height, borderRadius: radius },
-        hit && !loss && { shadowColor: c1, shadowOpacity: 0.85, shadowRadius: rail ? 9 : 14, shadowOffset: { width: 0, height: 0 } },
-        style,
-      ]}>
+    <GlowBox color={c1} radius={radius} intensity={0.9} spread={rail ? 9 : 14} opacity={halo} style={[{ width, height, borderRadius: radius }, style]}>
       <View style={[StyleSheet.absoluteFill, styles.clip, { borderRadius: radius }]}>
         <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
           <Defs>
@@ -159,7 +160,7 @@ export function HexFrame({
           </Animated.Text>
         )}
       </View>
-    </View>
+    </GlowBox>
   );
 }
 

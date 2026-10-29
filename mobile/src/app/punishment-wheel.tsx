@@ -13,6 +13,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
 
+import { GlowBox } from '@/components/fx/Glow';
 import { ShareableCard } from '@/components/ShareableCard';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
@@ -259,9 +260,11 @@ export default function PunishmentWheelScreen() {
         <View style={styles.pointer} />
         <View style={styles.tilt}>
           <View style={styles.depth} />
-          <Animated.View style={[styles.face, spinStyle]}>
-            <WheelFace items={faceItems} />
-          </Animated.View>
+          <GlowBox color="#39ff14" radius={R} intensity={0.55} spread={16} style={styles.faceWrap}>
+            <Animated.View style={[styles.face, spinStyle]}>
+              <WheelFace items={faceItems} />
+            </Animated.View>
+          </GlowBox>
           <View style={styles.hub}>
             <Text style={styles.hubText}>THE{'\n'}WEEKEND</Text>
           </View>
@@ -284,6 +287,7 @@ export default function PunishmentWheelScreen() {
       )}
 
       {!result && data.is_commissioner && (
+        <GlowBox color="#39ff14" radius={16} intensity={!data.can_spin || phase === 'spinning' ? 0 : 0.5} spread={14}>
         <Pressable
           onPress={confirmSpin}
           disabled={!data.can_spin || phase === 'spinning'}
@@ -292,6 +296,7 @@ export default function PunishmentWheelScreen() {
             {phase === 'spinning' ? 'SPINNING…' : data.items.length < 2 ? 'ADD AT LEAST 2' : `SPIN FOR ${data.season}`}
           </Text>
         </Pressable>
+        </GlowBox>
       )}
       {!result && !data.is_commissioner && <Text style={styles.memberNote}>Only the commissioner can spin the wheel.</Text>}
 
@@ -373,10 +378,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 6,
     borderColor: '#39ff14',
-    shadowColor: '#39ff14',
-    shadowOpacity: 0.5,
-    shadowRadius: 14,
   },
+  faceWrap: { width: SIZE, height: SIZE },
   hub: {
     position: 'absolute',
     left: R - 32,
@@ -396,8 +399,8 @@ const styles = StyleSheet.create({
   resultKicker: { color: '#39ff14', fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
   resultText: { color: Colors.text, fontFamily: Fonts.display, fontSize: 21, lineHeight: 26 },
   resultMeta: { color: Colors.textSecondary, fontSize: 12 },
-  spin: { minHeight: 56, borderRadius: 16, borderWidth: 2, borderColor: '#39ff14', backgroundColor: '#39ff14', alignItems: 'center', justifyContent: 'center', shadowColor: '#39ff14', shadowOpacity: 0.5, shadowRadius: 14 },
-  spinOff: { backgroundColor: 'transparent', shadowOpacity: 0 },
+  spin: { minHeight: 56, borderRadius: 16, borderWidth: 2, borderColor: '#39ff14', backgroundColor: '#39ff14', alignItems: 'center', justifyContent: 'center' },
+  spinOff: { backgroundColor: 'transparent' },
   spinText: { color: '#06110a', fontFamily: Fonts.display, fontSize: 19, letterSpacing: 2 },
   spinTextOff: { color: '#39ff14', opacity: 0.7 },
   memberNote: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'center', padding: 14, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#2a303a' },

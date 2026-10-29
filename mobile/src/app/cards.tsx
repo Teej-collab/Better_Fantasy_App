@@ -12,6 +12,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { GlowText } from '@/components/fx/Glow';
 import { ShareableCard } from '@/components/ShareableCard';
 import { PageTitle } from '@/components/league/LeagueUI';
 import { Text } from '@/components/Text';
@@ -213,7 +214,7 @@ function CardFront({ owner, badges }: { owner: Owner; badges: OwnerBadges }) {
         </View>
       )}
       <LinearGradient colors={['transparent', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']} style={styles.frontFooter}>
-        <Text style={styles.teamName}>{owner.latest_team_name}</Text>
+        <GlowText style={styles.teamName}>{owner.latest_team_name ?? ''}</GlowText>
         <Text style={styles.ownerName}>{owner.display_name}</Text>
         <Text style={styles.tapHint}>Tap for stats</Text>
       </LinearGradient>

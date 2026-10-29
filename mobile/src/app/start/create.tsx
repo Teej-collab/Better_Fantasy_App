@@ -4,6 +4,7 @@ import { Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react
 import Svg, { Circle, Path } from 'react-native-svg';
 import QRCode from 'react-native-qrcode-svg';
 
+import { GlowBox } from '@/components/fx/Glow';
 import { Field, GhostButton, Icon, Kicker, NeonButton, OptionCard, Segments, StartScreen, startStyles, StepDots, Sub, Title, useRequiredField } from '@/components/start/StartUI';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -143,9 +144,11 @@ export default function CreateScreen() {
           <Title>Now bring your league</Title>
           <Sub>Everyone who scans this or opens the link lands right in your league.</Sub>
         </View>
-        <View style={styles.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code to join ${league.name}`}>
-          <QRCode value={link} size={196} color="#0d1016" backgroundColor="#ffffff" ecl="M" />
-        </View>
+        <GlowBox color={Colors.accent} radius={20} intensity={0.45} spread={20} style={styles.qrWrap}>
+          <View style={styles.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code to join ${league.name}`}>
+            <QRCode value={link} size={196} color="#0d1016" backgroundColor="#ffffff" ecl="M" />
+          </View>
+        </GlowBox>
         <View style={styles.progressWrap}>
           <View style={styles.progressTop}>
             <Text style={startStyles.muted}>Teams in</Text>
@@ -508,7 +511,8 @@ const styles = StyleSheet.create({
   pillPop: { color: '#f5c542', borderColor: 'rgba(245,197,66,0.55)' },
   switchTitle: { color: Colors.text, fontSize: 15, fontWeight: '600' },
   note: { color: Colors.textSecondary, fontSize: 13, lineHeight: 19 },
-  qr: { alignSelf: 'center', padding: 16, borderRadius: 20, backgroundColor: '#ffffff', shadowColor: Colors.accent, shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
+  qrWrap: { alignSelf: 'center' },
+  qr: { padding: 16, borderRadius: 20, backgroundColor: '#ffffff' },
   progressWrap: { gap: 6 },
   progressTop: { flexDirection: 'row', justifyContent: 'space-between' },
   mono: { color: Colors.text, fontFamily: Fonts.monoBold, fontSize: 14 },

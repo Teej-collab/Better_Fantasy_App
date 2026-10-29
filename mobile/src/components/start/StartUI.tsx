@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View, 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 
+import { GlowBox, GlowText } from '@/components/fx/Glow';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
@@ -79,6 +80,7 @@ export function Sub({ children }: { children: ReactNode }) {
 // seeming broken (2026-10-27, a beta tester's report).
 export function NeonButton({ label, onPress, disabled, incomplete, busy, icon }: { label: string; onPress: () => void; disabled?: boolean; incomplete?: boolean; busy?: boolean; icon?: ReactNode }) {
   return (
+    <GlowBox color={ACCENT} radius={14} intensity={disabled || incomplete || busy ? 0.2 : 0.6} spread={12}>
     <Pressable
       onPress={() => {
         if (!incomplete) haptics.tap();
@@ -89,8 +91,9 @@ export function NeonButton({ label, onPress, disabled, incomplete, busy, icon }:
       accessibilityState={{ disabled: disabled || busy }}
       style={({ pressed }) => [styles.neon, (disabled || incomplete || busy) && styles.dim, pressed && styles.pressed]}>
       {busy ? <ActivityIndicator color={ACCENT} /> : icon}
-      {!busy && <Text style={styles.neonText}>{label}</Text>}
+      {!busy && <GlowText style={styles.neonText}>{label.toUpperCase()}</GlowText>}
     </Pressable>
+    </GlowBox>
   );
 }
 
@@ -108,6 +111,7 @@ export function GhostButton({ label, onPress, disabled, incomplete, flex }: { la
 
 export function Door({ title, text, accent, icon, onPress }: { title: string; text: string; accent: string; icon: 'users' | 'plus'; onPress: () => void }) {
   return (
+    <GlowBox color={accent} radius={18} intensity={0.22} spread={16}>
     <Pressable
       onPress={() => {
         haptics.tap();
@@ -115,7 +119,7 @@ export function Door({ title, text, accent, icon, onPress }: { title: string; te
       }}
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${text}`}
-      style={({ pressed }) => [styles.door, { borderColor: `${accent}55`, shadowColor: accent }, pressed && styles.pressed]}>
+      style={({ pressed }) => [styles.door, { borderColor: `${accent}55` }, pressed && styles.pressed]}>
       <View style={[styles.doorIcon, { backgroundColor: `${accent}1f` }]}>
         <Icon name={icon} color={accent} size={26} />
       </View>
@@ -125,6 +129,7 @@ export function Door({ title, text, accent, icon, onPress }: { title: string; te
       </View>
       <Icon name="chev" color={Colors.textSecondary} size={20} />
     </Pressable>
+    </GlowBox>
   );
 }
 
@@ -326,12 +331,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
     shadowOffset: { width: 0, height: 0 },
   },
-  neonText: { color: ACCENT, fontSize: 15, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase' },
+  neonText: { color: ACCENT, fontSize: 15, fontWeight: '800', letterSpacing: 1.5, textShadowColor: ACCENT, textShadowRadius: 8 },
   ghost: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#2a303a', backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.md },
   ghostText: { color: Colors.text, fontSize: 15, fontWeight: '600' },
   door: {
@@ -343,9 +345,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     backgroundColor: Colors.surface,
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 0 },
   },
   doorIcon: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   doorTitle: { fontFamily: Fonts.displayBold, fontSize: 22, letterSpacing: 1, textTransform: 'uppercase', color: Colors.text },

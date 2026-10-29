@@ -2,6 +2,7 @@ import { router, type Href } from 'expo-router';
 import { useRef, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { GlowText } from '@/components/fx/Glow';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -421,7 +422,11 @@ function Manifesto({ children }: { children: ReactNode }) {
   const accent = useAppearance().accent;
   return (
     <View style={[styles.manifesto, { borderColor: `${accent}33`, backgroundColor: `${accent}0a` }]}>
-      <Text style={[styles.manifestoText, { textShadowColor: `${accent}40` }]}>{children}</Text>
+      {typeof children === 'string' ? (
+        <GlowText style={[styles.manifestoText, { textShadowColor: `${accent}66` }]}>{children}</GlowText>
+      ) : (
+        <Text style={[styles.manifestoText, { textShadowColor: `${accent}40` }]}>{children}</Text>
+      )}
     </View>
   );
 }

@@ -14,6 +14,7 @@ import Animated, {
 import { Colors, Radius } from '@/constants/theme';
 import { ringColorFor, ringColorsFor, useAppearance } from '@/lib/appearance';
 import { useScreenFocused } from '@/lib/screenFocus';
+import { hasSkia } from '@/lib/skia';
 
 const RING_WIDTH = 1.5;
 const ROTATION_MS = 5000;
@@ -94,6 +95,26 @@ export function NeonPanel({ children, color: sectionColor, ring, style, contentS
     const { width, height } = e.nativeEvent.layout;
     // Big enough that the rotating square always covers the corners.
     setSize(Math.ceil(Math.hypot(width, height)));
+  }
+
+  if (hasSkia) {
+    // Real light on build 10 on (NeonPanelSkia.tsx). Required here, not
+    // imported: older builds have no Skia to load.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { NeonPanelSkia } = require('@/components/NeonPanelSkia') as typeof import('@/components/NeonPanelSkia');
+    return (
+      <NeonPanelSkia
+        colors={gradient.colors}
+        locations={gradient.locations}
+        rotation={rotation}
+        still={reduceMotion}
+        glow={appearance.glow}
+        radius={radius}
+        style={style}
+        contentStyle={contentStyle}>
+        {children}
+      </NeonPanelSkia>
+    );
   }
 
   // The glow lives on its own still layer behind the card, not on the

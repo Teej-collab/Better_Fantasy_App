@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
+import { GlowBox } from '@/components/fx/Glow';
 import { BetCard } from '@/components/bets/BetCard';
 import { Display, Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing, withAlpha } from '@/constants/theme';
@@ -186,8 +187,8 @@ export function LeagueBetCard({ bet }: { bet: LeagueBet }) {
   const react = (kind: BetReaction) => act(() => api.reactToBet(bet.id, kind, !bet.reactions[kind].mine));
   const beat = bet.bad_beat;
   const beatLeg = beat ? bet.legs.find((l) => l.id === beat.leg_id) : null;
-  const glow =
-    bet.one_leg_away ? styles.glowAmber : bet.status === 'won' ? styles.glowWin : null;
+  // One leg from cashing glows amber; a winner glows green.
+  const glow = bet.one_leg_away ? AMBER : bet.status === 'won' ? WIN : null;
 
   const footer = (
     <View style={styles.footer}>
@@ -269,11 +270,11 @@ export function LeagueBetCard({ bet }: { bet: LeagueBet }) {
   );
 
   return (
-    <View style={[styles.wrap, glow]}>
+    <GlowBox color={glow ?? 'transparent'} radius={Radius.lg} intensity={glow ? 0.45 : 0} spread={14} style={styles.wrap}>
       {/* Not `shared`: the bettor's row already names them, and a league
           bet never carries the money. */}
       <BetCard bet={bet} header={<BettorRow bet={bet} />} footer={footer} />
-    </View>
+    </GlowBox>
   );
 }
 
@@ -331,8 +332,6 @@ const styles = StyleSheet.create({
   extra: { backgroundColor: Colors.tileRaised, alignItems: 'center', justifyContent: 'center' },
   extraText: { color: Colors.textSecondary, fontSize: 10, fontWeight: '700' },
   wrap: { borderRadius: Radius.lg },
-  glowAmber: { shadowColor: AMBER, shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 0 } },
-  glowWin: { shadowColor: WIN, shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 0 } },
   bettor: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   name: { color: Colors.text, fontSize: 14, fontWeight: '600' },
   soft: { color: Colors.textSecondary, fontSize: 12 },

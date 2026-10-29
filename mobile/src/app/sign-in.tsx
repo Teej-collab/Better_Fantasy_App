@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GlowBox, GlowText } from '@/components/fx/Glow';
 import { LiveTicker } from '@/components/home/LiveTicker';
 import { IntroOverlay } from '@/components/IntroOverlay';
 import { Text } from '@/components/Text';
@@ -72,9 +73,11 @@ function Kicker({ title, subtitle }: { title: string; subtitle?: string }) {
 
 function NeonButton({ label, onPress, big }: { label: string; onPress: () => void; big?: boolean }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.neon, big && styles.neonBig, pressed && styles.pressed]}>
-      <Text style={[styles.neonText, big && styles.neonTextBig]}>{label}</Text>
-    </Pressable>
+    <GlowBox color={ACCENT} radius={12} intensity={0.75} spread={10} style={styles.neonWrap}>
+      <Pressable onPress={onPress} style={({ pressed }) => [styles.neon, big && styles.neonBig, pressed && styles.pressed]}>
+        <GlowText style={[styles.neonText, big && styles.neonTextBig]}>{label}</GlowText>
+      </Pressable>
+    </GlowBox>
   );
 }
 
@@ -346,19 +349,14 @@ const styles = StyleSheet.create({
   subtitle: { maxWidth: 260, color: Colors.textSecondary, fontSize: 12, textAlign: 'center', marginTop: 4 },
   tagline: { maxWidth: 290, color: Colors.textSecondary, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   choices: { alignSelf: 'stretch', alignItems: 'center', gap: Spacing.md },
+  neonWrap: { width: '100%', maxWidth: 320 },
   neon: {
-    width: '100%',
-    maxWidth: 320,
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 2,
     borderColor: ACCENT,
     backgroundColor: 'rgba(6,10,7,0.85)',
     paddingVertical: 12,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.7,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
   },
   neonBig: { paddingVertical: 15 },
   neonText: { color: ACCENT, fontSize: 13, fontWeight: '700', letterSpacing: 2, textShadowColor: ACCENT, textShadowRadius: 8 },

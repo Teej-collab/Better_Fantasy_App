@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeOutUp, SlideInUp } from 'react-native-reanimated';
 
+import { GlowBox, GlowText } from '@/components/fx/Glow';
 import { lighten } from '@/components/gamecast/GamecastField';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -91,13 +92,11 @@ export function MomentBanner({ moment, onDismiss }: { moment: Moment | null; onD
   const color = lighten(moment.color);
   return (
     <Animated.View key={moment.key} entering={SlideInUp.springify().damping(16)} exiting={FadeOutUp} style={styles.wrap} pointerEvents="box-none">
+      <GlowBox color={color} radius={Radius.lg} intensity={0.55} spread={16}>
       <Pressable onPress={onDismiss} accessibilityRole="button" accessibilityLabel={`${moment.title}. Dismiss`} style={[styles.banner, { borderColor: color }]}>
         <View style={[styles.glow, { backgroundColor: moment.color }]} />
         <View style={styles.row}>
-          <Text style={[styles.title, { color }]} maxFontSizeMultiplier={1.2}>
-            {moment.title}
-            {moment.team ? ` · ${moment.team}` : ''}
-          </Text>
+          <GlowText style={[styles.title, { color, textShadowColor: color }]}>{`${moment.title}${moment.team ? ` · ${moment.team}` : ''}`.toUpperCase()}</GlowText>
           {moment.points !== undefined && (
             <Text style={[styles.points, { color: moment.points >= 0 ? Colors.accent : Colors.loss }]} maxFontSizeMultiplier={1.2}>
               {moment.points > 0 ? '+' : ''}
@@ -109,6 +108,7 @@ export function MomentBanner({ moment, onDismiss }: { moment: Moment | null; onD
           {moment.detail}
         </Text>
       </Pressable>
+      </GlowBox>
     </Animated.View>
   );
 }
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   },
   glow: { ...StyleSheet.absoluteFill, opacity: 0.18 },
   row: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: Spacing.sm },
-  title: { fontFamily: Fonts.displayBold, fontSize: 22, textTransform: 'uppercase', letterSpacing: 1.5 },
+  title: { flexShrink: 1, fontFamily: Fonts.displayBold, fontSize: 22, letterSpacing: 1.5, textShadowRadius: 10 },
   points: { fontFamily: Fonts.monoBold, fontSize: 16 },
   detail: { color: Colors.text, fontSize: 13, lineHeight: 18 },
 });

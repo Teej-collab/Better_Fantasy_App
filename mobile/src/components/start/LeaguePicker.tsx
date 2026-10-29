@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { GlowText } from '@/components/fx/Glow';
 import { Door, GhostButton, Icon, Kicker, StartScreen, startStyles, Sub, Title } from '@/components/start/StartUI';
 import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
@@ -60,7 +61,7 @@ export function LeaguePicker({ onOpened, onLeave }: { onOpened: () => void; onLe
           <Image source={seasonalEmblem()} style={styles.smallEmblem} contentFit="contain" accessible={false} />
           <View>
             <Kicker>Welcome back</Kicker>
-            <Text style={styles.name}>{me?.display_name ?? 'Commish'}</Text>
+            <GlowText style={styles.name}>{me?.display_name ?? 'Commish'}</GlowText>
           </View>
         </View>
         <View style={styles.list}>

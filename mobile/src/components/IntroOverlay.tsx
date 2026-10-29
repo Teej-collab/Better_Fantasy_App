@@ -14,6 +14,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
+import { GlowText } from '@/components/fx/Glow';
 import { IntroSeasonDecor } from '@/components/IntroSeasonDecor';
 import { haptics } from '@/lib/haptics';
 import { takeFullIntro } from '@/lib/introSound';
@@ -338,7 +339,7 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
       <Animated.View style={[styles.scene, sceneStyle]}>
         {stage === 'word' && (
           <Animated.View key={wordIndex} style={wordStyle}>
-            <Text style={styles.word}>{WORDS[wordIndex]}</Text>
+            <GlowText style={styles.word}>{WORDS[wordIndex]}</GlowText>
           </Animated.View>
         )}
         {stage === 'final' && (
@@ -346,14 +347,14 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
             {/* The Weekend: "The" in script settles in above the WEEKEND neon,
                 just after it lights — the lit THE word turning into it. */}
             <Animated.View style={[styles.theWrap, theStyle]}>
-              <Text style={[styles.the, seasonTint]}>The</Text>
+              <GlowText style={[styles.the, seasonTint]}>The</GlowText>
             </Animated.View>
             <Animated.View style={weekendStyle}>
-              <Text style={styles.weekend}>WEEKEND</Text>
+              <GlowText style={styles.weekend}>WEEKEND</GlowText>
             </Animated.View>
             {mode === 'welcome' ? (
               <Animated.View style={welcomeStyle}>
-                <Text style={styles.welcome}>Welcome Back{displayName ? `, ${displayName}` : ''}</Text>
+                <GlowText style={styles.welcome}>{`Welcome Back${displayName ? `, ${displayName}` : ''}`}</GlowText>
               </Animated.View>
             ) : (
               <>
@@ -367,7 +368,7 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
                       if (!revealing) reveal();
                     }}
                     style={({ pressed }) => [styles.sign, pressed && styles.signPressed]}>
-                    <Text style={styles.signText}>ENTER HERE</Text>
+                    <GlowText style={styles.signText}>ENTER HERE</GlowText>
                   </Pressable>
                 </Animated.View>
               </>

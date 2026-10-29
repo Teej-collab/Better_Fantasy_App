@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { GlowBox } from '@/components/fx/Glow';
 import { PreviewLink } from '@/components/PreviewLink';
 import { RankBadge } from '@/components/home/YourWeekCard';
 import { NeonPanel } from '@/components/NeonPanel';
@@ -239,7 +240,7 @@ const styles = StyleSheet.create({
   discoverTile: { width: '48.5%', flexGrow: 1 },
   discoverInner: { gap: 2, padding: Spacing.md, minHeight: 72 },
   discoverTitle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  discoverDot: { width: 6, height: 6, borderRadius: 3, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } },
+  discoverDot: { width: 6, height: 6, borderRadius: 3 },
   discoverLabel: { color: Colors.text, fontSize: 14, fontWeight: '500' },
   discoverDesc: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
 });
@@ -272,7 +273,9 @@ export function DiscoverCard({ ringColor }: { ringColor: string }) {
             {({ pressed }) => (
               <NeonPanel color={t.color} radius={Radius.md} contentStyle={[styles.discoverInner, pressed && styles.pressed]}>
                 <View style={styles.discoverTitle}>
-                  <View style={[styles.discoverDot, { backgroundColor: ringColor, shadowColor: ringColor }]} />
+                  <GlowBox color={ringColor} radius={3} intensity={0.9} spread={5}>
+                    <View style={[styles.discoverDot, { backgroundColor: ringColor }]} />
+                  </GlowBox>
                   <Text style={styles.discoverLabel}>{t.label}</Text>
                 </View>
                 <Text style={styles.discoverDesc}>{t.description}</Text>

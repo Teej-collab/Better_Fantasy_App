@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { GlowBox } from '@/components/fx/Glow';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
 import type { BracketGame, WorldTeam } from '@/lib/bracketEngine';
@@ -92,13 +93,8 @@ export function GameCard({
     { team: game.b, seed: game.seedB, score: game.score_b, from: game.sources[1] },
   ];
   return (
-    <View
-      style={[
-        styles.card,
-        compact && styles.cardCompact,
-        { borderColor: mine ? 'rgba(255,255,255,0.8)' : tone.border, borderWidth: mine ? 2 : 1, shadowColor: tone.glow },
-        style,
-      ]}>
+    <GlowBox color={tone.glow} radius={compact ? 14 : 20} intensity={1} spread={16} style={style}>
+    <View style={[styles.card, compact && styles.cardCompact, { borderColor: mine ? 'rgba(255,255,255,0.8)' : tone.border, borderWidth: mine ? 2 : 1 }]}>
       <LinearGradient colors={tone.bg} style={StyleSheet.absoluteFill} />
       <View style={styles.kickerRow}>
         <Text style={[styles.kicker, { color: tone.kicker }]} numberOfLines={1}>
@@ -147,11 +143,12 @@ export function GameCard({
       })}
       {!compact && <Text style={[styles.foot, { color: tone.foot }]}>{routeLabel(game, all, punishment)}</Text>}
     </View>
+    </GlowBox>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: 20, padding: 16, gap: 10, overflow: 'hidden', shadowOpacity: 1, shadowRadius: 18, shadowOffset: { width: 0, height: 10 } },
+  card: { borderRadius: 20, padding: 16, gap: 10, overflow: 'hidden' },
   cardCompact: { borderRadius: 14, padding: 10, gap: 4 },
   kickerRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   kicker: { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1.5, flexShrink: 1 },
