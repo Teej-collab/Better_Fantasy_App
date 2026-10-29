@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   RoomAudioRenderer,
   StartAudio,
@@ -40,6 +40,8 @@ import { nflTeamColor } from "@/lib/nfl-teams";
 import { personOf, useOwnDevices, useRoomPeople } from "@/lib/loungePeople";
 import { HexFrame } from "@/components/lounge/HexFrame";
 import { GameVolume } from "@/components/lounge/GameVolume";
+import { LoungeBanner } from "@/components/lounge/LoungeBanner";
+import { LoungeRing } from "@/components/lounge/LoungeRing";
 import { gameGain, useApplyLoungeVolume, useLoungeVolume } from "@/lib/loungeVolume";
 import { useScoringHighlights, type ScoringHit } from "@/lib/scoringHighlights";
 import { useRosterMoments, type RosterMoment } from "@/lib/rosterMoments";
@@ -273,6 +275,19 @@ export function WebLoungeRoom({
   const nflItems = buildNflTickerItems((scoreboard?.games ?? []).map((g) => withTvScore(g, game)));
   const leagueItems = ticker ? buildLeagueTickerItems(ticker) : [];
 
+  // From 1024px the cameras ring the TV (LoungeRing); below, they sit in
+  // a grid under it.
+  const wide = useSyncExternalStore(subscribeWide, () => window.matchMedia(WIDE).matches, () => false);
+  const tvScreen = (
+    <Tv
+      share={share}
+      game={game}
+      catchingUp={delayed.catchingUp}
+      accent={accent}
+      overlay={rm.big?.tier === 1 ? <MomentRibbon moment={rm.big} accent={accent} onDismiss={rm.dismissBig} /> : null}
+    />
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" style={{ background: "#0b0d14", color: "#f3f4f6" }}>
       <header className="flex flex-wrap items-center gap-3 border-b border-white/[0.06] px-4 py-3 sm:gap-4 sm:px-6">
@@ -375,21 +390,30 @@ export function WebLoungeRoom({
       <TickerStrip label="NFL" labelColor="#9aa3b2" items={noLinks(nflItems)} fast tint="rgba(255,255,255,0.03)" />
       {leagueItems.length > 0 && <TickerStrip label="LEAGUE" labelColor={accent} items={noLinks(leagueItems)} fast tint="rgba(57,255,20,0.04)" />}
 
-      {/* Phones stack everything. From 1024px the TV gets the width with
-          chat beside it, and the gamecast and cameras sit under it; from
-          1800px (big and ultrawide monitors) it's three columns — gamecast
-          and cameras on the left, the TV as big as the screen allows, chat
-          on the right — with no page scroll. Layout lives in globals.css
-          (.lounge-grid). */}
+      {/* Phones stack everything: TV, gamecast, a banner and the cameras,
+          chat. From 1024px everyone's camera rings the TV (LoungeRing),
+          banners fill the open border, the gamecast sits under it and chat
+          beside it. Layout lives in globals.css (.lounge-grid, .lounge-ring). */}
       <main className="lounge-grid w-full flex-1 px-4 py-5 sm:px-6">
         <div className="lounge-tv-cell">
-          <Tv
-            share={share}
-            game={game}
-            catchingUp={delayed.catchingUp}
-            accent={accent}
-            overlay={rm.big?.tier === 1 ? <MomentRibbon moment={rm.big} accent={accent} onDismiss={rm.dismissBig} /> : null}
-          />
+          {wide ? (
+            <>
+              <div className="mb-2.5 flex items-center justify-between gap-2 px-0.5">
+                <span className="text-xs font-bold tracking-wider text-[#9aa3b2] uppercase">In the room · {participants.length}</span>
+                <button onClick={() => setVolumeOpen(true)} className="rounded-full border border-white/[0.1] px-3 py-1 text-xs font-semibold text-[#9aa3b2] hover:bg-white/5">
+                  Sound board
+                </button>
+              </div>
+              <LoungeRing
+                people={participants}
+                keyOf={(p) => p.identity}
+                tv={tvScreen}
+                renderTile={(p) => <Tile participant={p} accent={accent} hit={hits[personOf(p.identity)]} owesChug={rm.chugOwner === personOf(p.identity)} fill />}
+              />
+            </>
+          ) : (
+            tvScreen
+          )}
         </div>
 
         <section aria-label="Gamecast" className="lounge-cast flex min-w-0 flex-col gap-3">
@@ -414,14 +438,21 @@ export function WebLoungeRoom({
           <div className="flex items-center justify-between gap-2 px-0.5">
             <span className="text-xs font-bold tracking-wider text-[#9aa3b2] uppercase">In the room · {participants.length}</span>
             <button onClick={() => setVolumeOpen(true)} className="rounded-full border border-white/[0.1] px-3 py-1 text-xs font-semibold text-[#9aa3b2] hover:bg-white/5">
-              Volume
+              Sound board
             </button>
           </div>
-          <CameraGrid count={participants.length}>
-            {participants.map((p) => (
-              <Tile key={p.identity} participant={p} accent={accent} hit={hits[personOf(p.identity)]} owesChug={rm.chugOwner === personOf(p.identity)} />
-            ))}
-          </CameraGrid>
+          {/* Phones and tablets: the cameras in a grid under the TV (the
+              ring takes over from 1024px, so they're only mounted once). */}
+          {!wide && (
+            <>
+              <LoungeBanner shape="strip" className="h-[76px] shrink-0" />
+              <CameraGrid>
+                {participants.map((p) => (
+                  <Tile key={p.identity} participant={p} accent={accent} hit={hits[personOf(p.identity)]} owesChug={rm.chugOwner === personOf(p.identity)} />
+                ))}
+              </CameraGrid>
+            </>
+          )}
         </section>
 
         <aside className="lounge-side flex min-w-0 flex-col gap-3 rounded-2xl border border-white/[0.08] bg-[#10131b] p-3">
@@ -666,67 +697,28 @@ function LastPlay({ game, points, accent }: { game: LiveGame; points: { playId: 
   );
 }
 
-const TILE_GAP = 8;
-const MIN_TILE_WIDTH = 160;
+const WIDE = "(min-width: 1024px)";
+function subscribeWide(onChange: () => void) {
+  const query = window.matchMedia(WIDE);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
 
-/** The cameras on a big monitor (the 1800px+ layout, where the camera
- *  area has a fixed height): every tile as big as it can be while
- *  everyone still fits — one person fills the area, and tiles shrink as
- *  people join. Past MIN_TILE_WIDTH they stop shrinking and the area
- *  scrolls instead. Smaller layouts keep the CSS grid (.lounge-cams-grid). */
-function CameraGrid({ count, children }: { count: number; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState<{ columns: number; width: number } | null>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const wide = window.matchMedia("(min-width: 1800px)");
-    const measure = () => {
-      if (!wide.matches || count === 0) return setFit(null);
-      const { clientWidth: w, clientHeight: h } = el;
-      let best = { columns: 1, width: 0 };
-      for (let columns = 1; columns <= count; columns++) {
-        const rows = Math.ceil(count / columns);
-        const byWidth = (w - (columns - 1) * TILE_GAP) / columns;
-        const byHeight = ((h - (rows - 1) * TILE_GAP) / rows) * (16 / 9);
-        const width = Math.min(byWidth, byHeight);
-        if (width > best.width) best = { columns, width };
-      }
-      if (best.width < MIN_TILE_WIDTH) {
-        const columns = Math.max(1, Math.floor((w + TILE_GAP) / (MIN_TILE_WIDTH + TILE_GAP)));
-        best = { columns, width: (w - (columns - 1) * TILE_GAP) / columns };
-      }
-      setFit({ columns: best.columns, width: Math.floor(best.width) });
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    wide.addEventListener("change", measure);
-    return () => {
-      observer.disconnect();
-      wide.removeEventListener("change", measure);
-    };
-  }, [count]);
-  return (
-    <div
-      ref={ref}
-      className="lounge-cams-grid"
-      style={fit ? { gridTemplateColumns: `repeat(${fit.columns}, ${fit.width}px)`, justifyContent: "center", alignContent: "center" } : undefined}
-    >
-      {children}
-    </div>
-  );
+/** The cameras on phones and tablets: a grid under the TV. From 1024px
+ *  they ring the TV instead (LoungeRing). */
+function CameraGrid({ children }: { children: React.ReactNode }) {
+  return <div className="lounge-cams-grid">{children}</div>;
 }
 
 // A camera tile in its honeycomb frame, which lights up in an NFL team's
 // colors when that team moves this person's score (HexFrame).
-function Tile({ participant, accent, hit, owesChug }: { participant: Participant; accent: string; hit?: ScoringHit; owesChug?: boolean }) {
+function Tile({ participant, accent, hit, owesChug, fill = false }: { participant: Participant; accent: string; hit?: ScoringHit; owesChug?: boolean; fill?: boolean }) {
   const speaking = useIsSpeaking(participant);
   const camera = useTracks([Track.Source.Camera]).find((t) => t.participant.identity === participant.identity) as TrackReference | undefined;
   const name = participant.isLocal ? "You" : participant.name || participant.identity;
   const cameraOn = !!camera && !camera.publication?.isMuted;
   return (
-    <HexFrame hit={hit} style={{ aspectRatio: "16 / 9" }}>
+    <HexFrame hit={hit} style={fill ? { width: "100%", height: "100%" } : { aspectRatio: "16 / 9" }}>
       <div className="absolute inset-0 flex items-center justify-center" style={{ background: TILE_COLORS[hash(name, TILE_COLORS.length)] }}>
         {cameraOn ? (
           <VideoTrack trackRef={camera} className="absolute inset-0 h-full w-full object-cover" />

@@ -2415,33 +2415,37 @@ button[data-lk-source="screen_share"] {
   align-content: start;
 }
 
-/* Laptops and up: the TV takes the width, as tall as the window allows
-   (header + tickers + padding ≈ 210px), chat stays beside it, and the
-   gamecast and cameras share the row underneath. */
+/* Laptops and up (2026-10-29 "Lounge Camera Ring"): the TV with
+   everyone's camera ringed around it (LoungeRing.tsx) on the left, chat
+   beside it, the gamecast under the ring. The ring is a 7-column grid:
+   a side column, five columns under the TV, a side column; the TV spans
+   the middle four rows, so its height sets theirs. Capped so the TV and
+   its top and bottom rows fit the window. */
 @media (min-width: 1024px) {
   .lounge-grid {
     display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) clamp(340px, 25vw, 420px);
+    grid-template-columns: minmax(0, 1fr) clamp(340px, 24vw, 420px);
     grid-template-areas:
-      "tv tv side"
-      "cast cams side";
+      "tv side"
+      "cast side";
     align-items: start;
   }
   .lounge-tv-cell {
     grid-area: tv;
-  }
-  .lounge-tv {
-    width: min(100%, calc((100dvh - 210px) * 16 / 9));
+    --ring-side: clamp(120px, 10vw, 190px);
+    width: 100%;
+    max-width: calc((100dvh - 400px) * 16 / 9 + 2 * var(--ring-side) + 20px);
+    min-width: 0;
     margin-inline: auto;
   }
   .lounge-cast {
     grid-area: cast;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    align-items: start;
   }
   .lounge-cams {
-    grid-area: cams;
-  }
-  .lounge-cams-grid {
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    display: none;
   }
   .lounge-side {
     grid-area: side;
@@ -2450,43 +2454,80 @@ button[data-lk-source="screen_share"] {
     height: calc(100dvh - 190px);
     min-height: 480px;
   }
+  .lounge-ring {
+    display: grid;
+    grid-template-columns: var(--ring-side) repeat(5, minmax(0, 1fr)) var(--ring-side);
+    grid-template-rows: repeat(4, minmax(0, 1fr)) auto;
+    gap: 10px;
+  }
+  .lounge-ring[data-top] {
+    grid-template-rows: auto repeat(4, minmax(0, 1fr)) auto;
+  }
+  .lounge-ring-tv .lounge-tv {
+    width: 100%;
+    margin: 0;
+  }
+  .lounge-ring-seat,
+  .lounge-ring-open {
+    min-width: 0;
+    min-height: 0;
+  }
+  /* Top and bottom rows are as tall as a 16:10 tile; side seats take the
+     height of their quarter of the TV. */
+  .lounge-ring > .lounge-ring-seat,
+  .lounge-ring > .lounge-ring-open {
+    aspect-ratio: 16 / 10;
+  }
+  .lounge-ring > .lounge-ring-side {
+    aspect-ratio: auto;
+  }
+  .lounge-ring-open {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px dashed rgba(255, 255, 255, 0.16);
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #8790a0;
+  }
 }
 
-/* Big and ultrawide monitors: three columns that fill the window with
-   no page scroll — gamecast over the cameras on the left, the TV as
-   big as its column allows in the middle, chat on the right. */
-@media (min-width: 1800px) {
-  .lounge-grid {
-    grid-template-columns: clamp(380px, 23vw, 780px) minmax(0, 1fr) clamp(380px, 18vw, 620px);
-    grid-template-rows: auto minmax(0, 1fr);
-    grid-template-areas:
-      "cast tv side"
-      "cams tv side";
-    align-items: stretch;
-    min-height: 0;
-    overflow: hidden;
+/* The Lounge banners (LoungeBanner.tsx): brand green, white honeycomb,
+   orange type with a dark outline, one light sweep now and then. */
+.lounge-banner {
+  background: radial-gradient(120% 90% at 50% 42%, #7bff5f 0%, #39ff14 46%, #21c40a 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45), 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.lounge-banner-name {
+  color: #ff7a2f;
+  -webkit-text-stroke: 2px #1a0800;
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 #1a0800;
+}
+.lounge-banner-sweep {
+  position: absolute;
+  top: -25%;
+  bottom: -25%;
+  left: 0;
+  width: 36%;
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+  transform: translateX(-160%) skewX(-14deg);
+  animation: lounge-banner-sweep 7s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes lounge-banner-sweep {
+  0% {
+    transform: translateX(-160%) skewX(-14deg);
   }
-  .lounge-tv-cell {
-    container-type: size;
-    display: grid;
-    place-items: center;
-    min-height: 0;
+  55%,
+  100% {
+    transform: translateX(380%) skewX(-14deg);
   }
-  .lounge-tv {
-    width: min(100cqw, 100cqh * 16 / 9);
-  }
-  .lounge-cams {
-    overflow: hidden;
-  }
-  .lounge-cams-grid {
-    flex: 1 1 0;
-    min-height: 0;
-    overflow-y: auto;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .lounge-side {
-    position: static;
-    height: auto;
-    min-height: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lounge-banner-sweep {
+    animation: none;
+    display: none;
   }
 }

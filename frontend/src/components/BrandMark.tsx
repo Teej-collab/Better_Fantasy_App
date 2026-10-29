@@ -1,23 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
-import { currentSeason, seasonalEmblem } from "@/lib/seasonal";
+import { seasonalEmblem } from "@/lib/seasonal";
 
-// The header brand mark — the real emblem now (public/images/
-// the-weekend-emblem.png, seasonal copies via lib/seasonal.ts): "The" in
-// blue script over a neon-green "WEEKEND", ringed in a green-to-blue halo
-// on a starfield,
-// pre-cropped to a transparent circle so it sits directly on the
-// Cosmic header instead of carrying its own square backing. Replaces
-// the earlier plain-text "W" monogram badge (see git history) — this
-// repo previously had no logo image asset at all and was CSS/text-
-// based everywhere the brand appeared; that's no longer the case for
-// this mark specifically, though LeagueWordmark.tsx's plain styled
-// text (used elsewhere, e.g. the sign-in gate) is untouched.
+// The header brand mark: the Hive Mark emblem (public/images/
+// the-weekend-emblem.png, seasonal copies via lib/seasonal.ts), seven
+// neon honeycomb cells, one lit orange, with "The" in orange script over
+// a green "WEEKEND". Transparent around the cells, so it sits right on
+// the header. LeagueWordmark.tsx's plain styled text (the sign-in gate)
+// is separate.
 export function BrandMark({ href }: { href: string }) {
-  // October's spider-web emblem and the like (lib/seasonal.ts). Those
-  // hang decorations off the circle's corners, so they aren't clipped
-  // round the way the plain (already circular) emblem is.
-  const seasonal = currentSeason() !== null;
   return (
     <Link href={href} className="flex shrink-0 items-center gap-2 text-[color:var(--foreground)]">
       <Image
@@ -26,7 +17,7 @@ export function BrandMark({ href }: { href: string }) {
         width={40}
         height={40}
         priority
-        className={`h-8 w-8 shrink-0 sm:h-9 sm:w-9 ${seasonal ? "" : "rounded-full"}`}
+        className="h-8 w-8 shrink-0 sm:h-9 sm:w-9"
       />
       {/* The emblem alone reads fine on its own at narrow widths — the
           full wordmark returns once there's room, same breakpoint the

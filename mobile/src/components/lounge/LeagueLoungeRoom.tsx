@@ -21,6 +21,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { ChatNameText } from '@/components/ChatNameText';
 import { GameVolume } from '@/components/lounge/GameVolume';
 import { HexFrame } from '@/components/lounge/HexFrame';
+import { HexMask, LoungeHive } from '@/components/lounge/LoungeHive';
 import { LoungeField } from '@/components/lounge/LoungeField';
 import { SweatCard, SweatSheet } from '@/components/lounge/LoungeSweat';
 import { LoungeTickers } from '@/components/lounge/LoungeTickers';
@@ -40,7 +41,7 @@ import { PERSON_LEVELS, setPersonLevel, useApplyLoungeVolume, useLoungeVolume } 
 import { lastName, useLoungeSweat } from '@/lib/loungeSweat';
 import { useActiveLeague, useChatMembers, useChatMessages, useMe } from '@/lib/queries';
 import { useRosterMoments } from '@/lib/rosterMoments';
-import { useScoringHighlights, type ScoringHit } from '@/lib/scoringHighlights';
+import { teamGlow, useScoringHighlights, type ScoringHit } from '@/lib/scoringHighlights';
 import type { GamecastPlay, LiveGame } from '@/lib/types';
 
 // LiveKit's WebRTC globals. This module is only loaded once
@@ -339,18 +340,21 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
           )}
           <SweatCard sweat={sweat} game={game} onOpen={() => setSweatOpen(true)} />
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.peopleScroll} contentContainerStyle={styles.people}>
-            {participants.map((p) => (
-              <Person
-                key={p.identity}
+          <LoungeHive
+            items={participants}
+            keyOf={(p) => p.identity}
+            renderCell={(p, w, h) => (
+              <HiveCell
                 participant={p}
+                w={w}
+                h={h}
                 accent={accent}
                 hit={hits[personOf(p.identity)]}
                 owesChug={rm.chugOwner === personOf(p.identity)}
                 onPress={() => setVolumeOpen(true)}
               />
-            ))}
-          </ScrollView>
+            )}
+          />
         </>
       )}
 
@@ -490,6 +494,61 @@ function Person({
   );
 }
 
+
+/** A camera in the honeycomb: their video when their camera's on, else
+ *  initials, cut to a hexagon (HexMask). The rim turns the scoring NFL
+ *  team's color when their score moves, the app's accent while they
+ *  talk, and yellow when they owe a chug. Tap for everyone's volume. */
+function HiveCell({
+  participant,
+  w,
+  h,
+  accent,
+  hit,
+  owesChug,
+  onPress,
+}: {
+  participant: Participant;
+  w: number;
+  h: number;
+  accent: string;
+  hit?: ScoringHit;
+  owesChug?: boolean;
+  onPress: () => void;
+}) {
+  const speaking = useIsSpeaking(participant);
+  const camera = (useTracks([Track.Source.Camera]) as TrackReference[]).find((t) => t.participant.identity === participant.identity);
+  const name = participant.isLocal ? 'You' : participant.name || participant.identity;
+  const showVideo = !!camera && !camera.publication?.isMuted;
+  const scored = hit ? `, ${hit.points >= 0 ? 'up' : 'down'} ${Math.abs(hit.points).toFixed(1)}` : '';
+  const ring = owesChug ? '#facc15' : hit ? teamGlow(hit.team, accent)[0] : speaking ? accent : '#2a313c';
+  const lit = owesChug || !!hit || speaking;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{ width: w, height: h }}
+      accessibilityRole="button"
+      accessibilityLabel={`${name}${speaking ? ', talking' : ''}${scored}${owesChug ? ', owes a chug' : ''} — adjust volume`}>
+      <View style={[StyleSheet.absoluteFill, styles.personBody, { backgroundColor: PERSON_COLORS[hashIndex(name, PERSON_COLORS.length)] }]}>
+        {showVideo ? (
+          <VideoTrack trackRef={camera} style={StyleSheet.absoluteFill} objectFit="cover" mirror={participant.isLocal} />
+        ) : (
+          <Text style={[styles.personInitials, { fontSize: Math.round(w * 0.26) }]}>{initialsOf(name)}</Text>
+        )}
+      </View>
+      <HexMask w={w} h={h} ring={ring} ringWidth={lit ? 3.5 : 2} />
+      {hit && (
+        <Text style={[styles.hivePoints, { top: Math.round(h * 0.12) }]} maxFontSizeMultiplier={1.1}>
+          {hit.points >= 0 ? '+' : '−'}
+          {Math.abs(hit.points).toFixed(1)}
+        </Text>
+      )}
+      <Text style={[styles.hiveName, { bottom: Math.round(h * 0.13), maxWidth: w * 0.78 }]} numberOfLines={1} maxFontSizeMultiplier={1.1}>
+        {owesChug ? 'OWES 1' : name}
+      </Text>
+    </Pressable>
+  );
+}
 
 function useKeyboardOpen(): boolean {
   const [open, setOpen] = useState(false);
@@ -858,8 +917,8 @@ const styles = StyleSheet.create({
   personBadge: { position: 'absolute', top: 6, left: 6, color: '#05060a', fontFamily: Fonts.monoBold, fontSize: 11, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' },
   burst: { position: 'absolute', top: 18, right: 18, backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   burstText: { color: '#fff', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
-  peopleScroll: { flexGrow: 0 },
-  people: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6 },
+  hivePoints: { position: 'absolute', alignSelf: 'center', color: '#fff', fontFamily: Fonts.monoBold, fontSize: 11, textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 3 },
+  hiveName: { position: 'absolute', alignSelf: 'center', color: '#fff', fontSize: 10, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 3 },
   rail: { width: 176, paddingTop: 12, paddingBottom: 12, paddingLeft: 10, paddingRight: 34, backgroundColor: '#0d1016', borderLeftWidth: 1, borderLeftColor: '#1c2027', gap: 8 },
   railTitle: { color: '#9aa3b2', fontFamily: Fonts.display, fontSize: 12, letterSpacing: 1.2 },
   railList: { flex: 1 },

@@ -31,7 +31,7 @@ export default async function OpengraphImage() {
           fontFamily: "sans-serif",
         }}
       >
-        <img src={emblemSrc} width={360} height={360} alt="" style={{ borderRadius: 9999 }} />
+        <img src={emblemSrc} width={360} height={360} alt="" />
         <div style={{ display: "flex", flexDirection: "column", gap: 20, flex: 1 }}>
           <div
             style={{
