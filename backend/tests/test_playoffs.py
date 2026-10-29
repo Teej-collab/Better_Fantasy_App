@@ -119,9 +119,22 @@ async def test_generate_playoff_bracket_rejects_double_generation(pool):
             pass
 
 
-async def test_generate_playoff_bracket_rejects_non_power_of_two(pool):
+async def test_generate_playoff_bracket_gives_the_top_seed_a_bye(pool):
+    # 3 playoff teams: seeds 2 and 3 play a semifinal, seed 1 waits in the
+    # final for its winner.
     await _four_team_bracket_fixture(pool)
     await _set_playoff_settings(pool, playoff_team_count=3)
+
+    async with pool.acquire() as conn:
+        nodes = {n["code"]: n for n in await playoffs.generate_playoff_bracket(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)}
+    assert set(nodes) == {"SF2", "F"}
+    assert (nodes["SF2"]["team_a_seed"], nodes["SF2"]["team_b_seed"]) == (2, 3)
+    assert nodes["F"]["team_a_seed"] == 1 and nodes["F"]["team_b_id"] is None
+
+
+async def test_generate_playoff_bracket_rejects_too_many_teams(pool):
+    await _four_team_bracket_fixture(pool)
+    await _set_playoff_settings(pool, playoff_team_count=17)
 
     async with pool.acquire() as conn:
         try:
@@ -129,6 +142,24 @@ async def test_generate_playoff_bracket_rejects_non_power_of_two(pool):
             assert False, "expected UnsupportedPlayoffTeamCountError"
         except UnsupportedPlayoffTeamCountError:
             pass
+
+
+def test_bracket_spec_six_teams_gives_seeds_one_and_two_byes():
+    games = {g["code"]: g for g in playoffs.bracket_spec(6, 12)}
+    assert [games[c]["sources"] for c in ("R1-2", "R1-4")] == [
+        [{"kind": "seed", "seed": 4}, {"kind": "seed", "seed": 5}],
+        [{"kind": "seed", "seed": 3}, {"kind": "seed", "seed": 6}],
+    ]
+    assert games["SF1"]["sources"] == [{"kind": "seed", "seed": 1}, {"kind": "winner", "code": "R1-2"}]
+    assert games["SF2"]["sources"] == [{"kind": "seed", "seed": 2}, {"kind": "winner", "code": "R1-4"}]
+    assert games["F"]["places"] == [1, 2] and "3RD" in games
+
+
+def test_bracket_spec_every_size_seeds_each_team_once():
+    for n in range(2, 17):
+        winners = [g for g in playoffs.bracket_spec(n, 16) if g["bracket"] == "winners"]
+        seeds = sorted(src["seed"] for g in winners for src in g["sources"] if src["kind"] == "seed")
+        assert seeds == list(range(1, n + 1)), n
 
 
 async def test_generate_playoff_bracket_rejects_unknown_team_count(pool):

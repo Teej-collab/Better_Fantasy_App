@@ -24,11 +24,9 @@ class PlayoffTeamCountUnknownError(PlayoffError):
 
 
 class UnsupportedPlayoffTeamCountError(PlayoffError):
-    """This bracket engine only supports a single-elimination bracket
-    with no byes — playoff_team_count must be a power of 2 (2, 4, 8,
-    ...). A non-power-of-2 count (byes for the top seeds) is a real
-    gap, deliberately out of scope for this first version — see this
-    module's own docstring."""
+    """A playoff_team_count the bracket can't lay out: outside 2–16
+    (playoffs.MAX_PLAYOFF_TEAMS). Counts that aren't a power of 2 are
+    fine since 2026-10-29: the top seeds get byes."""
 
     pass
 

@@ -20,7 +20,7 @@ function floorsFor(games: BracketGame[], playoffCount: number): Floor[] {
     const top = r === maxRound;
     floors.push({
       code: top ? "PH" : String(r + 1),
-      name: top ? "PENTHOUSE" : here.some((g) => g.code.startsWith("SF")) ? "SEMIFINALS" : `ROUND ${r}`,
+      name: top ? "PENTHOUSE" : here.some((g) => g.code.startsWith("SF")) ? "SEMIFINALS" : here.some((g) => g.label.startsWith("Wild Card")) ? "WILD CARD" : `ROUND ${r}`,
       color: top ? "#f5c542" : "#39ff14",
       slab: top ? "linear-gradient(180deg,#2b2510,#17140b)" : "linear-gradient(180deg,#16231b,#10161a)",
       edge: top ? "#f5c542" : "#39ff14",

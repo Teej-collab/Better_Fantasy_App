@@ -16,14 +16,12 @@ real per-week `matchups` rows for whichever rounds are currently
 playable, seeded from this app's own get_standings — no ESPN read
 anywhere in this file.
 
-Deliberately scoped to a single-elimination bracket with NO byes —
-playoff_team_count must be a power of 2 (2, 4, 8, ...). This league's
+A single-elimination bracket for 2–16 playoff teams. This league's
 real settings (the commissioner's own ESPN screenshot): 4 playoff
 teams, 2 weeks per matchup — semifinals then a final, 4 playoff weeks
-total. A non-power-of-2 count (byes for top seeds) is a real, known
-gap — see UnsupportedPlayoffTeamCountError — deliberately out of scope
-for this first version, matching the audit's own "even a simple
-version is far better than none" scoping standard.
+total. Since 2026-10-29 a count that isn't a power of 2 works too: the
+bracket fills the next power of 2 and the top seeds get byes (ESPN's
+6-team playoff: seeds 1 and 2 skip the wild-card round).
 
 2026-10: the whole bracket is now described by bracket_spec — every
 game's code (SF1, F, 3RD, C1..C8), which bracket it's in, where each
@@ -72,6 +70,26 @@ def _is_power_of_two(n: int) -> bool:
     return n >= 2 and (n & (n - 1)) == 0
 
 
+# The playoff sizes the bracket can lay out (2026-10-29: byes). A count
+# that isn't a power of 2 fills the next one up, the top seeds skipping
+# round 1 — ESPN's 6-team playoff gives seeds 1 and 2 byes.
+MAX_PLAYOFF_TEAMS = 16
+
+
+def _supported_count(n: int | None) -> bool:
+    return n is not None and 2 <= n <= MAX_PLAYOFF_TEAMS
+
+
+def _bracket_order(size: int) -> list[int]:
+    """Seeds in bracket order for a full bracket of `size` (a power of 2),
+    so 1 and 2 can only meet in the final: 8 -> 1,8,4,5,2,7,3,6."""
+    order = [1]
+    while len(order) < size:
+        n = len(order) * 2
+        order = [x for s in order for x in (s, n + 1 - s)]
+    return order
+
+
 async def _infer_start_week(conn, season: int, league_id: int) -> int:
     """One week after this season's own last real regular-season week
     (matchups.is_playoff = FALSE) — real data already in this app's own
@@ -100,14 +118,22 @@ def bracket_spec(team_count: int, total_teams: int) -> list[dict]:
     "loser", "code": c} — and places: [winner's place, loser's place]
     for a game that decides final places, else None.
 
-    Winners: a single-elimination bracket for team_count (a power of 2)
-    plus a 3rd-place game in the final round. Consolation: ESPN's
+    Winners: a single-elimination bracket for team_count plus a
+    3rd-place game in the final round. A team_count that isn't a power
+    of 2 fills the next one up and the top seeds get byes: their round-1
+    game doesn't exist and they come into round 2 as a seed (sources
+    there can mix a seed and a winner). Consolation: ESPN's
     two-round ladder for exactly 8 more teams when the playoffs are two
     rounds long (this league): GmC1-4 pair adjacent seeds, then GmC5
     (5th), GmC6 (7th), GmC7 (9th) and GmC8 — the Toilet Bowl, for 11th
     and 12th. Any other shape gets no consolation games."""
-    rounds = int(math.log2(team_count))
+    size = 1 << max(1, math.ceil(math.log2(team_count)))
+    rounds = int(math.log2(size))
     games: list[dict] = []
+    # A full bracket keeps its original pairing (1v8, 2v7, 3v6, 4v5, so
+    # saved brackets from earlier seasons still line up); one with byes
+    # uses the standard order, so the top seeds are kept apart.
+    order = [x for i in range(size // 2) for x in (i + 1, size - i)] if size == team_count else _bracket_order(size)
 
     def code_for(r: int, slot: int) -> str:
         if r == rounds:
@@ -123,26 +149,42 @@ def bracket_spec(team_count: int, total_teams: int) -> list[dict]:
             return f"Semifinal {slot + 1}"
         return f"Round {r} · Game {slot + 1}"
 
-    for r in range(1, rounds + 1):
-        for slot in range(team_count // (2 ** r)):
-            if r == 1:
-                sources = [{"kind": "seed", "seed": slot + 1}, {"kind": "seed", "seed": team_count - slot}]
-            else:
-                sources = [
-                    {"kind": "winner", "code": code_for(r - 1, 2 * slot)},
-                    {"kind": "winner", "code": code_for(r - 1, 2 * slot + 1)},
-                ]
+    # Where each bracket slot's team comes from: round 1's real games,
+    # or a seed whose round-1 opponent doesn't exist (a bye).
+    feeds: dict[tuple[int, int], dict] = {}
+    round_one = 0
+    for slot in range(size // 2):
+        high, low = order[2 * slot], order[2 * slot + 1]
+        if low > team_count:
+            feeds[(1, slot)] = {"kind": "seed", "seed": high}
+            continue
+        round_one += 1
+        code = code_for(1, slot) if rounds > 1 else "F"
+        games.append({
+            "code": code, "bracket": "winners", "round": 1, "slot": slot,
+            "label": label_for(1, slot) if rounds <= 2 or size == team_count else f"Wild Card {round_one}",
+            "sources": [{"kind": "seed", "seed": high}, {"kind": "seed", "seed": low}],
+            "places": [1, 2] if rounds == 1 else None,
+        })
+        feeds[(1, slot)] = {"kind": "winner", "code": code}
+    for r in range(2, rounds + 1):
+        for slot in range(size // (2 ** r)):
+            sources = [feeds[(r - 1, 2 * slot)], feeds[(r - 1, 2 * slot + 1)]]
             games.append({
                 "code": code_for(r, slot), "bracket": "winners", "round": r, "slot": slot,
                 "label": label_for(r, slot), "sources": sources, "places": [1, 2] if r == rounds else None,
             })
-    if rounds >= 2:
+            feeds[(r, slot)] = {"kind": "winner", "code": code_for(r, slot)}
+    # A 3rd-place game when both semifinals are real games (with 3 teams,
+    # the 1 seed's bye leaves one semifinal).
+    codes = {g["code"] for g in games}
+    if rounds >= 2 and {"SF1", "SF2"} <= codes:
         games.append({
             "code": "3RD", "bracket": "winners", "round": rounds, "slot": 1, "label": "3rd Place",
             "sources": [{"kind": "loser", "code": "SF1"}, {"kind": "loser", "code": "SF2"}], "places": [3, 4],
         })
 
-    if rounds == 2 and total_teams - team_count == 8:
+    if rounds == 2 and team_count == size and total_teams - team_count == 8:
         base = team_count  # seeds team_count+1 .. team_count+8
         seed = lambda n: {"kind": "seed", "seed": base + n}  # noqa: E731
         w = lambda c: {"kind": "winner", "code": c}  # noqa: E731
@@ -173,9 +215,9 @@ async def _bracket_shape(conn, season: int, league_id: int) -> tuple[dict, int, 
             "No playoff_team_count is set for this season and no prior season's real bracket to infer one from — "
             "set it via PUT /league/playoff-settings first"
         )
-    if not _is_power_of_two(team_count):
+    if not _supported_count(team_count):
         raise UnsupportedPlayoffTeamCountError(
-            f"playoff_team_count={team_count} isn't a power of 2 — this bracket engine doesn't support byes yet"
+            f"playoff_team_count={team_count} isn't supported (2–{MAX_PLAYOFF_TEAMS} teams)"
         )
     standings = await get_standings(conn, season, league_id)
     return settings, team_count, standings
@@ -205,9 +247,12 @@ async def generate_playoff_bracket(conn, season: int, league_id: int = DEFAULT_L
         # bracket's whole shape is visible immediately.
         for game in bracket_spec(team_count, len(seeds)):
             team_a_id = team_a_seed = team_b_id = team_b_seed = None
-            if all(src["kind"] == "seed" for src in game["sources"]):
-                (sa, sb) = (src["seed"] for src in game["sources"])
+            # A seeded side is known now: both in round 1, the bye team in
+            # round 2 (its other side fills when the round-1 game ends).
+            sa, sb = (src["seed"] if src["kind"] == "seed" else None for src in game["sources"])
+            if sa is not None:
                 team_a_id, team_a_seed = seeds[sa - 1]["team_id"], sa
+            if sb is not None:
                 team_b_id, team_b_seed = seeds[sb - 1]["team_id"], sb
             node_id = await conn.fetchval(
                 """
@@ -219,7 +264,7 @@ async def generate_playoff_bracket(conn, season: int, league_id: int = DEFAULT_L
                 season, league_id, game["round"], game["slot"], game["code"], game["bracket"],
                 team_a_id, team_a_seed, team_b_id, team_b_seed,
             )
-            if team_a_id is not None:
+            if team_a_id is not None and team_b_id is not None:
                 await _create_matchup_weeks(
                     conn, season, league_id, node_id, team_a_id, team_b_id,
                     start_week + (game["round"] - 1) * weeks_per_matchup, weeks_per_matchup,
@@ -258,7 +303,7 @@ async def resolve_ready_playoff_matchups(conn, season: int, league_id: int = DEF
     total_teams = await conn.fetchval(
         "SELECT COUNT(*) FROM teams_by_season WHERE season = $1 AND league_id = $2", season, league_id
     )
-    spec = bracket_spec(team_count, total_teams) if team_count and _is_power_of_two(team_count) else []
+    spec = bracket_spec(team_count, total_teams) if _supported_count(team_count) else []
 
     pending = await conn.fetch(
         """
@@ -376,7 +421,7 @@ async def get_projected_playoff_picture(conn, season: int, league_id: int = DEFA
     — showing a hypothetical alongside a real one would just be
     confusing) or when there isn't yet enough real data to project
     from (playoff_team_count unknown, not enough teams, or not a
-    supported power-of-2 count)."""
+    supported count). With byes, only round 1's real games."""
     has_real_bracket = await conn.fetchval(
         "SELECT 1 FROM playoff_bracket_matchups WHERE season = $1 AND league_id = $2 LIMIT 1", season, league_id,
     )
@@ -385,7 +430,7 @@ async def get_projected_playoff_picture(conn, season: int, league_id: int = DEFA
 
     settings = await get_playoff_settings(conn, season, league_id)
     team_count = settings["playoff_team_count"]
-    if team_count is None or not _is_power_of_two(team_count):
+    if not _supported_count(team_count):
         return None
 
     standings = await get_standings(conn, season, league_id)
@@ -393,15 +438,19 @@ async def get_projected_playoff_picture(conn, season: int, league_id: int = DEFA
         return None
     seeds = [dict(row) for row in standings[:team_count]]
 
-    return [
-        {
-            "slot": i,
-            "team_a_id": seeds[i]["team_id"], "team_a_name": seeds[i]["team_name"], "team_a_seed": i + 1,
-            "team_b_id": seeds[team_count - 1 - i]["team_id"], "team_b_name": seeds[team_count - 1 - i]["team_name"],
-            "team_b_seed": team_count - i,
-        }
-        for i in range(team_count // 2)
+    first_round = [
+        g for g in bracket_spec(team_count, len(standings))
+        if g["bracket"] == "winners" and all(src["kind"] == "seed" for src in g["sources"])
     ]
+    picture = []
+    for i, g in enumerate(first_round):
+        a, b = (src["seed"] for src in g["sources"])
+        picture.append({
+            "slot": i,
+            "team_a_id": seeds[a - 1]["team_id"], "team_a_name": seeds[a - 1]["team_name"], "team_a_seed": a,
+            "team_b_id": seeds[b - 1]["team_id"], "team_b_name": seeds[b - 1]["team_name"], "team_b_seed": b,
+        })
+    return picture
 
 
 async def get_playoff_world(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict | None:
@@ -417,7 +466,7 @@ async def get_playoff_world(conn, season: int, league_id: int = DEFAULT_LEAGUE_I
 
     settings = await get_playoff_settings(conn, season, league_id)
     team_count = settings["playoff_team_count"]
-    if team_count is None or not _is_power_of_two(team_count):
+    if not _supported_count(team_count):
         return None
 
     teams = await conn.fetch(

@@ -19,9 +19,12 @@ function floorsFor(games: BracketGame[], playoffCount: number): Floor[] {
   const floors: Floor[] = [];
   for (let r = maxRound; r >= 1; r--) {
     const top = r === maxRound;
+    const here = winners.filter((g) => g.round === r);
+    // Round names count down from the final: a third round (8 teams, or
+    // 5–7 with byes) is the wild-card or first round, not more semifinals.
     floors.push({
       code: top ? 'PH' : String(r + 1),
-      name: top ? 'PENTHOUSE' : 'SEMIFINALS',
+      name: top ? 'PENTHOUSE' : here.some((g) => g.code.startsWith('SF')) ? 'SEMIFINALS' : here.some((g) => g.label.startsWith('Wild Card')) ? 'WILD CARD' : `ROUND ${r}`,
       color: top ? '#f5c542' : '#39ff14',
       bg: top ? ['#2b2510', '#17140b'] : ['#16231b', '#10161a'],
       edge: top ? '#f5c542' : '#39ff14',
