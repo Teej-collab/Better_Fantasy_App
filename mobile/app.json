@@ -71,6 +71,7 @@
       ],
       "expo-quick-actions",
       "expo-asset",
+      "./plugins/withSourceBuiltExpoModules",
       "./plugins/withShareExtensionTeam",
       [
         "expo-sharing",
