@@ -48,7 +48,9 @@ export function useOwnDevices() {
   );
   const key = mineElsewhere.map((p) => p.identity).join(",");
   useEffect(() => {
-    for (const p of mineElsewhere) p.setVolume(0, Track.Source.Microphone);
+    // Not 0: livekit-client drops a falsy volume when a track re-attaches
+    // (MUTED in lib/loungeVolume.ts), and you'd hear yourself again.
+    for (const p of mineElsewhere) p.setVolume(0.0001, Track.Source.Microphone);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   // Decided once, when the room first turns this device's mic on: a

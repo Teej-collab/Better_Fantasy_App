@@ -528,7 +528,7 @@ async def _share(conn, payload: dict, bet) -> tuple[dict, list[int], int] | None
         raise HTTPException(status_code=403, detail="You're not in this league's chat")
     bet_id = bet["id"]
     already = bet["shared_at"] is not None and await chat_queries.bet_message_exists(conn, bet_id)
-    await bet_queries.set_shared(conn, payload["user_id"], bet_id, True)
+    await bet_queries.set_shared(conn, payload["user_id"], bet_id, True, league_id)
     if already:
         return None
     legs = (await bet_queries.legs_for_bets(conn, [bet_id])).get(bet_id, [])

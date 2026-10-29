@@ -46,7 +46,9 @@ export function useOwnDevices() {
   );
   const key = mineElsewhere.map((p) => p.identity).join(',');
   useEffect(() => {
-    for (const p of mineElsewhere) p.setVolume(0, Track.Source.Microphone);
+    // Not 0: livekit-client reads a 0 volume back as 100% (MUTED in
+    // lib/loungeVolume.ts).
+    for (const p of mineElsewhere) p.setVolume(0.0001, Track.Source.Microphone);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   // Decided once, when the room first turns this device's mic on: a

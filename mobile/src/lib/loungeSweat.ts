@@ -19,10 +19,11 @@ export type LoungeSweat = {
   winPct: number | null;
   myStarters: RosterPlayer[];
   opponentStarters: RosterPlayer[];
+  // Your open bets this week, one per slip.
   openBets: Bet[];
   // Every bet, settled ones included (the room's bet-leg alerts).
   allBets: Bet[];
-  // Everyone else's open bets (League Bets).
+  // Everyone else's shared open bets this week (League Bets).
   leagueOpenBets: LeagueBet[];
   league: WeekMatchupContextItem[];
 };
@@ -35,10 +36,11 @@ export function useLoungeSweat(delaySeconds: number): LoungeSweat {
   const matchupId = week?.matchup?.matchup_id ?? 0;
   const detailQuery = useMatchup(matchupId);
   const detail = useDelayedValue(matchupId ? detailQuery.data : undefined, delaySeconds);
-  const bets = useDelayedValue(useBets().data, delaySeconds);
-  const leagueBets = useDelayedValue(useLeagueBets().data, delaySeconds);
+  const bets = useDelayedValue(useBets(true).data, delaySeconds);
+  const leagueBets = useDelayedValue(useLeagueBets(true).data, delaySeconds);
   const league = useDelayedValue(useMatchupContext(week?.season ?? null, week?.week ?? null).data, delaySeconds);
 
+  const weekStart = nflWeekStart();
   const oriented = detail ? orientMatchupForViewer(detail, me?.owner_id ?? null) : null;
   const m = week?.matchup ?? null;
   return {
@@ -53,11 +55,29 @@ export function useLoungeSweat(delaySeconds: number): LoungeSweat {
     winPct: m?.win_probability ?? null,
     myStarters: (oriented?.home.roster ?? []).filter((p) => !BENCH.has(p.lineup_slot ?? '')),
     opponentStarters: (oriented?.away.roster ?? []).filter((p) => !BENCH.has(p.lineup_slot ?? '')),
-    openBets: (bets?.bets ?? []).filter((b) => b.status === 'open'),
+    openBets: (bets?.bets ?? []).filter((b) => sweatingNow(b, weekStart)),
     allBets: bets?.bets ?? [],
-    leagueOpenBets: leagueBets?.enabled ? leagueBets.bets.filter((b) => b.status === 'open' && !b.mine) : [],
+    leagueOpenBets: leagueBets?.enabled ? leagueBets.bets.filter((b) => !b.mine && sweatingNow(b, weekStart)) : [],
     league: league?.matchups ?? [],
   };
+}
+
+/** The start of this NFL week, the same as the backend's
+ *  league_bets.week_start: the most recent Tuesday, 8 AM UTC. */
+export function nflWeekStart(now = new Date()): Date {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 5) % 7), 8));
+  if (start > now) start.setUTCDate(start.getUTCDate() - 7);
+  return start;
+}
+
+/** An open bet worth sweating this week: placed this week, or still
+ *  waiting on a game that hasn't finished. Leaves out the old bets that
+ *  never settled (a leg nothing could grade), which made the Lounge's
+ *  Bets look like a mix of slips from other weeks. */
+export function sweatingNow(bet: Bet, weekStart: Date): boolean {
+  if (bet.status !== 'open') return false;
+  if (new Date(bet.created_at) >= weekStart) return true;
+  return bet.legs.some((l) => l.status === 'open' && (l.game?.state === 'pre' || l.game?.state === 'in'));
 }
 
 /** Your starters playing in the TV's game. */

@@ -134,11 +134,14 @@ async def delete_bet(conn, user_id: int, bet_id: int) -> bool:
     return result != "DELETE 0"
 
 
-async def set_shared(conn, user_id: int, bet_id: int, shared: bool) -> datetime.datetime | None:
+async def set_shared(conn, user_id: int, bet_id: int, shared: bool, league_id: int | None = None) -> datetime.datetime | None:
+    """Sharing also files a bet with no league under the league it was
+    shared to; League Bets and the Lounge only read a league's own bets."""
     return await conn.fetchval(
-        "UPDATE bets SET shared_at = CASE WHEN $3 THEN COALESCE(shared_at, now()) ELSE NULL END "
+        "UPDATE bets SET shared_at = CASE WHEN $3 THEN COALESCE(shared_at, now()) ELSE NULL END, "
+        "league_id = COALESCE(league_id, $4) "
         "WHERE id = $1 AND user_id = $2 RETURNING shared_at",
-        bet_id, user_id, shared,
+        bet_id, user_id, shared, league_id,
     )
 
 

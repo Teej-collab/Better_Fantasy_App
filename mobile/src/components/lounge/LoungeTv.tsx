@@ -1,12 +1,11 @@
 import { VideoTrack, type TrackReference } from '@livekit/react-native';
-import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Track, type RemoteParticipant } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal, Pressable, StatusBar, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
+import { GameVolume } from '@/components/lounge/GameVolume';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
@@ -113,7 +112,7 @@ export function LoungeTv({
           <Text style={styles.sharedBy}>Shared by {sharer?.isLocal ? 'you' : sharer?.name || 'someone'}</Text>
         </View>
       )}
-      {!compact && sharer && !sharer.isLocal && <GameVolume participant={sharer as RemoteParticipant} />}
+      {!compact && sharer && !sharer.isLocal && <TvGameVolume />}
       {(share || fullScreen) && !compact && (
         <Pressable
           onPress={() => {
@@ -206,43 +205,12 @@ function FullScreenTv({ onClose, children }: { onClose: () => void; children: Re
   );
 }
 
-/** The game's volume, only for you. */
-function GameVolume({ participant }: { participant: RemoteParticipant }) {
+/** The game's volume, only for you (the same setting as the sound board). */
+function TvGameVolume() {
   const accent = useAppearance().accent;
-  const [volume, setVolume] = useState(() => participant.getVolume(Track.Source.ScreenShareAudio) ?? 1);
-  const [restore, setRestore] = useState(1);
-  function change(next: number) {
-    setVolume(next);
-    participant.setVolume(next, Track.Source.ScreenShareAudio);
-  }
   return (
     <View style={styles.volume}>
-      <Pressable
-        hitSlop={10}
-        onPress={() => {
-          haptics.tap();
-          if (volume > 0) {
-            setRestore(volume);
-            change(0);
-          } else change(restore || 1);
-        }}
-        accessibilityLabel={volume > 0 ? 'Mute the game for you' : 'Unmute the game for you'}>
-        <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <Path d="M11 5L6 9H2v6h4l5 4V5z" />
-          {volume > 0 ? <Path d="M15.5 8.5a5 5 0 010 7" /> : <Path d="M22 9l-6 6M16 9l6 6" />}
-        </Svg>
-      </Pressable>
-      <Slider
-        style={styles.slider}
-        minimumValue={0}
-        maximumValue={2}
-        value={volume}
-        onValueChange={change}
-        minimumTrackTintColor={accent}
-        maximumTrackTintColor="rgba(255,255,255,0.25)"
-        thumbTintColor="#fff"
-        accessibilityLabel="Game volume, only for you"
-      />
+      <GameVolume accent={accent} showLabel={false} />
     </View>
   );
 }
@@ -273,6 +241,5 @@ const styles = StyleSheet.create({
   clockText: { color: 'rgba(255,255,255,0.85)', fontFamily: Fonts.mono, fontSize: 10 },
   syncDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#9aa3b2' },
   down: { color: '#facc15', fontFamily: Fonts.mono, fontSize: 10, textAlign: 'center', paddingVertical: 2, paddingHorizontal: 6 },
-  volume: { position: 'absolute', top: 10, right: 10, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.6)' },
-  slider: { width: 70, height: 30 },
+  volume: { position: 'absolute', top: 10, right: 10, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.6)' },
 });

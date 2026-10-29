@@ -10,16 +10,16 @@ import {
   VideoTrack,
   type TrackReference,
 } from '@livekit/react-native';
-import Slider from '@react-native-community/slider';
 import { useKeepAwake } from 'expo-keep-awake';
 import { mediaDevices } from '@livekit/react-native-webrtc';
-import { Track, VideoPresets, type Participant, type RemoteParticipant } from 'livekit-client';
+import { Track, VideoPresets, type Participant } from 'livekit-client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
 
 import { ChatNameText } from '@/components/ChatNameText';
+import { GameVolume } from '@/components/lounge/GameVolume';
 import { HexFrame } from '@/components/lounge/HexFrame';
 import { LoungeField } from '@/components/lounge/LoungeField';
 import { SweatCard, SweatSheet } from '@/components/lounge/LoungeSweat';
@@ -36,6 +36,7 @@ import { useChatSocket } from '@/lib/chatSocket';
 import { haptics } from '@/lib/haptics';
 import { useDelayedGame } from '@/lib/loungeLive';
 import { personOf, useOwnDevices, useRoomPeople } from '@/lib/loungePeople';
+import { PERSON_LEVELS, setPersonLevel, useApplyLoungeVolume, useLoungeVolume } from '@/lib/loungeVolume';
 import { lastName, useLoungeSweat } from '@/lib/loungeSweat';
 import { useActiveLeague, useChatMembers, useChatMessages, useMe } from '@/lib/queries';
 import { useRosterMoments } from '@/lib/rosterMoments';
@@ -151,6 +152,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
   // One per person, though they may be here from a PC and a phone.
   const participants = useRoomPeople();
   useOwnDevices();
+  useApplyLoungeVolume();
   const shares = useTracks([Track.Source.ScreenShare]) as TrackReference[];
   const share = shares[0];
   const sweat = useLoungeSweat(delaySeconds);
@@ -765,63 +767,75 @@ function MicAndCamera({ flip: showFlip = true }: { flip?: boolean }) {
   );
 }
 
-// Per-person volume: one slider per mic, and one for a shared game's sound.
+// The sound board: the game's ten steps, then Mute / Quiet / Normal /
+// Loud / Boost for each person, on every device they're on
+// (lib/loungeVolume.ts applies it). Only changes what you hear.
 function VolumeSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const accent = useAppearance().accent;
   const participants = useRemoteParticipants();
-  const shareAudio = useTracks([Track.Source.ScreenShareAudio]);
+  const sharing = useTracks([Track.Source.ScreenShareAudio]).length > 0;
+  const { localParticipant } = useLocalParticipant();
+  const { people } = useLoungeVolume();
   const insets = useSafeAreaInsets();
+  const me = personOf(localParticipant.identity);
+  // One row per person, whatever number of devices they're on.
+  const persons = new Map<string, string>();
+  for (const p of participants) {
+    const person = personOf(p.identity);
+    if (person !== me && !persons.has(person)) persons.set(person, p.name || p.identity);
+  }
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.sheetBackdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}>
           <View style={styles.sheetHead}>
-            <Text style={styles.sheetTitle}>Volume</Text>
+            <Text style={styles.sheetTitle}>Sound board</Text>
             <Pressable onPress={onClose} hitSlop={8}>
               <Text style={styles.sheetDone}>Done</Text>
             </Pressable>
           </View>
           <Text style={styles.hint}>Only changes what you hear.</Text>
           <ScrollView>
-            {participants.length === 0 && <Text style={styles.hint}>No one else is in the room yet.</Text>}
-            {participants.map((p) => (
-              <View key={p.sid} style={styles.volumeGroup}>
-                <VolumeRow participant={p} source={Track.Source.Microphone} label={p.name || p.identity} />
-                {shareAudio.some((t) => t.participant.sid === p.sid) && (
-                  <VolumeRow participant={p} source={Track.Source.ScreenShareAudio} label={`${p.name || p.identity}'s game`} />
-                )}
+            {sharing && (
+              <View style={styles.volumeGroup}>
+                <Text style={styles.volumeLabel}>The game</Text>
+                <GameVolume accent={accent} />
               </View>
-            ))}
+            )}
+            {persons.size === 0 && <Text style={styles.hint}>No one else is in the room yet.</Text>}
+            {[...persons].map(([person, name]) => {
+              const level = people[person] ?? 'normal';
+              return (
+                <View key={person} style={styles.volumeGroup}>
+                  <Text style={styles.volumeLabel} numberOfLines={1}>
+                    {name}
+                  </Text>
+                  <View style={styles.levels} accessibilityRole="radiogroup" accessibilityLabel={`${name}'s volume, only for you`}>
+                    {PERSON_LEVELS.map((l) => {
+                      const on = level === l.key;
+                      return (
+                        <Pressable
+                          key={l.key}
+                          onPress={() => {
+                            haptics.tap();
+                            setPersonLevel(person, l.key);
+                          }}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: on }}
+                          style={[styles.level, on && { backgroundColor: accent }]}>
+                          <Text style={[styles.levelText, on && styles.levelTextOn]}>{l.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })}
           </ScrollView>
         </View>
       </View>
     </Modal>
-  );
-}
-
-function VolumeRow({ participant, source, label }: { participant: RemoteParticipant; source: Track.Source.Microphone | Track.Source.ScreenShareAudio; label: string }) {
-  const accent = useAppearance().accent;
-  const [volume, setVolume] = useState(() => participant.getVolume(source) ?? 1);
-  return (
-    <View style={styles.volumeRow}>
-      <Text style={styles.volumeLabel} numberOfLines={2}>
-        {label}
-      </Text>
-      <Slider
-        style={{ flex: 1, height: 32 }}
-        minimumValue={0}
-        maximumValue={2}
-        value={volume}
-        onValueChange={(v) => {
-          setVolume(v);
-          participant.setVolume(v, source);
-        }}
-        minimumTrackTintColor={accent}
-        maximumTrackTintColor="rgba(255,255,255,0.2)"
-        accessibilityLabel={`${label} volume, only for you`}
-      />
-      <Text style={styles.volumePct}>{Math.round(volume * 100)}%</Text>
-    </View>
   );
 }
 
@@ -891,8 +905,10 @@ const styles = StyleSheet.create({
   sheetTitle: { color: '#f3f4f6', fontSize: 16, fontWeight: '700' },
   sheetDone: { color: '#9aa3b2', fontSize: 15, fontWeight: '600' },
   hint: { color: '#9aa3b2', fontSize: 12, marginBottom: 8 },
-  volumeGroup: { gap: 6, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.08)' },
-  volumeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  volumeLabel: { width: 100, color: '#f3f4f6', fontSize: 13 },
-  volumePct: { width: 42, textAlign: 'right', color: '#9aa3b2', fontSize: 12, fontFamily: Fonts.mono },
+  volumeGroup: { gap: 8, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  volumeLabel: { color: '#f3f4f6', fontSize: 14, fontWeight: '600' },
+  levels: { flexDirection: 'row', gap: 4 },
+  level: { flex: 1, height: 36, borderRadius: 9, backgroundColor: '#1a202a', alignItems: 'center', justifyContent: 'center' },
+  levelText: { color: '#9aa3b2', fontSize: 11, fontFamily: Fonts.monoBold },
+  levelTextOn: { color: '#06100a' },
 });

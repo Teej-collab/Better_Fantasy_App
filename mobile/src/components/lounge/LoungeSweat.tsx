@@ -1,6 +1,6 @@
 import type { TrackReference } from '@livekit/react-native';
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BetAvatar } from '@/components/bets/LeagueBetCard';
@@ -8,8 +8,10 @@ import { LoungeTv } from '@/components/lounge/LoungeTv';
 import { Text } from '@/components/Text';
 import { TeamAvatar } from '@/components/ui';
 import { Fonts } from '@/constants/theme';
+import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { formatGameTime } from '@/lib/format';
+import { haptics } from '@/lib/haptics';
 import { formatStatLine } from '@/lib/matchups';
 import { lastName, onField, startersInGame, type LoungeSweat } from '@/lib/loungeSweat';
 import { slotDisplayLabel } from '@/lib/rosterSlots';
@@ -96,7 +98,33 @@ export function SweatSheet({
   const accent = useAppearance().accent;
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<'matchup' | 'bets' | 'league'>('matchup');
-  const [betsView, setBetsView] = useState<'mine' | 'league'>('mine');
+  // Mine, everyone's, or one league-mate's (their user id).
+  const [betsView, setBetsView] = useState<'mine' | 'everyone' | number>('mine');
+  const [justShared, setJustShared] = useState<number[]>([]);
+  const theirs = sweat.leagueOpenBets;
+  const bettors = [...new Map(theirs.map((b) => [b.member.user_id, b.member])).values()];
+  const view = typeof betsView === 'number' && !bettors.some((m) => m.user_id === betsView) ? 'everyone' : betsView;
+  const shownTheirs = typeof view === 'number' ? theirs.filter((b) => b.member.user_id === view) : theirs;
+  const chips: [typeof betsView, string][] = [
+    ['mine', `Mine · ${sweat.openBets.length}`],
+    ['everyone', `Everyone · ${theirs.length}`],
+    ...bettors.map((m): [number, string] => [m.user_id, `${m.name} · ${theirs.filter((b) => b.member.user_id === m.user_id).length}`]),
+  ];
+  function shareBet(bet: Bet) {
+    Alert.alert('Share with the league?', 'Everyone in your league will see the picks and how they’re doing. Your wager and payout stay private.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Share',
+        onPress: () => {
+          setJustShared((ids) => [...ids, bet.id]);
+          api.shareBet(bet.id).then(
+            () => haptics.success(),
+            () => setJustShared((ids) => ids.filter((id) => id !== bet.id)),
+          );
+        },
+      },
+    ]);
+  }
   // A team's roster, opened from a name in Matchup or a row in the
   // Scoreboard; shown in the sheet so the TV keeps playing up top.
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
@@ -188,34 +216,35 @@ export function SweatSheet({
             )}
             {!rosterSide && tab === 'bets' && (
               <>
-                <View style={styles.betsSwitch} accessibilityRole="tablist">
-                  {(['mine', 'league'] as const).map((id) => {
-                    const on = betsView === id;
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.whoChips} accessibilityRole="tablist">
+                  {chips.map(([id, label]) => {
+                    const on = view === id;
                     return (
                       <Pressable
-                        key={id}
+                        key={String(id)}
                         onPress={() => setBetsView(id)}
                         accessibilityRole="tab"
                         accessibilityState={{ selected: on }}
-                        style={[styles.betsSwitchBtn, on && styles.betsSwitchBtnOn]}>
-                        <Text style={[styles.betsSwitchText, on && styles.betsSwitchTextOn]}>
-                          {id === 'mine' ? 'Mine' : `League${sweat.leagueOpenBets.length ? ` · ${sweat.leagueOpenBets.length}` : ''}`}
-                        </Text>
+                        style={[styles.whoChip, on && { backgroundColor: accent, borderColor: accent }]}>
+                        <Text style={[styles.whoChipText, on && styles.whoChipTextOn]}>{label}</Text>
                       </Pressable>
                     );
                   })}
-                </View>
-                {betsView === 'mine' &&
+                </ScrollView>
+                <Text style={styles.betsNote}>OPEN · THIS WEEK · ONE CARD PER SLIP</Text>
+                {view === 'mine' &&
                   (sweat.openBets.length === 0 ? (
-                    <Text style={styles.empty}>No open bets. Add one from Bets.</Text>
+                    <Text style={styles.empty}>No open bets this week. Add one from Bets.</Text>
                   ) : (
-                    sweat.openBets.map((b) => <SweatBet key={b.id} bet={b} accent={accent} />)
+                    sweat.openBets.map((b) => (
+                      <SweatBet key={b.id} bet={b} accent={accent} privateBet={!b.shared && !justShared.includes(b.id)} onShare={() => shareBet(b)} />
+                    ))
                   ))}
-                {betsView === 'league' &&
-                  (sweat.leagueOpenBets.length === 0 ? (
-                    <Text style={styles.empty}>No one else in the league has an open bet right now.</Text>
+                {view !== 'mine' &&
+                  (shownTheirs.length === 0 ? (
+                    <Text style={styles.empty}>No one has shared an open bet this week. Bets show up here once their owner shares them with the league.</Text>
                   ) : (
-                    sweat.leagueOpenBets.map((b) => <SweatBet key={b.id} bet={b} member={b.member} accent={accent} />)
+                    shownTheirs.map((b) => <SweatBet key={b.id} bet={b} member={view === 'everyone' ? b.member : undefined} accent={accent} />)
                   ))}
               </>
             )}
@@ -235,7 +264,20 @@ export function SweatSheet({
 }
 
 /** An open bet's legs with how close each is; a league-mate's shows who placed it. */
-function SweatBet({ bet, member, accent }: { bet: Bet; member?: BetMember; accent: string }) {
+function SweatBet({
+  bet,
+  member,
+  accent,
+  privateBet,
+  onShare,
+}: {
+  bet: Bet;
+  member?: BetMember;
+  accent: string;
+  // Your own bet that only you can see, with a way to share it.
+  privateBet?: boolean;
+  onShare?: () => void;
+}) {
   return (
     <View style={styles.betCard}>
       {member && (
@@ -250,6 +292,14 @@ function SweatBet({ bet, member, accent }: { bet: Bet; member?: BetMember; accen
         <Text style={styles.betTitle}>{bet.legs.length > 1 ? `${bet.legs.length}-leg parlay` : 'Straight bet'}</Text>
         {bet.payout ? <Text style={styles.betWin}>to win ${bet.payout.toFixed(0)}</Text> : null}
       </View>
+      {privateBet && onShare && (
+        <View style={styles.betPrivate}>
+          <Text style={styles.betPrivateText}>Only you can see this one</Text>
+          <Pressable onPress={onShare} hitSlop={6} accessibilityRole="button" style={styles.betShare}>
+            <Text style={styles.betShareText}>Share with the league</Text>
+          </Pressable>
+        </View>
+      )}
       {bet.legs.map((leg) => {
         const pct = leg.status === 'won' ? 100 : leg.current !== null && leg.target ? Math.min(100, (leg.current / leg.target) * 100) : 0;
         const color = leg.status === 'won' ? accent : leg.status === 'lost' ? '#f87171' : '#93c5fd';
@@ -479,11 +529,15 @@ const styles = StyleSheet.create({
   playerPts: { color: '#f3f4f6', fontFamily: Fonts.monoBold, fontSize: 16 },
   playerPtsMuted: { color: '#9aa3b2', fontFamily: Fonts.mono, fontSize: 13 },
   empty: { color: '#9aa3b2', fontSize: 14, textAlign: 'center', paddingVertical: 24 },
-  betsSwitch: { flexDirection: 'row', alignSelf: 'center', padding: 3, borderRadius: 999, backgroundColor: '#161a24', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  betsSwitchBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 999 },
-  betsSwitchBtnOn: { backgroundColor: 'rgba(255,255,255,0.14)' },
-  betsSwitchText: { color: '#9aa3b2', fontSize: 13, fontWeight: '700' },
-  betsSwitchTextOn: { color: '#f3f4f6' },
+  whoChips: { gap: 6, paddingVertical: 2 },
+  whoChip: { paddingHorizontal: 13, height: 32, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  whoChipText: { color: '#cfd5de', fontSize: 13, fontWeight: '700' },
+  whoChipTextOn: { color: '#06110a' },
+  betsNote: { color: '#6b7383', fontFamily: Fonts.mono, fontSize: 10.5, letterSpacing: 0.8 },
+  betPrivate: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  betPrivateText: { color: '#9aa3b2', fontSize: 12, flexShrink: 1 },
+  betShare: { borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', paddingHorizontal: 12, paddingVertical: 6 },
+  betShareText: { color: '#f3f4f6', fontSize: 12, fontWeight: '700' },
   betMember: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   betMemberName: { flex: 1, color: '#f3f4f6', fontSize: 13, fontWeight: '700' },
   betCard: { padding: 12, borderRadius: 14, backgroundColor: '#161a24', borderWidth: 1, borderColor: 'rgba(96,165,250,0.35)', gap: 10 },

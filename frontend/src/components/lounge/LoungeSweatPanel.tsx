@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { MatchupContextSide, RosterPlayer, WeekMatchupContextItem, YourWeek } from "@/lib/api";
 import { BetAvatar } from "@/components/bets/league/LeagueBetParts";
-import type { Bet, BetMember, LeagueBet } from "@/lib/betsApi";
+import { nflWeekStart, shareBet, sweatingNow, type Bet, type BetMember, type LeagueBet } from "@/lib/betsApi";
 import { formatGameTime } from "@/lib/gameTime";
 import { formatStatLine } from "@/lib/statLine";
 
@@ -73,13 +73,15 @@ export function LoungeSweatPanel({
   week: YourWeek | undefined;
   league: WeekMatchupContextItem[];
   bets: Bet[];
-  // Everyone else's open bets (League Bets).
+  // Everyone else's shared bets (League Bets).
   leagueBets: LeagueBet[];
   myOwnerId: number;
   accent: string;
 }) {
   const [tab, setTab] = useState<"matchup" | "bets" | "scoreboard">("matchup");
-  const [betsView, setBetsView] = useState<"mine" | "league">("mine");
+  // Mine, everyone's, or one league-mate's (their user id).
+  const [betsView, setBetsView] = useState<"mine" | "everyone" | number>("mine");
+  const [justShared, setJustShared] = useState<number[]>([]);
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
   const m = week?.matchup ?? null;
   const mine = league.find((x) => x.matchup_id === m?.matchup_id) ?? null;
@@ -91,7 +93,21 @@ export function LoungeSweatPanel({
   const myStarters = (mySide?.roster ?? []).filter(isStarter);
   const playing = myStarters.filter((p) => p.game_status === "in_progress");
   const toPlay = myStarters.filter((p) => p.game_status === "scheduled" || p.game_status === null);
-  const open = bets.filter((b) => b.status === "open");
+  // This week's open slips only, one card per slip.
+  const weekStart = nflWeekStart();
+  const open = bets.filter((b) => sweatingNow(b, weekStart));
+  const theirs = leagueBets.filter((b) => !b.mine && sweatingNow(b, weekStart));
+  const bettors = [...new Map(theirs.map((b) => [b.member.user_id, b.member])).values()];
+  const shownTheirs = typeof betsView === "number" ? theirs.filter((b) => b.member.user_id === betsView) : theirs;
+  const view = typeof betsView === "number" && !bettors.some((m) => m.user_id === betsView) ? "everyone" : betsView;
+  async function share(bet: Bet) {
+    setJustShared((ids) => [...ids, bet.id]);
+    try {
+      await shareBet(bet.id);
+    } catch {
+      setJustShared((ids) => ids.filter((id) => id !== bet.id));
+    }
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -173,29 +189,39 @@ export function LoungeSweatPanel({
           )
         ) : tab === "bets" ? (
           <>
-            <div role="tablist" aria-label="Whose bets" className="flex self-center rounded-full border border-white/[0.08] bg-[#161a24] p-[3px]">
-              {(["mine", "league"] as const).map((id) => (
+            <div role="tablist" aria-label="Whose bets" className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  ["mine", `Mine · ${open.length}`],
+                  ["everyone", `Everyone · ${theirs.length}`],
+                  ...bettors.map((m) => [m.user_id, `${m.name} · ${theirs.filter((b) => b.member.user_id === m.user_id).length}`] as const),
+                ] as const
+              ).map(([id, label]) => (
                 <button
                   key={id}
                   role="tab"
-                  aria-selected={betsView === id}
+                  aria-selected={view === id}
                   onClick={() => setBetsView(id)}
-                  className={`rounded-full px-4 py-1.5 text-[13px] font-bold ${betsView === id ? "bg-white/[0.14] text-[#f3f4f6]" : "text-[#9aa3b2]"}`}
+                  className="rounded-full px-3.5 py-1.5 text-[13px] font-bold"
+                  style={view === id ? { background: accent, color: "#06110a" } : { border: "1px solid rgba(255,255,255,0.12)", color: "#cfd5de" }}
                 >
-                  {id === "mine" ? "Mine" : `League${leagueBets.length ? ` · ${leagueBets.length}` : ""}`}
+                  {label}
                 </button>
               ))}
             </div>
-            {betsView === "mine" ? (
+            <span className="font-mono text-[10.5px] tracking-[0.8px] text-[#6b7383]">OPEN · THIS WEEK · ONE CARD PER SLIP</span>
+            {view === "mine" ? (
               open.length === 0 ? (
-                <p className="py-6 text-center text-sm text-[#9aa3b2]">No open bets. Add one from Bets.</p>
+                <p className="py-6 text-center text-sm text-[#9aa3b2]">No open bets this week. Add one from Bets.</p>
               ) : (
-                open.map((b) => <SweatBet key={b.id} bet={b} accent={accent} />)
+                open.map((b) => (
+                  <SweatBet key={b.id} bet={b} accent={accent} privateBet={!b.shared && !justShared.includes(b.id)} onShare={() => void share(b)} />
+                ))
               )
-            ) : leagueBets.length === 0 ? (
-              <p className="py-6 text-center text-sm text-[#9aa3b2]">No one else in the league has an open bet right now.</p>
+            ) : shownTheirs.length === 0 ? (
+              <p className="py-6 text-center text-sm text-[#9aa3b2]">No one has shared an open bet this week. Bets show up here once their owner shares them with the league.</p>
             ) : (
-              leagueBets.map((b) => <SweatBet key={b.id} bet={b} member={b.member} accent={accent} />)
+              shownTheirs.map((b) => <SweatBet key={b.id} bet={b} member={view === "everyone" ? b.member : undefined} accent={accent} />)
             )}
           </>
         ) : scoreboard.length === 0 ? (
@@ -209,7 +235,20 @@ export function LoungeSweatPanel({
 }
 
 /** An open bet's legs with how close each is; a league-mate's shows who placed it. */
-function SweatBet({ bet, member, accent }: { bet: Bet; member?: BetMember; accent: string }) {
+function SweatBet({
+  bet,
+  member,
+  accent,
+  privateBet,
+  onShare,
+}: {
+  bet: Bet;
+  member?: BetMember;
+  accent: string;
+  // Your own bet that only you can see, with a way to share it.
+  privateBet?: boolean;
+  onShare?: () => void;
+}) {
   return (
     <div className="flex flex-col gap-2.5 rounded-[14px] border bg-[#161a24] p-3 text-[13px]" style={{ borderColor: "rgba(96,165,250,0.35)" }}>
       {member && (
@@ -222,6 +261,14 @@ function SweatBet({ bet, member, accent }: { bet: Bet; member?: BetMember; accen
         <b className="text-sm">{bet.legs.length > 1 ? `${bet.legs.length}-leg parlay` : "Straight bet"}</b>
         {bet.payout ? <span className="font-mono text-[#93c5fd]">to win ${bet.payout.toFixed(0)}</span> : null}
       </div>
+      {privateBet && onShare && (
+        <div className="flex items-center justify-between gap-2 text-xs text-[#9aa3b2]">
+          <span>Only you can see this one</span>
+          <button onClick={onShare} className="rounded-full border border-white/[0.14] px-3 py-1 font-bold text-[#f3f4f6] hover:bg-white/5">
+            Share with the league
+          </button>
+        </div>
+      )}
       {bet.legs.map((leg) => {
         const pct = leg.status === "won" ? 100 : leg.current !== null && leg.target ? Math.min(100, (leg.current / leg.target) * 100) : 0;
         const color = leg.status === "won" ? accent : leg.status === "lost" ? "#f87171" : "#93c5fd";

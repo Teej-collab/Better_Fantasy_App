@@ -882,12 +882,14 @@ export function useSleeperConnection() {
 
 // ---- Bet tracking ----
 
-export function useBets() {
+// `poll`: keep checking even with nothing open (the Lounge, where a bet
+// added on another device should show up mid-game).
+export function useBets(poll = false) {
   return useLiveQuery({
     queryKey: ['bets'],
     queryFn: api.bets,
     // Open legs move with the games.
-    refetchInterval: (q) => (q.state.data?.bets.some((b) => b.status === 'open') ? 30_000 : false),
+    refetchInterval: (q) => (poll || q.state.data?.bets.some((b) => b.status === 'open') ? 30_000 : false),
   });
 }
 
@@ -899,12 +901,14 @@ export function useBetsInGame(eventId: string, live: boolean) {
   });
 }
 
-// League Bets: refreshes while anything in it is live.
-export function useLeagueBets() {
+// League Bets: refreshes while anything in it is live. `poll`: always
+// (the Lounge, where it used to stop if no one had a live bet when you
+// walked in, so a league-mate's new bet never showed up).
+export function useLeagueBets(poll = false) {
   return useLiveQuery({
     queryKey: ['league-bets'],
     queryFn: api.leagueBets,
-    refetchInterval: (q) => (q.state.data?.enabled && q.state.data.sweat.alive > 0 ? 30_000 : false),
+    refetchInterval: (q) => (poll || (q.state.data?.enabled && q.state.data.sweat.alive > 0) ? 30_000 : false),
   });
 }
 

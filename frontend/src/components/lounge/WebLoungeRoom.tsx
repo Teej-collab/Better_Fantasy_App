@@ -13,7 +13,7 @@ import {
   useTracks,
   type TrackReference,
 } from "@livekit/components-react";
-import { Track, type Participant, type RemoteParticipant } from "livekit-client";
+import { Track, type Participant } from "livekit-client";
 import { TickerStrip } from "@/components/LiveTicker";
 import { FieldVisualization } from "@/components/gamecast/FieldVisualization";
 import { ParticipantVolumePanel } from "@/components/watchparty/ParticipantVolumePanel";
@@ -39,6 +39,8 @@ import {
 import { nflTeamColor } from "@/lib/nfl-teams";
 import { personOf, useOwnDevices, useRoomPeople } from "@/lib/loungePeople";
 import { HexFrame } from "@/components/lounge/HexFrame";
+import { GameVolume } from "@/components/lounge/GameVolume";
+import { gameGain, useApplyLoungeVolume, useLoungeVolume } from "@/lib/loungeVolume";
 import { useScoringHighlights, type ScoringHit } from "@/lib/scoringHighlights";
 import { useRosterMoments, type RosterMoment } from "@/lib/rosterMoments";
 import { isHexColor, MULTI, MULTI_COLORS } from "@/components/settings/ColorChoices";
@@ -100,6 +102,7 @@ export function WebLoungeRoom({
   // One per person, though they may be here from a PC and a phone.
   const participants = useRoomPeople();
   useOwnDevices();
+  useApplyLoungeVolume();
   const share = (useTracks([Track.Source.ScreenShare]) as TrackReference[])[0];
   const { localParticipant, isScreenShareEnabled, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const [devicesOpen, setDevicesOpen] = useState(false);
@@ -453,7 +456,7 @@ export function WebLoungeRoom({
             <ChatPanel feed={feed} members={members} onSend={(body, mentions) => onSend(body, mentions, null, null)} onReact={react} counts={counts} accent={accent} />
           )}
           {tab === "sweat" && (
-            <LoungeSweatPanel week={week} league={leagueContext?.matchups ?? []} bets={bets?.bets ?? []} leagueBets={leagueBets?.enabled ? leagueBets.bets.filter((b) => b.status === "open" && !b.mine) : []} myOwnerId={myOwnerId} accent={accent} />
+            <LoungeSweatPanel week={week} league={leagueContext?.matchups ?? []} bets={bets?.bets ?? []} leagueBets={leagueBets?.enabled ? leagueBets.bets : []} myOwnerId={myOwnerId} accent={accent} />
           )}
           {tab === "plays" && <PlaysPanel game={game} />}
         </aside>
@@ -519,7 +522,7 @@ function Tv({
               <span className="rounded bg-black/60 px-2.5 py-1 text-xs">Shared by {sharer?.isLocal ? "you" : sharer?.name || "someone"}</span>
             </div>
           )}
-          {sharer && (sharer.isLocal ? <SharerGameVolume accent={accent} /> : <TvVolume participant={sharer as RemoteParticipant} accent={accent} />)}
+          {sharer && (sharer.isLocal ? <SharerGameVolume accent={accent} /> : <GameVolume accent={accent} className="absolute top-3.5 right-3.5" />)}
           {/* A broadcast-style bug in the corner, only as wide as the
               scores: quarter and clock on top, the score (a dot for who has
               the ball), down and distance underneath. */}
@@ -574,21 +577,6 @@ function DeviceList({ kind }: { kind: MediaDeviceKind }) {
   );
 }
 
-function TvVolume({ participant, accent }: { participant: RemoteParticipant; accent: string }) {
-  const [volume, setVolume] = useState(() => participant.getVolume(Track.Source.ScreenShareAudio) ?? 1);
-  return (
-    <VolumePill
-      volume={volume}
-      max={2}
-      accent={accent}
-      onChange={(v) => {
-        setVolume(v);
-        participant.setVolume(v, Track.Source.ScreenShareAudio);
-      }}
-    />
-  );
-}
-
 /** The sharer's own game volume. Their shared tab is muted on their
  *  computer (suppressLocalAudioPlayback in lib/livekitMedia.ts), so this
  *  plays the shared audio back to them — turn the game down and still
@@ -597,13 +585,8 @@ function SharerGameVolume({ accent }: { accent: string }) {
   const { localParticipant } = useLocalParticipant();
   const room = useRoomContext();
   const gameAudio = useTracks([Track.Source.ScreenShareAudio]).find((t) => t.participant.isLocal)?.publication?.track?.mediaStreamTrack;
-  const [volume, setVolume] = useState(() => {
-    try {
-      return Number(localStorage.getItem("lounge-sharer-game-volume") ?? 1);
-    } catch {
-      return 1;
-    }
-  });
+  // A plain audio element can't go past its own full volume.
+  const volume = Math.min(1, gameGain(useLoungeVolume().game));
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -621,41 +604,15 @@ function SharerGameVolume({ accent }: { accent: string }) {
       audio.srcObject = null;
       audioRef.current = null;
     };
-    // volume is applied live below; restarting playback on every drag would stutter.
+    // volume is applied live below; restarting playback on every step would stutter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameAudio, room, localParticipant]);
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume]);
 
   if (!gameAudio) return null;
-  return (
-    <VolumePill
-      volume={volume}
-      max={1}
-      accent={accent}
-      onChange={(v) => {
-        setVolume(v);
-        if (audioRef.current) audioRef.current.volume = v;
-        try {
-          localStorage.setItem("lounge-sharer-game-volume", String(v));
-        } catch {
-          // private window — the slider still works for this visit
-        }
-      }}
-    />
-  );
-}
-
-function VolumePill({ volume, max, accent, onChange }: { volume: number; max: number; accent: string; onChange: (v: number) => void }) {
-  return (
-    <label className="absolute top-3.5 right-3.5 flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M11 5L6 9H2v6h4l5 4V5z" />
-        {volume > 0 ? <path d="M15.5 8.5a5 5 0 010 7" /> : <path d="M22 9l-6 6M16 9l6 6" />}
-      </svg>
-      <span className="text-xs font-semibold text-white/80">Game</span>
-      <span className="sr-only">volume, only for you</span>
-      <input type="range" min={0} max={max} step={0.05} value={volume} onChange={(e) => onChange(Number(e.target.value))} className="w-[110px]" style={{ accentColor: accent }} />
-    </label>
-  );
+  return <GameVolume accent={accent} className="absolute top-3.5 right-3.5" />;
 }
 
 

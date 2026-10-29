@@ -273,6 +273,24 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/** The start of this NFL week, the same as the backend's
+ *  league_bets.week_start: the most recent Tuesday, 8 AM UTC. */
+export function nflWeekStart(now = new Date()): Date {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 5) % 7), 8));
+  if (start > now) start.setUTCDate(start.getUTCDate() - 7);
+  return start;
+}
+
+/** An open bet worth sweating this week: placed this week, or still
+ *  waiting on a game that hasn't finished. Leaves out the old bets that
+ *  never settled (a leg nothing could grade), which made the Lounge's
+ *  Bets look like a mix of slips from other weeks. */
+export function sweatingNow(bet: Bet, weekStart: Date): boolean {
+  if (bet.status !== "open") return false;
+  if (new Date(bet.created_at) >= weekStart) return true;
+  return bet.legs.some((l) => l.status === "open" && (l.game?.state === "pre" || l.game?.state === "in"));
+}
+
 export const listBets = () => call<{ enabled: boolean; bets: Bet[] }>("");
 export const betsInGame = (eventId: string) => call<{ enabled: boolean; bets: Bet[] }>(`/games/${encodeURIComponent(eventId)}`);
 export const sharedBet = (betId: number) => call<Bet>(`/shared/${betId}`);

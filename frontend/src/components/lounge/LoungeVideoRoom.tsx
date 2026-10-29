@@ -12,9 +12,11 @@ import {
   StartAudio,
   useMediaDeviceSelect,
 } from "@livekit/components-react";
-import { Track, type Participant, type RemoteParticipant } from "livekit-client";
+import { Track } from "livekit-client";
 import { LIVEKIT_ROOM_OPTIONS, toggleGameShare } from "@/lib/livekitMedia";
 import { useOwnDevices } from "@/lib/loungePeople";
+import { useApplyLoungeVolume } from "@/lib/loungeVolume";
+import { GameVolume } from "@/components/lounge/GameVolume";
 import "@livekit/components-styles";
 import { buildNflTickerItems, getNflScoreboard, type TickerItem } from "@/lib/api";
 import { LiveTicker } from "@/components/LiveTicker";
@@ -62,46 +64,7 @@ function TvScreen() {
   return (
     <div className="relative min-h-0 flex-1 bg-black">
       <VideoTrack trackRef={track} className="h-full w-full object-contain" />
-      {!track.participant.isLocal && <TvVolume participant={track.participant} />}
-    </div>
-  );
-}
-
-/** The game's volume right on the TV — the one thing everyone reaches
- *  for — so it doesn't take opening the Volume panel. Same setting as
- *  the panel's "shared video" row: only what YOU hear, nobody else. */
-function TvVolume({ participant }: { participant: Participant }) {
-  const remote = participant as RemoteParticipant;
-  const [volume, setVolume] = useState(() => remote.getVolume(Track.Source.ScreenShareAudio) ?? 1);
-  const [restore, setRestore] = useState(1);
-  function change(next: number) {
-    setVolume(next);
-    remote.setVolume(next, Track.Source.ScreenShareAudio);
-  }
-  return (
-    <div className="absolute right-2 bottom-2 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 backdrop-blur">
-      <button
-        onClick={() => {
-          if (volume > 0) {
-            setRestore(volume);
-            change(0);
-          } else change(restore || 1);
-        }}
-        aria-label={volume > 0 ? "Mute the game for you" : "Unmute the game for you"}
-        className="text-sm"
-      >
-        {volume > 0 ? "🔊" : "🔇"}
-      </button>
-      <input
-        type="range"
-        min={0}
-        max={2}
-        step={0.05}
-        value={volume}
-        onChange={(e) => change(Number(e.target.value))}
-        aria-label="Game volume, only for you"
-        className="h-1.5 w-24 accent-[var(--wl-accent)] sm:w-32"
-      />
+      {!track.participant.isLocal && <GameVolume accent="var(--wl-accent)" className="absolute right-2 bottom-2" />}
     </div>
   );
 }
@@ -200,6 +163,7 @@ function ControlsBar({
 }) {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant();
   useOwnDevices();
+  useApplyLoungeVolume();
   const [copied, setCopied] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
