@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { Chip, Kicker, LinkText, Panel, Row } from '@/components/living/LivingCards';
+import { kindColor, WeatherPane, windLine, windy } from '@/components/living/WeatherFx';
 import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
@@ -190,39 +191,54 @@ export function StartSitCard({ roster, context, week }: { roster: RosterEntry[];
 }
 
 // Outdoor games with snow, rain, wind or freezing temperatures that
-// your starters play in.
+// your starters play in, each on its own living weather (WeatherFx.tsx).
 export function WeatherCard({ games, roster }: { games: NflGame[]; roster: RosterEntry[] }) {
   const mine = new Set(roster.filter((p) => isStarter(p.lineup_slot) && !p.is_locked && p.pro_team).map((p) => p.pro_team!));
   const alerts = games.filter((g) => {
     if (g.state !== 'pre' || g.indoor || !g.weather) return false;
     if (!(mine.has(g.home_team ?? '') || mine.has(g.away_team ?? ''))) return false;
     const c = g.weather.condition?.toLowerCase() ?? '';
-    return /snow|rain|storm|wind|sleet|shower/.test(c) || (g.weather.temperature != null && g.weather.temperature <= 32);
+    return /snow|rain|storm|wind|sleet|shower/.test(c) || (g.weather.temperature != null && g.weather.temperature <= 32) || windy(g.weather);
   });
   if (alerts.length === 0) return null;
   return (
     <Panel tint="#4cc3ff">
       <Kicker color="#4cc3ff">Weather watch</Kicker>
-      {alerts.map((g, i) => {
-        const yours = roster.filter((p) => isStarter(p.lineup_slot) && (p.pro_team === g.home_team || p.pro_team === g.away_team));
-        return (
-          <Row
-            key={g.id}
-            first={i === 0}
-            left={
-              <View style={styles.gap2}>
-                <Text style={styles.rowText}>
-                  {g.away_team} @ {g.home_team}
-                </Text>
-                <Text style={styles.small} numberOfLines={1}>
-                  {yours.map((p) => p.player_name).join(', ')}
-                </Text>
+      <View style={styles.panes}>
+        {alerts.map((g) => {
+          const w = g.weather!;
+          const yours = roster.filter((p) => isStarter(p.lineup_slot) && (p.pro_team === g.home_team || p.pro_team === g.away_team));
+          const names = yours.map((p) => p.player_name).join(', ');
+          const headline = [w.condition, w.temperature != null ? `${w.temperature}°` : null].filter(Boolean).join(' · ');
+          const wind = windLine(w);
+          return (
+            <WeatherPane key={g.id} weather={w} label={`${g.away_team} at ${g.home_team}, ${headline}${wind ? `, ${wind}` : ''}. ${names}`}>
+              <View style={styles.weatherRow}>
+                <View style={styles.gap2}>
+                  <Text style={styles.weatherGame}>
+                    {g.away_team} @ {g.home_team}
+                  </Text>
+                  <Text style={styles.small} numberOfLines={1}>
+                    {names}
+                  </Text>
+                </View>
+                <View style={styles.weatherRight}>
+                  <Text style={styles.weatherHead}>{headline}</Text>
+                  {wind && (
+                    <View style={styles.windRow}>
+                      {w.wind_dir != null && (
+                        // Points where the wind is blowing to (wind_dir is where it comes from).
+                        <Text style={[styles.windArrow, { transform: [{ rotate: `${(w.wind_dir + 180) % 360}deg` }] }]}>↑</Text>
+                      )}
+                      <Text style={[styles.small, windy(w) && { color: kindColor('wind') }]}>{wind}</Text>
+                    </View>
+                  )}
+                </View>
               </View>
-            }
-            right={`${g.weather?.condition ?? ''}${g.weather?.temperature != null ? ` · ${g.weather.temperature}°` : ''}`}
-          />
-        );
-      })}
+            </WeatherPane>
+          );
+        })}
+      </View>
     </Panel>
   );
 }
@@ -269,6 +285,13 @@ const styles = StyleSheet.create({
   rowText: { color: Colors.text, fontSize: 14 },
   body: { color: Colors.text, fontSize: 14, lineHeight: 20 },
   small: { color: Colors.textSecondary, fontSize: 12 },
+  panes: { gap: 8, marginTop: 4 },
+  weatherRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md },
+  weatherGame: { color: Colors.text, fontSize: 16 },
+  weatherRight: { alignItems: 'flex-end', gap: 3, flexShrink: 1 },
+  weatherHead: { color: Colors.text, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+  windRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  windArrow: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700' },
   swap: { backgroundColor: withAlpha(Colors.accent, 0.18), borderRadius: Radius.pill, paddingHorizontal: 12, minHeight: 32, justifyContent: 'center' },
   swapText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
   pressed: { opacity: 0.6 },

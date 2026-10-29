@@ -2531,3 +2531,41 @@ button[data-lk-source="screen_share"] {
     display: none;
   }
 }
+
+/* Weather Watch's living panes (components/living/WeatherFx.tsx, the
+   2026-10-29 "Weather Watch · animated" mockup): storm rain + lightning,
+   soft rain with beads on the glass, snow and frost, wind swirls. */
+.wx-pane{position:relative;display:block;width:100%;overflow:hidden;border-radius:16px;border:1px solid rgba(76,195,255,.35);background:#10141f;text-align:left;font:inherit;color:inherit;padding:0}
+button.wx-pane{cursor:pointer}
+button.wx-pane:focus-visible{outline:2px solid #4cc3ff;outline-offset:2px}
+.wx-k-storm{border-color:rgba(169,155,255,.4)}
+.wx-k-snow,.wx-k-cold{border-color:rgba(207,234,255,.35);background:linear-gradient(#111a27,#10141f)}
+.wx-k-wind{border-color:rgba(95,242,214,.35)}
+.wx-content{position:relative;display:block;padding:10px 12px}
+.wx-fx{position:absolute;inset:0;pointer-events:none}
+.wx-cloud{position:absolute;left:-10%;right:-10%;top:-36px;height:90px;background:radial-gradient(40% 60% at 20% 40%,rgba(70,75,110,.55),transparent 70%),radial-gradient(45% 70% at 60% 30%,rgba(60,62,95,.6),transparent 70%),radial-gradient(35% 60% at 90% 45%,rgba(70,75,110,.5),transparent 70%);animation:wx-drift 9s ease-in-out infinite alternate}
+.wx-rain{position:absolute;inset:-40px -40px 0 -40px;background:repeating-linear-gradient(105deg,transparent 0 9px,rgba(170,190,255,.22) 9px 10px,transparent 10px 23px);background-size:100% 60px;animation:wx-rain .45s linear infinite}
+.wx-rain-soft{background:repeating-linear-gradient(100deg,transparent 0 13px,rgba(140,200,255,.18) 13px 14px,transparent 14px 31px);background-size:100% 80px;animation-duration:.7s}
+.wx-flash{position:absolute;inset:0;background:radial-gradient(80% 90% at 70% 0%,rgba(225,220,255,.55),rgba(150,140,255,.12) 60%,transparent);opacity:0;animation:wx-flash 5.5s 1.5s infinite}
+.wx-bolt{position:absolute;right:64px;top:-4px;width:30px;height:68px;opacity:0;animation:wx-bolt 5.5s 1.5s infinite;filter:drop-shadow(0 0 6px #d9d4ff) drop-shadow(0 0 16px #8f7bff)}
+.wx-edge{position:absolute;inset:0;border-radius:16px;box-shadow:inset 0 0 0 1.5px rgba(190,180,255,.9),0 0 24px rgba(150,130,255,.7);opacity:0;animation:wx-flash 5.5s 1.5s infinite}
+.wx-poked .wx-flash,.wx-poked .wx-edge{animation:wx-flash .9s 1}
+.wx-poked .wx-bolt{animation:wx-bolt .9s 1}
+.wx-bead{position:absolute;width:6px;height:8px;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.75),rgba(140,200,255,.25) 45%,rgba(140,200,255,.05));opacity:0;animation:wx-bead 4s ease-in infinite}
+.wx-frost{position:absolute;inset:0;background:radial-gradient(28% 50% at 0% 0%,rgba(230,245,255,.35),transparent 70%),radial-gradient(28% 50% at 100% 100%,rgba(230,245,255,.28),transparent 70%),radial-gradient(20% 40% at 100% 0%,rgba(230,245,255,.2),transparent 70%);animation:wx-frost 4s ease-in-out infinite alternate}
+.wx-flake{position:absolute;top:-8px;border-radius:50%;background:#fff;box-shadow:0 0 4px rgba(255,255,255,.8);animation:wx-snow linear infinite}
+svg.wx-wind{position:absolute;inset:0;width:100%;height:100%;border:0;background:none}
+.wx-wind path{fill:none;stroke:rgba(140,255,230,.45);stroke-width:2;stroke-linecap:round;stroke-dasharray:60 400;stroke-dashoffset:460;animation:wx-gust 2.6s cubic-bezier(.4,0,.3,1) infinite;vector-effect:non-scaling-stroke}
+.wx-poked .wx-wind path{animation:wx-gust .7s linear 3,wx-gust 2.6s cubic-bezier(.4,0,.3,1) 2.1s infinite;stroke:rgba(170,255,240,.75);stroke-width:3}
+@keyframes wx-rain{to{background-position:-16px 60px}}
+@keyframes wx-drift{to{transform:translateX(6%)}}
+@keyframes wx-flash{0%,58%,100%{opacity:0}60%{opacity:1}62%{opacity:.1}64%{opacity:.85}70%{opacity:0}}
+@keyframes wx-bolt{0%,59%,100%{opacity:0}60%{opacity:1}63%{opacity:.2}64%{opacity:1}68%{opacity:0}}
+@keyframes wx-bead{0%{opacity:0;transform:translateY(0) scale(.4)}12%{opacity:1;transform:translateY(0) scale(1)}55%{transform:translateY(4px)}100%{opacity:0;transform:translateY(70px) scaleY(1.4)}}
+@keyframes wx-frost{to{opacity:.6}}
+@keyframes wx-snow{from{transform:translate(0,0)}to{transform:translate(14px,140px)}}
+@keyframes wx-gust{to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){
+  .wx-fx *{animation:none!important}
+  .wx-rain,.wx-bead,.wx-flake,.wx-flash,.wx-bolt,.wx-edge,svg.wx-wind{display:none}
+}

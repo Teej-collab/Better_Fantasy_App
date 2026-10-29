@@ -409,7 +409,10 @@ export type NflGame = {
   week: number | null;
   // ESPN's forecast for a game not yet played, and whether it's a dome
   // (optional for an older backend).
-  weather?: { condition: string | null; temperature: number | null } | null;
+  // Kickoff wind from Open-Meteo (backend/app/providers/game_wind.py),
+  // outdoor games in the next week only: mph, and the compass degrees
+  // it blows from.
+  weather?: { condition: string | null; temperature: number | null; wind_mph?: number | null; wind_gust_mph?: number | null; wind_dir?: number | null } | null;
   indoor?: boolean;
 };
 

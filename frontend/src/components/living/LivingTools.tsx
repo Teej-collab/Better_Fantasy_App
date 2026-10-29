@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { submitLineupSwap, type MatchupContextSide, type NflGame, type RosterEntry, type RosterPlayer, type WatchPartyRoom, type WeekMatchupContextItem, type YourWeekMatchup } from "@/lib/api";
 import { fmt, isStarter, when } from "@/lib/livingHome";
 import { Big, Chip, DOWN, Kicker, LinkText, Panel, Row, Small, UP } from "@/components/living/LivingParts";
+import { WeatherPane, windLine, windy } from "@/components/living/WeatherFx";
 
 // Lineup and game-time cards (the website's copy of the app's
 // mobile/src/components/living/LineupTools.tsx and LiveTools.tsx).
@@ -185,36 +186,52 @@ export function StartSitCard({ roster, context, week, onChanged }: { roster: Ros
   );
 }
 
-// Outdoor games with snow, rain, wind or freezing temperatures your starters play in.
+// Outdoor games with snow, rain, wind or freezing temperatures your
+// starters play in, each on its own living weather (WeatherFx.tsx).
 export function WeatherCard({ games, roster }: { games: NflGame[]; roster: RosterEntry[] }) {
   const mine = new Set(roster.filter((p) => isStarter(p.lineup_slot) && !p.is_locked && p.pro_team).map((p) => p.pro_team!));
   const alerts = games.filter((g) => {
     if (g.state !== "pre" || g.indoor || !g.weather) return false;
     if (!(mine.has(g.home_team ?? "") || mine.has(g.away_team ?? ""))) return false;
     const c = g.weather.condition?.toLowerCase() ?? "";
-    return /snow|rain|storm|wind|sleet|shower/.test(c) || (g.weather.temperature != null && g.weather.temperature <= 32);
+    return /snow|rain|storm|wind|sleet|shower/.test(c) || (g.weather.temperature != null && g.weather.temperature <= 32) || windy(g.weather);
   });
   if (alerts.length === 0) return null;
   return (
     <Panel tint="#4cc3ff">
       <Kicker color="#4cc3ff">Weather watch</Kicker>
-      <div>
-        {alerts.map((g, i) => {
+      <div className="mt-2 flex flex-col gap-2">
+        {alerts.map((g) => {
+          const w = g.weather!;
           const yours = roster.filter((p) => isStarter(p.lineup_slot) && (p.pro_team === g.home_team || p.pro_team === g.away_team));
+          const names = yours.map((p) => p.player_name).join(", ");
+          const headline = [w.condition, w.temperature != null ? `${w.temperature}°` : null].filter(Boolean).join(" · ");
+          const wind = windLine(w);
           return (
-            <Row
-              key={g.id}
-              first={i === 0}
-              left={
-                <div className="flex flex-col gap-0.5">
-                  <span>
+            <WeatherPane key={g.id} weather={w} label={`${g.away_team} at ${g.home_team}, ${headline}${wind ? `, ${wind}` : ""}. ${names}`}>
+              <span className="flex items-center justify-between gap-3">
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-base">
                     {g.away_team} @ {g.home_team}
                   </span>
-                  <Small className="truncate">{yours.map((p) => p.player_name).join(", ")}</Small>
-                </div>
-              }
-              right={`${g.weather?.condition ?? ""}${g.weather?.temperature != null ? ` · ${g.weather.temperature}°` : ""}`}
-            />
+                  <Small className="truncate">{names}</Small>
+                </span>
+                <span className="flex shrink flex-col items-end gap-0.5 text-right">
+                  <span className="text-sm font-bold">{headline}</span>
+                  {wind && (
+                    <span className="flex items-center gap-1 text-xs" style={{ color: windy(w) ? "#5ff2d6" : "#8790a0" }}>
+                      {w.wind_dir != null && (
+                        // Points where the wind is blowing to (wind_dir is where it comes from).
+                        <span aria-hidden="true" className="inline-block font-bold" style={{ transform: `rotate(${(w.wind_dir + 180) % 360}deg)` }}>
+                          ↑
+                        </span>
+                      )}
+                      {wind}
+                    </span>
+                  )}
+                </span>
+              </span>
+            </WeatherPane>
           );
         })}
       </div>

@@ -173,6 +173,9 @@ def _parse_scoreboard_events(data: dict) -> list[dict]:
                 # home's weather alerts for outdoor games.
                 "weather": _weather(event),
                 "indoor": bool((competition.get("venue") or {}).get("indoor")),
+                # Where the stadium is ({city, state, country}), for the
+                # kickoff wind forecast (app/providers/game_wind.py).
+                "location": (competition.get("venue") or {}).get("address") or None,
             }
         )
     return games
