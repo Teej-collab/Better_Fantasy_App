@@ -17,7 +17,8 @@ import { useScreenFocused } from '@/lib/screenFocus';
 import { hasSkia } from '@/lib/skia';
 
 const RING_WIDTH = 1.5;
-const ROTATION_MS = 5000;
+// One lap of the light. Slower than the old 5 s turn, which read as busy.
+const ROTATION_MS = 7000;
 // The sweeping gradient is drawn once at this size and scaled up to
 // cover the card. expo-linear-gradient paints its gradient as a CPU
 // bitmap the size of its view; sized to the card's diagonal, a tall card
@@ -106,6 +107,8 @@ export function NeonPanel({ children, color: sectionColor, ring, style, contentS
       <NeonPanelSkia
         colors={gradient.colors}
         locations={gradient.locations}
+        multi={!!multi}
+        color={color}
         rotation={rotation}
         still={reduceMotion}
         glow={appearance.glow}
