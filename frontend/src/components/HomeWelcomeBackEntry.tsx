@@ -88,8 +88,10 @@ export function HomeWelcomeBackEntry({
 }) {
   const router = useRouter();
   const { stage, wordIndex, fast, quick, skip, markSeen } = useWeekendIntro();
-  // The Hive Toss stands in for the plain wordmark on a quick open.
-  const toss = quick && !needsLeague;
+  // The Hive Toss stands in for the plain wordmark on a quick open, and
+  // is the full intro's finale after WELCOME / TO / THE (2026-10-30).
+  const tossFinale = stage === "final" && !fast && !needsLeague;
+  const toss = (quick && !needsLeague) || tossFinale;
   const [revealing, setRevealing] = useState(false);
   const [revealedAfterBoot, setRevealedAfterBoot] = useState(false);
   // A fresh visit's intro opens onto the league picker (/start), like the
@@ -194,7 +196,7 @@ export function HomeWelcomeBackEntry({
     return (
       <>
         {!pickLeague && children}
-        <HiveTossOpen displayName={displayName} iris={!pickLeague} onDone={done} onSkip={done} />
+        <HiveTossOpen displayName={displayName} iris={!pickLeague} full={tossFinale} onDone={done} onSkip={done} />
       </>
     );
   }
@@ -236,7 +238,10 @@ export function HomeWelcomeBackEntry({
         }`}
       >
         {stage === "word" && (
-          <h1 key={wordIndex} className={`wl-word wl-word--${wordIndex} text-4xl sm:text-6xl ${anton.className}`}>
+          <h1
+            key={wordIndex}
+            className={`wl-word wl-word--${wordIndex}${wordIndex === WORDS.length - 1 && !needsLeague ? " wl-word--handoff" : ""} text-4xl sm:text-6xl ${anton.className}`}
+          >
             {WORDS[wordIndex]}
           </h1>
         )}

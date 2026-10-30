@@ -247,6 +247,14 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
   const matches = stats.filter((s) => !q || s.label.toLowerCase().includes(q) || s.hint.toLowerCase().includes(q) || s.group.includes(q));
   const tracked = matches.filter((s) => s.tracked || added.includes(s.key));
   const untracked = matches.filter((s) => !s.tracked);
+  // The request box sits up top, above the ~70 catalog stats (it was at
+  // the very bottom, where nobody found it — 2026-10-30). Typing a stat
+  // that isn't in the catalog turns it into a one-tap Request.
+  const typed = query.trim();
+  const exact = typed !== '' && stats.some((s) => s.tracked && s.label.toLowerCase() === q);
+  const requestText = typed || custom.trim();
+  const requestKey = 'custom:' + requestText.toLowerCase();
+  const requestSent = requested.includes(requestKey);
 
   function request(key: string, message: string) {
     api
@@ -270,6 +278,22 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
             </Pressable>
           </View>
           <TextInput value={query} onChangeText={setQuery} placeholder="Search stats, e.g. tackle" placeholderTextColor={Colors.textSecondary} style={styles.search} autoCorrect={false} />
+          {!exact && (
+            <View style={styles.requestCard}>
+              <Text style={styles.ruleLabel}>{typed ? `No “${typed}” stat yet` : 'Don’t see your stat?'}</Text>
+              <Text style={styles.small}>Ask for it and it goes straight to The Weekend&apos;s inbox.</Text>
+              {!typed && (
+                <TextInput value={custom} onChangeText={setCustom} placeholder="e.g. first downs, punt return yards" placeholderTextColor={Colors.textSecondary} style={[styles.search, styles.requestInput]} />
+              )}
+              <Pressable
+                disabled={!requestText || requestSent}
+                onPress={() => request(requestKey, requestText)}
+                style={[styles.requestButton, (!requestText || requestSent) && styles.dim]}
+                accessibilityRole="button">
+                <Text style={styles.requestButtonText}>{requestSent ? 'Requested ✓' : typed ? `Request “${typed}”` : 'Request it'}</Text>
+              </Pressable>
+            </View>
+          )}
           <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
             {tracked.length > 0 && <Text style={styles.kicker}>Tracked · adds right away</Text>}
             {tracked.map((s) => {
@@ -305,16 +329,6 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
                 </Pressable>
               </View>
             ))}
-            <Text style={[styles.ruleLabel, { marginTop: Spacing.md }]}>Don&apos;t see it?</Text>
-            <View style={styles.customRow}>
-              <TextInput value={custom} onChangeText={setCustom} placeholder="e.g. first downs" placeholderTextColor={Colors.textSecondary} style={[styles.search, styles.flex]} />
-              <Pressable
-                disabled={!custom.trim() || requested.includes('custom:' + custom.trim())}
-                onPress={() => request('custom:' + custom.trim(), custom.trim())}
-                style={[styles.requestChip, !custom.trim() && styles.dim]}>
-                <Text style={styles.requestText}>{requested.includes('custom:' + custom.trim()) ? 'Requested' : 'Request'}</Text>
-              </Pressable>
-            </View>
           </ScrollView>
         </Pressable>
       </Pressable>
@@ -370,5 +384,8 @@ const styles = StyleSheet.create({
   addChipText: { color: Colors.accent, fontWeight: '700', fontSize: 12.5 },
   requestChip: { borderWidth: 1, borderColor: '#2a303a', borderRadius: Radius.pill, paddingHorizontal: 11, paddingVertical: 6 },
   requestText: { color: '#aab2bf', fontWeight: '600', fontSize: 12 },
-  customRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: 6, marginBottom: Spacing.md },
+  requestCard: { gap: 8, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(57,255,20,0.45)', backgroundColor: 'rgba(57,255,20,0.07)' },
+  requestInput: { borderColor: '#2a303a' },
+  requestButton: { minHeight: 44, borderRadius: 12, backgroundColor: Colors.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  requestButtonText: { color: '#06110a', fontWeight: '800', fontSize: 14.5 },
 });

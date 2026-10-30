@@ -1,19 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
+  FadeIn,
+  FadeInDown,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Path, Polygon, Text as SvgText } from 'react-native-svg';
 
-import { GlowBox } from '@/components/fx/Glow';
+import { GlowBox, GlowText } from '@/components/fx/Glow';
 import { ShareableCard } from '@/components/ShareableCard';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
@@ -21,6 +25,7 @@ import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
 import { queryClient, useActiveLeague, usePunishmentWheel } from '@/lib/queries';
+import { seasonalEmblem } from '@/lib/seasonal';
 import type { PunishmentWheel } from '@/lib/types';
 
 // The Punishment Wheel (2026-10). It turns slowly, game-show style, until
@@ -28,8 +33,17 @@ import type { PunishmentWheel } from '@/lib/types';
 // (backend/app/routers/punishment_wheel.py) and every phone animates to
 // that same answer — live over the chat socket for anyone watching, and
 // as a one-time replay for anyone opening it after the spin.
+//
+// The look is the "Neon Hive" (2026-10-30 elite pass, mockup board B):
+// dark glass slices edged in neon green around the Hive Mark; when it
+// lands, the winning slice lights orange like the logo's lit cell, the
+// rest dim, hex confetti bursts off the pointer and the verdict card
+// glows orange.
 
-const COLORS = ['#1f9e0b', '#6d28d9', '#ea580c', '#0e7490', '#be123c', '#ca8a04', '#4338ca', '#15803d', '#9d174d', '#0369a1', '#7c2d12', '#155e75'];
+const GREEN = '#39ff14';
+const ORANGE = '#ff7a1a';
+const GLASS = ['#11161d', '#0b0f14'];
+const ANTON = 'Anton_400Regular';
 const SIZE = 330;
 const R = SIZE / 2;
 const SPIN_MS = 5200;
@@ -93,7 +107,7 @@ function wrapLabel(text: string, maxChars: number, maxLines: number): string[] {
   return clipped;
 }
 
-function WheelFace({ items }: { items: string[] }) {
+function WheelFace({ items, landed }: { items: string[]; landed: number | null }) {
   const n = Math.max(items.length, 1);
   const { fontSize, maxLines } = labelStyle(n);
   const band = R - HUB_CLEAR - RIM_CLEAR;
@@ -102,23 +116,31 @@ function WheelFace({ items }: { items: string[] }) {
   const mid = HUB_CLEAR + band / 2;
   return (
     <Svg width={SIZE} height={SIZE}>
-      {items.length === 0 ? <Circle cx={R} cy={R} r={R} fill="#191d23" /> : null}
+      {items.length === 0 ? <Circle cx={R} cy={R} r={R} fill={GLASS[0]} /> : null}
       {items.map((text, i) => (
-        <Path key={`s-${i}`} d={slicePath(i, n)} fill={COLORS[i % COLORS.length]} stroke="rgba(0,0,0,0.35)" strokeWidth={1.5} />
+        <Path
+          key={`s-${i}`}
+          d={slicePath(i, n)}
+          fill={landed === i ? ORANGE : GLASS[i % 2]}
+          fillOpacity={landed === null || landed === i ? 1 : 0.55}
+          stroke={landed === i ? '#ffd0a0' : 'rgba(57,255,20,0.75)'}
+          strokeWidth={landed === i ? 2.5 : 1.5}
+        />
       ))}
       {items.map((text, i) => {
         const lines = wrapLabel(text, maxChars, maxLines);
+        const on = landed === i;
         return (
-          <G key={`t-${i}`} rotation={(i * 360) / n + 180 / n - 90} origin={`${R}, ${R}`}>
+          <G key={`t-${i}`} rotation={(i * 360) / n + 180 / n - 90} origin={`${R}, ${R}`} opacity={landed === null || on ? 1 : 0.45}>
             {lines.map((line, k) => {
               const y = R + (k - (lines.length - 1) / 2) * lineHeight + fontSize * 0.35;
               // A dark outline copy underneath keeps white text legible on every color.
               return (
                 <G key={k}>
-                  <SvgText x={R + mid} y={y} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth={3} strokeLinejoin="round" fontSize={fontSize} fontWeight="800" textAnchor="middle">
+                  <SvgText x={R + mid} y={y} fill="none" stroke={on ? 'rgba(60,20,0,0.6)' : 'rgba(0,0,0,0.55)'} strokeWidth={3} strokeLinejoin="round" fontSize={fontSize} fontWeight="800" textAnchor="middle">
                     {line}
                   </SvgText>
-                  <SvgText x={R + mid} y={y} fill="#ffffff" fontSize={fontSize} fontWeight="800" textAnchor="middle">
+                  <SvgText x={R + mid} y={y} fill={on ? '#ffffff' : '#eaffdf'} fontSize={fontSize} fontWeight="800" textAnchor="middle">
                     {line}
                   </SvgText>
                 </G>
@@ -131,10 +153,52 @@ function WheelFace({ items }: { items: string[] }) {
   );
 }
 
+// The pointer: a neon hex-cut tab that turns orange once it has landed.
+function Pointer({ lit }: { lit: boolean }) {
+  const color = lit ? ORANGE : GREEN;
+  return (
+    <Svg width={44} height={50} style={styles.pointer}>
+      <Polygon points="22,46 7,18 7,6 37,6 37,18" fill="none" stroke={color} strokeWidth={10} strokeOpacity={0.18} strokeLinejoin="round" />
+      <Polygon points="22,46 7,18 7,6 37,6 37,18" fill="#0d1016" stroke={color} strokeWidth={3} strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// Hex confetti bursting off the pointer when the wheel lands.
+const CONFETTI: [number, number, string][] = [
+  [-120, -30, GREEN],
+  [110, -50, ORANGE],
+  [-70, 90, GREEN],
+  [140, 40, '#ffd0a0'],
+  [-150, 40, ORANGE],
+  [60, -100, GREEN],
+  [-30, -110, '#ffd0a0'],
+  [90, 110, ORANGE],
+];
+function ConfettiHex({ burst, dx, dy, color }: { burst: SharedValue<number>; dx: number; dy: number; color: string }) {
+  const style = useAnimatedStyle(() => {
+    const t = burst.get();
+    return {
+      opacity: t > 0 && t < 1 ? Math.min(1, t * 8) * (1 - t) : 0,
+      transform: [{ translateX: dx * t }, { translateY: dy * t + 60 * t * t }, { rotate: `${320 * t}deg` }],
+    };
+  });
+  return (
+    <Animated.View pointerEvents="none" style={[styles.confetti, style]}>
+      <Svg width={12} height={14}>
+        <Polygon points="6,0 12,3.5 12,10.5 6,14 0,10.5 0,3.5" fill={color} />
+      </Svg>
+    </Animated.View>
+  );
+}
+
 export default function PunishmentWheelScreen() {
   const wheel = usePunishmentWheel();
   const leagueId = useActiveLeague().data?.id ?? null;
   const rotation = useSharedValue(0);
+  const burst = useSharedValue(0);
+  // "Watch it again" replays without the "you missed it" note.
+  const [again, setAgain] = useState(false);
   const [phase, setPhase] = useState<'idle' | 'spinning' | 'replaying' | 'done'>('idle');
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -151,7 +215,24 @@ export default function PunishmentWheelScreen() {
   function onLanded(key: string) {
     haptics.success();
     setPhase('done');
+    burst.set(0);
+    burst.set(withDelay(80, withTiming(1, { duration: 1400, easing: Easing.out(Easing.quad) })));
     void AsyncStorage.setItem(key, '1').catch(() => {});
+  }
+
+  // Watch it again: the same spin, from where it rests now.
+  function replay() {
+    if (!result) return;
+    haptics.tap();
+    setAgain(true);
+    setPhase('replaying');
+    cancelAnimation(rotation);
+    const from = rotation.get();
+    rotation.set(
+      withTiming(landing(from, result.landed_index, result.items.length), { duration: SPIN_MS, easing: Easing.bezier(0.12, 0.62, 0.08, 1) }, (finished) => {
+        if (finished) runOnJS(onLanded)(`wl:wheel-seen:${leagueId}:${data?.season}:${result.spun_at}`);
+      }),
+    );
   }
 
   // Idle: a slow lap every 45 seconds until there's a result.
@@ -240,6 +321,7 @@ export default function PunishmentWheelScreen() {
   if (wheel.isPending) return <LoadingState />;
   if (!data) return <MessageState message="Couldn't load the wheel." />;
   const revealed = result && phase === 'done';
+  const landedText = result ? result.text : '';
 
   return (
     <ScrollView
@@ -252,42 +334,56 @@ export default function PunishmentWheelScreen() {
       keyboardDismissMode="interactive">
       <Stack.Screen options={{ title: 'Punishment Wheel' }} />
       <View style={styles.head}>
-        <Text style={styles.kicker}>{`${data.season} SEASON`}</Text>
-        <Text style={styles.title}>PUNISHMENT WHEEL</Text>
+        <Text style={styles.script}>{`The ${data.season}`}</Text>
+        <GlowText style={styles.title}>PUNISHMENT WHEEL</GlowText>
       </View>
 
       <View style={styles.stage}>
-        <View style={styles.pointer} />
-        <View style={styles.tilt}>
-          <View style={styles.depth} />
-          <GlowBox color="#39ff14" radius={R} intensity={0.55} spread={16} style={styles.faceWrap}>
-            <Animated.View style={[styles.face, spinStyle]}>
-              <WheelFace items={faceItems} />
-            </Animated.View>
-          </GlowBox>
-          <View style={styles.hub}>
-            <Text style={styles.hubText}>THE{'\n'}WEEKEND</Text>
-          </View>
+        <View style={styles.ring} />
+        <GlowBox color={revealed ? ORANGE : GREEN} radius={R} intensity={0.55} spread={16} style={styles.faceWrap}>
+          <Animated.View style={[styles.face, spinStyle]}>
+            <WheelFace items={faceItems} landed={revealed && result ? result.landed_index : null} />
+          </Animated.View>
+        </GlowBox>
+        <View style={styles.hub}>
+          <Image source={seasonalEmblem()} style={styles.hubLogo} accessibilityIgnoresInvertColors />
         </View>
+        <Pointer lit={!!revealed} />
+        {CONFETTI.map(([dx, dy, color], i) => (
+          <ConfettiHex key={i} burst={burst} dx={dx} dy={dy} color={color} />
+        ))}
       </View>
 
-      {phase === 'replaying' && <Text style={styles.replayNote}>You missed the spin — here&apos;s how it went…</Text>}
+      {phase === 'replaying' && !again && <Text style={styles.replayNote}>You missed the spin — here&apos;s how it went…</Text>}
 
       {revealed && result && (
         // The verdict, for the group chat (2026-10-24).
-        <ShareableCard title={`The ${data.season} punishment wheel has spoken`}>
-          <View style={styles.result} accessibilityLiveRegion="polite">
-            <Text style={styles.resultKicker}>{`THE WHEEL HAS SPOKEN · ${data.season} PUNISHMENT`}</Text>
-            <Text style={styles.resultText}>{result.text}</Text>
-            <Text style={styles.resultMeta}>
-              {`Locked for the ${data.season} season${result.spun_by ? ` · spun by ${result.spun_by}` : ''} · the league loser owes it`}
-            </Text>
-          </View>
-        </ShareableCard>
+        <Animated.View entering={FadeInDown.duration(450)}>
+          <ShareableCard title={`The ${data.season} punishment wheel has spoken`}>
+            <GlowBox color={ORANGE} radius={22} intensity={0.5} spread={16}>
+              <View style={styles.result} accessibilityLiveRegion="polite">
+                <View style={styles.spokenRow}>
+                  {['THE', 'WHEEL', 'HAS', 'SPOKEN'].map((w, i) => (
+                    <Animated.Text key={w} entering={FadeIn.delay(150 + i * 120)} style={styles.resultKicker}>
+                      {w}
+                    </Animated.Text>
+                  ))}
+                </View>
+                <Text style={styles.resultText}>{landedText.toUpperCase()}</Text>
+                <Text style={styles.resultMeta}>
+                  {`Locked for ${data.season}${result.spun_by ? ` · spun by ${result.spun_by}` : ''} · last place owes it`}
+                </Text>
+              </View>
+            </GlowBox>
+          </ShareableCard>
+          <Pressable onPress={replay} style={({ pressed }) => [styles.again, pressed && styles.pressed]} accessibilityRole="button">
+            <Text style={styles.againText}>Watch it again</Text>
+          </Pressable>
+        </Animated.View>
       )}
 
       {!result && data.is_commissioner && (
-        <GlowBox color="#39ff14" radius={16} intensity={!data.can_spin || phase === 'spinning' ? 0 : 0.5} spread={14}>
+        <GlowBox color={GREEN} radius={16} intensity={!data.can_spin || phase === 'spinning' ? 0 : 0.5} spread={14}>
         <Pressable
           onPress={confirmSpin}
           disabled={!data.can_spin || phase === 'spinning'}
@@ -329,7 +425,14 @@ export default function PunishmentWheelScreen() {
       <View style={styles.list}>
         {(result ? result.items.map((text, i) => ({ id: i, text, can_remove: false })) : data.items).map((item, i) => (
           <View key={item.id} style={[styles.row, i > 0 && styles.divided]}>
-            <View style={[styles.swatch, { backgroundColor: COLORS[i % COLORS.length] }]} />
+            <Svg width={12} height={14}>
+              <Polygon
+                points="6,1 11,4 11,10 6,13 1,10 1,4"
+                fill={revealed && result?.landed_index === i ? ORANGE : 'none'}
+                stroke={revealed && result?.landed_index === i ? ORANGE : GREEN}
+                strokeWidth={1.5}
+              />
+            </Svg>
             <Text style={styles.rowText} numberOfLines={1}>
               {item.text}
             </Text>
@@ -349,60 +452,50 @@ export default function PunishmentWheelScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0d1016' },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.md },
-  head: { gap: 2 },
-  kicker: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1.4 },
-  title: { color: Colors.text, fontFamily: Fonts.display, fontSize: 28, letterSpacing: 1 },
-  stage: { height: 340, alignItems: 'center', justifyContent: 'center' },
-  pointer: {
-    position: 'absolute',
-    top: 4,
-    zIndex: 3,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 14,
-    borderRightWidth: 14,
-    borderTopWidth: 26,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: '#39ff14',
-    shadowColor: '#39ff14',
-    shadowOpacity: 0.9,
-    shadowRadius: 8,
-  },
-  tilt: { width: SIZE, height: SIZE, transform: [{ perspective: 900 }, { rotateX: '16deg' }] },
-  depth: { position: 'absolute', width: SIZE, height: SIZE, borderRadius: R, backgroundColor: '#05070a', top: 14, shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 24, shadowOffset: { width: 0, height: 20 } },
+  head: { alignItems: 'center' },
+  script: { fontFamily: 'Satisfy_400Regular', fontSize: 28, lineHeight: 34, color: '#ffb27a', textShadowColor: 'rgba(255,122,26,0.7)', textShadowRadius: 10 },
+  title: { fontFamily: ANTON, fontSize: 36, letterSpacing: 1, color: GREEN, textShadowColor: 'rgba(57,255,20,0.8)', textShadowRadius: 14 },
+  stage: { height: SIZE + 40, alignItems: 'center', justifyContent: 'center' },
+  ring: { position: 'absolute', width: SIZE + 16, height: SIZE + 16, borderRadius: (SIZE + 16) / 2, borderWidth: 1, borderColor: 'rgba(57,255,20,0.2)' },
+  pointer: { position: 'absolute', top: 0, zIndex: 3 },
+  confetti: { position: 'absolute', top: 30, zIndex: 4 },
   face: {
     width: SIZE,
     height: SIZE,
     borderRadius: R,
     overflow: 'hidden',
-    borderWidth: 6,
-    borderColor: '#39ff14',
+    borderWidth: 3,
+    borderColor: GREEN,
   },
   faceWrap: { width: SIZE, height: SIZE },
   hub: {
     position: 'absolute',
-    left: R - 32,
-    top: R - 32,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#0b0d12',
-    borderWidth: 3,
-    borderColor: '#39ff14',
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: '#07090c',
+    borderWidth: 2,
+    borderColor: 'rgba(57,255,20,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: GREEN,
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
   },
-  hubText: { color: '#39ff14', fontFamily: Fonts.display, fontSize: 9, letterSpacing: 1, textAlign: 'center', lineHeight: 10 },
+  hubLogo: { width: 82, height: 82 },
   replayNote: { color: '#e9d5ff', fontSize: 13, fontWeight: '600', textAlign: 'center', padding: 12, borderRadius: 14, borderWidth: 1, borderColor: '#a855f7', backgroundColor: '#1b1230', overflow: 'hidden' },
-  result: { borderRadius: 18, borderWidth: 1, borderColor: 'rgba(57,255,20,0.5)', backgroundColor: '#13201a', padding: 16, gap: 6 },
-  resultKicker: { color: '#39ff14', fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
-  resultText: { color: Colors.text, fontFamily: Fonts.display, fontSize: 21, lineHeight: 26 },
-  resultMeta: { color: Colors.textSecondary, fontSize: 12 },
-  spin: { minHeight: 56, borderRadius: 16, borderWidth: 2, borderColor: '#39ff14', backgroundColor: '#39ff14', alignItems: 'center', justifyContent: 'center' },
+  result: { alignItems: 'center', borderRadius: 22, borderWidth: 2, borderColor: ORANGE, backgroundColor: '#1a140f', paddingVertical: 18, paddingHorizontal: 16, gap: 8 },
+  spokenRow: { flexDirection: 'row', gap: 7 },
+  resultKicker: { color: '#ffb27a', fontFamily: ANTON, fontSize: 15, letterSpacing: 3 },
+  resultText: { color: '#ffffff', fontFamily: ANTON, fontSize: 32, lineHeight: 38, textAlign: 'center', textShadowColor: 'rgba(255,122,26,0.7)', textShadowRadius: 14 },
+  resultMeta: { color: 'rgba(245,244,236,0.75)', fontSize: 13, textAlign: 'center' },
+  again: { marginTop: Spacing.sm, minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  againText: { color: Colors.text, fontSize: 15, fontWeight: '700' },
+  spin: { minHeight: 56, borderRadius: 16, borderWidth: 2, borderColor: GREEN, backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center' },
   spinOff: { backgroundColor: 'transparent' },
-  spinText: { color: '#06110a', fontFamily: Fonts.display, fontSize: 19, letterSpacing: 2 },
-  spinTextOff: { color: '#39ff14', opacity: 0.7 },
+  spinText: { color: '#06110a', fontFamily: ANTON, fontSize: 22, letterSpacing: 2 },
+  spinTextOff: { color: GREEN, opacity: 0.7 },
   memberNote: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'center', padding: 14, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#2a303a' },
   listHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: Spacing.sm },
   listTitle: { color: Colors.textSecondary, fontFamily: Fonts.display, fontSize: 13, letterSpacing: 1.5 },
@@ -414,7 +507,6 @@ const styles = StyleSheet.create({
   list: { borderRadius: 14, backgroundColor: '#12161c', borderWidth: 1, borderColor: '#1c2027', overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, minHeight: 44 },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#1c2027' },
-  swatch: { width: 10, height: 10, borderRadius: 3 },
   rowText: { flex: 1, color: Colors.text, fontSize: 14 },
   remove: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   removeText: { color: Colors.textSecondary, fontSize: 20 },

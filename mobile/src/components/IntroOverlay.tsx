@@ -29,7 +29,9 @@ import { Brand, Colors } from '@/constants/theme';
 // THE igniting one at a time like stadium lights (a light-switch click
 // each), then the WEEKEND neon with "The" in script above it, a can
 // cracking open and a pour, "Welcome Back", and finally the scene
-// rushing away into a bloom of light that reveals the app.
+// rushing away into a bloom of light that reveals the app. With Skia
+// (build 10 on) the can opening lands the Hive Toss instead of the
+// WEEKEND wordmark, so the full show ends like every quick open.
 //
 // mode "enter" is the signed-out front door (the web's
 // OpeningExperience.tsx): the same build-up, but the final beat is the
@@ -45,13 +47,16 @@ const HOLD_MS = 3600;
 const FAST_HOLD_MS = 150;
 const REVEAL_MS = 900;
 const CAN_OPENING_MS = 1100;
+const HANDOFF_MS = 450;
 
 // The brand green, never the user's accent: the opening looks the same
 // for everyone, whatever their theme (2026-10-28).
 const ACCENT = Brand.green;
 const THE_BLUE = '#5cc6ff';
 
-type Stage = 'dark' | 'word' | 'final';
+// 'toss': the full intro's finale is the Hive Toss (2026-10-30), on
+// builds with Skia; others keep the WEEKEND wordmark ('final').
+type Stage = 'dark' | 'word' | 'final' | 'toss';
 
 // A neon tube "igniting": flicker, surge, settle — the web's
 // wl-word-power-on keyframes as opacity steps over `duration`.
@@ -177,6 +182,7 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
 
   const ambient = useSharedValue(0);
   const word = useSharedValue(0);
+  const handoff = useSharedValue(0); // THE shrinking into the coin
   const weekend = useSharedValue(0);
   const league = useSharedValue(0);
   const welcome = useSharedValue(0);
@@ -190,6 +196,13 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
   }
 
   function showFinal(fast: boolean) {
+    if (!fast && mode === 'welcome' && hasSkia) {
+      // The Hive Mark flips up on the can opening and the pour plays
+      // under it; the toss opens the app itself.
+      setStage('toss');
+      sounds.playCanThenPour();
+      return;
+    }
     setStage('final');
     weekend.set(fast ? withTiming(1, { duration: 200 }) : weekendPowerOn());
     league.set(withDelay(fast ? 0 : 500, withTiming(1, { duration: fast ? 200 : 1200, easing: Easing.out(Easing.quad) })));
@@ -260,7 +273,12 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
           sounds.playLightSwitch(); // TO, then THE
           after(WORD_INTERVALS_MS[i], advance);
         } else {
-          after(WORD_INTERVALS_MS[WORDS.length - 1], () => showFinal(false));
+          const last = WORD_INTERVALS_MS[WORDS.length - 1];
+          if (mode === 'welcome' && hasSkia) {
+            // THE pulls back and shrinks away, like it becomes the coin.
+            after(last - HANDOFF_MS, () => handoff.set(withTiming(1, { duration: HANDOFF_MS, easing: Easing.in(Easing.quad) })));
+          }
+          after(last, () => showFinal(false));
         }
       };
       after(WORD_INTERVALS_MS[0], advance);
@@ -278,7 +296,10 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
   }, []);
 
   const ambientStyle = useAnimatedStyle(() => ({ opacity: ambient.get() }));
-  const wordStyle = useAnimatedStyle(() => ({ opacity: word.get(), transform: [{ scale: 0.97 + 0.03 * Math.min(1, word.get()) }] }));
+  const wordStyle = useAnimatedStyle(() => ({
+    opacity: word.get() * (1 - handoff.get()),
+    transform: [{ translateY: -40 * handoff.get() }, { scale: (0.97 + 0.03 * Math.min(1, word.get())) * (1 - 0.6 * handoff.get()) }],
+  }));
   const weekendStyle = useAnimatedStyle(() => ({ opacity: weekend.get() }));
   const theStyle = useAnimatedStyle(() => ({
     opacity: league.get(),
@@ -302,6 +323,13 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
     opacity: Math.min(1, bloom.get() * 4),
     transform: [{ scale: 0.1 + 8.9 * bloom.get() }],
   }));
+
+  if (stage === 'toss') {
+    // Required here, not imported: older builds have no Skia to load.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { HiveTossSkia } = require('@/components/HiveTossSkia') as typeof import('@/components/HiveTossSkia');
+    return <HiveTossSkia displayName={displayName} onDone={onDone} full />;
+  }
 
   return (
     <View style={styles.gate}>

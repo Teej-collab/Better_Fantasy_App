@@ -1,12 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import { Anton, Satisfy } from "next/font/google";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { seasonalEmblem } from "@/lib/seasonal";
+
+const anton = Anton({ weight: "400", subsets: ["latin"] });
+const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
 // The Punishment Wheel (2026-10) — the web twin of the app's
 // mobile/src/app/punishment-wheel.tsx. It turns slowly, game-show style,
 // until a commissioner spins it; the server picks where it lands
 // (backend/app/routers/punishment_wheel.py), and anyone opening it after
 // the spin watches the same spin once before the result is revealed.
+//
+// The look is the "Neon Hive" (2026-10-30 elite pass, mockup board B):
+// dark glass slices edged in neon green around the Hive Mark; when it
+// lands, the winning slice lights orange like the logo's lit cell, the
+// rest dim, hex confetti bursts off the pointer (.pw-confetti in
+// globals.css) and the verdict card glows orange.
 
 type Wheel = {
   season: number;
@@ -17,7 +29,19 @@ type Wheel = {
   is_commissioner: boolean;
 };
 
-const COLORS = ["#1f9e0b", "#6d28d9", "#ea580c", "#0e7490", "#be123c", "#ca8a04", "#4338ca", "#15803d", "#9d174d", "#0369a1", "#7c2d12", "#155e75"];
+const GREEN = "#39ff14";
+const ORANGE = "#ff7a1a";
+const GLASS = ["#11161d", "#0b0f14"];
+const CONFETTI: [number, number, string][] = [
+  [-120, -30, GREEN],
+  [110, -50, ORANGE],
+  [-70, 90, GREEN],
+  [140, 40, "#ffd0a0"],
+  [-150, 40, ORANGE],
+  [60, -100, GREEN],
+  [-30, -110, "#ffd0a0"],
+  [90, 110, ORANGE],
+];
 const SPIN_MS = 5200;
 const IDLE_DEG_PER_SECOND = 8;
 
@@ -96,6 +120,9 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
   const [phase, setPhase] = useState<"idle" | "spinning" | "replaying" | "done">("idle");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [burst, setBurst] = useState(0);
+  // "Watch it again" replays without the "you missed it" note.
+  const [again, setAgain] = useState(false);
   const rotationRef = useRef(0);
   const handled = useRef<string | null>(null);
 
@@ -124,6 +151,7 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
       setRotation(rotationRef.current);
       window.setTimeout(() => {
         setPhase("done");
+        setBurst((b) => b + 1);
         try {
           localStorage.setItem(key, "1");
         } catch {
@@ -201,34 +229,59 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
   const label = labelStyle(n);
   const band = R - HUB_CLEAR - RIM_CLEAR;
   const maxChars = Math.max(6, Math.floor(band / (label.fontSize * 0.6)));
+  const landed = result && phase === "done" ? result.landed_index : null;
+  const sliceColor = (i: number) => (landed === i ? ORANGE : landed === null ? GLASS[i % 2] : i % 2 ? "#080b0f" : "#0c1015");
   const gradient = items.length
-    ? `conic-gradient(from 0deg, ${items.map((_, i) => `rgba(0,0,0,0.35) ${i * seg}deg ${i * seg + 0.6}deg, ${COLORS[i % COLORS.length]} ${i * seg + 0.6}deg ${(i + 1) * seg}deg`).join(", ")})`
-    : "#191d23";
+    ? `conic-gradient(from 0deg, ${items.map((_, i) => `${landed === i || landed === i - 1 || (landed === n - 1 && i === 0) ? "#ffd0a0" : "rgba(57,255,20,0.75)"} ${i * seg}deg ${i * seg + 0.8}deg, ${sliceColor(i)} ${i * seg + 0.8}deg ${(i + 1) * seg}deg`).join(", ")})`
+    : GLASS[0];
   const spinning = phase === "spinning" || phase === "replaying";
+
+  // Watch it again: the same spin, from where it rests now.
+  function replay() {
+    if (!result) return;
+    setAgain(true);
+    setPhase("replaying");
+    spinTo(result.landed_index, result.items.length, `wl:wheel-seen:${leagueId}:${wheel!.season}:${result.spun_at}`, 30);
+  }
   const transition = spinning ? `transform ${SPIN_MS}ms cubic-bezier(0.12, 0.62, 0.08, 1)` : "none";
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4 pb-12 text-[#eceef1]">
-      <div>
-        <p className="text-[11px] font-bold tracking-[0.14em] text-white/50">{wheel.season} SEASON</p>
-        <h1 className="font-[Oswald,sans-serif] text-3xl font-bold tracking-wide">PUNISHMENT WHEEL</h1>
+      <div className="text-center">
+        <p className={`${satisfy.className} text-[28px] leading-none text-[#ffb27a] [text-shadow:0_0_10px_rgba(255,122,26,0.7)]`}>The {wheel.season}</p>
+        <h1 className={`${anton.className} text-4xl tracking-wide text-[#39ff14] [text-shadow:0_0_8px_rgba(57,255,20,0.8),0_0_22px_rgba(57,255,20,0.4)]`}>
+          PUNISHMENT WHEEL
+        </h1>
       </div>
 
-      <div className="relative flex h-[340px] items-center justify-center [perspective:900px]">
-        <div className="absolute top-1 z-10 h-0 w-0 border-x-[14px] border-t-[26px] border-x-transparent border-t-[#39ff14] drop-shadow-[0_0_8px_rgba(57,255,20,0.8)]" />
-        <div className="relative h-[300px] w-[300px] [transform:rotateX(16deg)] [transform-style:preserve-3d]">
-          <div className="absolute inset-0 translate-y-4 rounded-full bg-[#05070a] shadow-[0_30px_60px_rgba(0,0,0,0.7)]" />
+      <div className="relative flex h-[340px] items-center justify-center">
+        <div className="absolute h-[316px] w-[316px] rounded-full border border-[#39ff14]/20" />
+        <svg width="44" height="50" className="absolute top-0 z-10" aria-hidden="true">
+          <polygon points="22,46 7,18 7,6 37,6 37,18" fill="none" stroke={landed !== null ? ORANGE : GREEN} strokeWidth="10" strokeOpacity=".18" strokeLinejoin="round" />
+          <polygon points="22,46 7,18 7,6 37,6 37,18" fill="#0d1016" stroke={landed !== null ? ORANGE : GREEN} strokeWidth="3" strokeLinejoin="round" />
+        </svg>
+        {burst > 0 &&
+          CONFETTI.map(([x, y, c], i) => (
+            <i key={`${burst}-${i}`} className="pw-confetti" style={{ "--x": `${x}px`, "--y": `${y}px`, background: c } as CSSProperties} />
+          ))}
+        <div className="relative h-[300px] w-[300px]">
           <div
-            className="absolute inset-0 overflow-hidden rounded-full border-[6px] border-[#39ff14] shadow-[0_0_24px_rgba(57,255,20,0.45),inset_0_0_30px_rgba(0,0,0,0.55)]"
+            className={`absolute inset-0 overflow-hidden rounded-full border-[3px] transition-[border-color,box-shadow] duration-500 ${
+              landed !== null
+                ? "border-[#ff7a1a] shadow-[0_0_8px_#ff7a1a,0_0_28px_rgba(255,122,26,0.5),inset_0_0_30px_rgba(0,0,0,0.55)]"
+                : "border-[#39ff14] shadow-[0_0_8px_#39ff14,0_0_28px_rgba(57,255,20,0.45),inset_0_0_30px_rgba(0,0,0,0.55)]"
+            }`}
             style={{ background: gradient, transform: `rotate(${rotation}deg)`, transition }}
           >
             {items.map((text, i) => (
               <span
                 key={i}
-                className="absolute left-1/2 top-1/2 flex flex-col items-center font-extrabold leading-[1.15] text-white [text-shadow:0_0_3px_rgba(0,0,0,0.8),0_1px_2px_rgba(0,0,0,0.6)]"
+                className="absolute left-1/2 top-1/2 flex flex-col items-center font-extrabold leading-[1.15] [text-shadow:0_0_3px_rgba(0,0,0,0.8),0_1px_2px_rgba(0,0,0,0.6)]"
                 style={{
                   width: band,
                   fontSize: label.fontSize,
+                  color: landed === i ? "#fff" : "#eaffdf",
+                  opacity: landed === null || landed === i ? 1 : 0.45,
                   transformOrigin: "0 0",
                   transform: `rotate(${i * seg + seg / 2 - 90}deg) translateX(${HUB_CLEAR}px) translateY(-50%)`,
                 }}
@@ -239,28 +292,41 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
               </span>
             ))}
           </div>
-          <div className="absolute left-1/2 top-1/2 -ml-8 -mt-8 flex h-16 w-16 items-center justify-center rounded-full border-[3px] border-[#39ff14] bg-[#0b0d12] text-center font-[Oswald,sans-serif] text-[9px] leading-[1.1] tracking-wider text-[#39ff14] shadow-[0_0_16px_rgba(57,255,20,0.6)]">
-            THE
-            <br />
-            WEEKEND
+          <div className="absolute left-1/2 top-1/2 -ml-[46px] -mt-[46px] flex h-[92px] w-[92px] items-center justify-center rounded-full border-2 border-[#39ff14]/60 bg-[#07090c] shadow-[0_0_18px_rgba(57,255,20,0.4)]">
+            <Image src={seasonalEmblem()} alt="The Weekend" width={82} height={82} />
           </div>
         </div>
       </div>
 
-      {phase === "replaying" && (
+      {phase === "replaying" && !again && (
         <p className="rounded-xl border border-[#a855f7] bg-[#1b1230] p-3 text-center text-sm font-semibold text-[#e9d5ff]">
           You missed the spin — here&apos;s how it went…
         </p>
       )}
 
       {result && phase === "done" && (
-        <section aria-live="polite" className="flex flex-col gap-1.5 rounded-2xl border border-[#39ff14]/50 bg-[#13201a] p-4">
-          <span className="text-[11px] font-extrabold tracking-[0.14em] text-[#39ff14]">THE WHEEL HAS SPOKEN · {wheel.season} PUNISHMENT</span>
-          <span className="font-[Oswald,sans-serif] text-xl font-bold">{result.text}</span>
-          <span className="text-xs text-white/50">
-            Locked for the {wheel.season} season{result.spun_by ? ` · spun by ${result.spun_by}` : ""} · the league loser owes it
-          </span>
-        </section>
+        <div className="pw-verdict flex flex-col gap-2">
+          <section
+            aria-live="polite"
+            className="flex flex-col items-center gap-2 rounded-[22px] border-2 border-[#ff7a1a] bg-[linear-gradient(180deg,rgba(255,122,26,0.16),rgba(13,16,22,0.2)),#121820] px-4 py-[18px] text-center shadow-[0_0_0_1px_rgba(255,122,26,0.3),0_0_34px_rgba(255,122,26,0.35)]"
+          >
+            <span className={`${anton.className} flex gap-[7px] text-[15px] tracking-[3px] text-[#ffb27a]`}>
+              {["THE", "WHEEL", "HAS", "SPOKEN"].map((w, i) => (
+                <span key={w} className="pw-word" style={{ animationDelay: `${150 + i * 120}ms` }}>
+                  {w}
+                </span>
+              ))}
+            </span>
+            <span className={`${anton.className} text-[32px] leading-tight text-white [text-shadow:0_0_14px_rgba(255,122,26,0.7)]`}>{result.text.toUpperCase()}</span>
+            <span className="text-[13px] text-white/75">
+              Locked for {wheel.season}
+              {result.spun_by ? ` · spun by ${result.spun_by}` : ""} · last place owes it
+            </span>
+          </section>
+          <button type="button" onClick={replay} className="h-[46px] rounded-2xl border border-white/20 text-[15px] font-bold hover:bg-white/5">
+            Watch it again
+          </button>
+        </div>
       )}
 
       {!result && wheel.is_commissioner && (
@@ -273,7 +339,7 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
             }
           }}
           disabled={!wheel.can_spin || phase === "spinning"}
-          className="h-14 rounded-2xl border-2 border-[#39ff14] bg-[#39ff14] font-[Oswald,sans-serif] text-lg font-bold tracking-[0.15em] text-[#06110a] shadow-[0_0_24px_rgba(57,255,20,0.45)] disabled:bg-transparent disabled:text-[#39ff14] disabled:opacity-60 disabled:shadow-none"
+          className={`${anton.className} h-14 rounded-2xl border-2 border-[#39ff14] bg-[#39ff14] text-[22px] tracking-[0.1em] text-[#06110a] shadow-[0_0_24px_rgba(57,255,20,0.45)] disabled:bg-transparent disabled:text-[#39ff14] disabled:opacity-60 disabled:shadow-none`}
         >
           {phase === "spinning" ? "SPINNING…" : items.length < 2 ? "ADD AT LEAST 2" : `SPIN FOR ${wheel.season}`}
         </button>
@@ -310,7 +376,9 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
       <ul className="overflow-hidden rounded-xl border border-white/10 bg-[#12161c]">
         {(result ? result.items.map((text, i) => ({ id: i, text, can_remove: false })) : wheel.items).map((item, i) => (
           <li key={item.id} className="flex min-h-11 items-center gap-2.5 border-t border-white/5 px-3 first:border-t-0">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: COLORS[i % COLORS.length] }} />
+            <svg width="12" height="14" className="shrink-0" aria-hidden="true">
+              <polygon points="6,1 11,4 11,10 6,13 1,10 1,4" fill={landed === i ? ORANGE : "none"} stroke={landed === i ? ORANGE : GREEN} strokeWidth="1.5" />
+            </svg>
             <span className="min-w-0 flex-1 truncate text-sm">{item.text}</span>
             {item.can_remove && (
               <button

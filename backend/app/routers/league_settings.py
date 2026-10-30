@@ -4,6 +4,7 @@ write is commissioner-only. Mirrors keepers.py's shape exactly:
 league_id is always resolved from the session's active league, never
 accepted from the request itself.
 """
+import html
 import json
 import logging
 import traceback
@@ -16,6 +17,7 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app import monitoring
+from app.notifications import email as email_notifications
 from app.db import get_pool
 from app.domain import commish_log, league_format, scoring_catalog
 from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
@@ -216,10 +218,15 @@ class ScoringRequest(BaseModel):
     message: str
 
 
+# Where commissioners' stat requests are emailed (2026-10-30).
+SCORING_REQUEST_EMAIL = "theweekend.admin@gmail.com"
+
+
 @router.post("/scoring-requests")
 async def request_scoring_stat(body: ScoringRequest, request: Request, pool=Depends(get_pool)):
     """A stat the scoring editor can't offer yet ("Request"): lands in
-    the feedback inbox the site owner already reads."""
+    the feedback inbox the site owner already reads, and is emailed to
+    SCORING_REQUEST_EMAIL."""
     message = body.message.strip()[:500]
     if not message:
         raise HTTPException(status_code=400, detail="Say which stat you'd like to score")
@@ -227,11 +234,21 @@ async def request_scoring_stat(body: ScoringRequest, request: Request, pool=Depe
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
         user = await conn.fetchrow("SELECT display_name FROM users WHERE id = $1", payload["user_id"])
+        league_name = await conn.fetchval("SELECT name FROM leagues WHERE id = $1", league_id)
+        submitted_by = (user["display_name"] if user else None) or "Commissioner"
         await conn.execute(
             "INSERT INTO feedback (user_id, submitted_by, message, page_url) VALUES ($1, $2, $3, $4)",
-            payload["user_id"], (user["display_name"] if user else None) or "Commissioner",
+            payload["user_id"], submitted_by,
             f"[Scoring stat request, league {league_id}] {message}", "/commissioner/scoring",
         )
+    if not monitoring.is_test_request(request):
+        league = html.escape(league_name or f"League {league_id}")
+        monitoring.run_in_background(email_notifications.send_admin_alert(
+            f"Scoring stat request: {message[:80]}",
+            f"<p><b>{html.escape(submitted_by)}</b>, commissioner of <b>{league}</b> (league {league_id}), "
+            f"asked to score a stat we don't offer yet:</p><blockquote>{html.escape(message)}</blockquote>",
+            to_email=SCORING_REQUEST_EMAIL,
+        ))
     return {"status": "ok"}
 
 

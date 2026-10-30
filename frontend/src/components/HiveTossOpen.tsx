@@ -16,11 +16,18 @@ const anton = Anton({ weight: "400", subsets: ["latin"] });
 // hive) settles over them, "Welcome Back" rises with a light sweep, and
 // the page opens through a hexagon growing out of the orange cell
 // (`iris`; without it the last frame holds until the caller moves on).
+// The orange cell fills from the bottom like a glass (.ht-pour). With
+// `full` it is also the full intro's finale, landing on the can opening
+// after WELCOME / TO / THE, the fill riding the pour sound.
 // All CSS (.ht-* in globals.css). The app's twin is
 // mobile/src/components/HiveTossOpen.tsx.
 
 export const HIVE_TOSS_MS = 3350;
 const IRIS_AT_MS = 2650;
+// As the full intro's finale (HomeWelcomeBackEntry, 2026-10-30) it holds
+// about as long as the old wordmark did, so the pour plays out under it
+// (.ht-full in globals.css moves the iris and the pour to match).
+const FULL_HOLD_MS = 1150;
 
 // The Hive Mark's seven cells in its own 400-unit square (flat-top,
 // radius 58), in the order they light; the last is the orange one.
@@ -55,7 +62,19 @@ const SPARKS = [
   [150, 12],
 ];
 
-export function HiveTossOpen({ displayName, iris, onDone, onSkip }: { displayName: string | null; iris: boolean; onDone: () => void; onSkip: () => void }) {
+export function HiveTossOpen({
+  displayName,
+  iris,
+  full = false,
+  onDone,
+  onSkip,
+}: {
+  displayName: string | null;
+  iris: boolean;
+  full?: boolean;
+  onDone: () => void;
+  onSkip: () => void;
+}) {
   const season = currentSeason();
   const gate = useRef<HTMLDivElement>(null);
   const hive = useRef<HTMLDivElement>(null);
@@ -69,14 +88,14 @@ export function HiveTossOpen({ displayName, iris, onDone, onSkip }: { displayNam
       gate.current.style.setProperty("--ox", `${box.left + (296 / 400) * box.width}px`);
       gate.current.style.setProperty("--oy", `${box.top + (144.6 / 400) * box.height}px`);
     }
-    const done = window.setTimeout(onDone, iris ? HIVE_TOSS_MS : IRIS_AT_MS);
+    const done = window.setTimeout(onDone, (iris ? HIVE_TOSS_MS : IRIS_AT_MS) + (full ? FULL_HOLD_MS : 0));
     return () => window.clearTimeout(done);
     // Mount-only: the open runs on its own clock.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div ref={gate} className={`ht-gate${iris ? " ht-iris" : ""} ht-${season ?? "standard"}`}>
+    <div ref={gate} className={`ht-gate${iris ? " ht-iris" : ""}${full ? " ht-full" : ""} ht-${season ?? "standard"}`}>
       <div className="ht-stage" aria-hidden="true">
         <IntroSeasonDecor />
         <div className="ht-center">
@@ -108,12 +127,24 @@ export function HiveTossOpen({ displayName, iris, onDone, onSkip }: { displayNam
                         <feMergeNode in="SourceGraphic" />
                       </feMerge>
                     </filter>
+                    <clipPath id="htPourClip">
+                      <polygon points={hex(CELLS[6][0], CELLS[6][1])} />
+                    </clipPath>
+                    <linearGradient id="htPourFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="#fff" stopOpacity=".9" />
+                      <stop offset=".04" stopColor={lit} stopOpacity=".95" />
+                      <stop offset="1" stopColor={lit} stopOpacity=".8" />
+                    </linearGradient>
                   </defs>
                   {CELLS.map(([cx, cy], i) => (
                     <g key={i}>
                       <polygon points={hex(cx, cy)} fill={i === 6 ? "rgba(255,122,26,.18)" : "#0b130d"} stroke={i === 6 ? lit : tube(i)} strokeOpacity=".6" strokeWidth="2.5" />
+                      {i === 6 && (
+                        <g clipPath="url(#htPourClip)">
+                          <rect className="ht-pour" x={cx - 60} y={cy - 50.5} width="120" height="101" fill="url(#htPourFill)" />
+                        </g>
+                      )}
                       <g className="ht-cell" style={{ animationDelay: `${i === 6 ? 1.75 : 1.29 + i * 0.07}s` }}>
-                        {i === 6 && <polygon points={hex(cx, cy)} fill={lit} fillOpacity=".85" />}
                         <polygon points={hex(cx, cy)} fill="none" stroke={i === 6 ? lit : tube(i)} strokeWidth="3.2" strokeLinejoin="round" filter="url(#htGlow)" />
                         <polygon points={hex(cx, cy)} fill="none" stroke="#fff" strokeOpacity=".8" strokeWidth="1" strokeLinejoin="round" />
                       </g>

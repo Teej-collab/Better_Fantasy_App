@@ -36,7 +36,8 @@ import { currentSeason, seasonalEmblem, type Season } from '@/lib/seasonal';
 // orange one last, the real logo (seasonal: the jack-o'-lantern, the ice
 // hive) settles over them, "Welcome Back" rises with a light sweeping
 // across it, and the app opens through a hexagon growing out of the
-// orange cell. Only required where Skia exists (lib/skia.ts). The web's
+// orange cell. With `full` it is also the full intro's finale, landing
+// on the can opening after WELCOME / TO / THE. Only required where Skia exists (lib/skia.ts). The web's
 // twin is frontend/src/components/HiveTossOpen.tsx.
 
 // Timeline, ms from mount.
@@ -50,8 +51,17 @@ const LOGO_AT = LIT_AT + 80;
 const WELCOME_AT = LOGO_AT + 140;
 const SWEEP_AT = WELCOME_AT + 100;
 const IRIS_AT = WELCOME_AT + 750;
+// As the full intro's finale (IntroOverlay, 2026-10-30) it holds about
+// as long as the old wordmark did, so the pour plays out under it.
+const FULL_IRIS_AT = WELCOME_AT + 1900;
+// The orange cell fills like a glass: on the full intro with the pour
+// sound (it starts 1.1 s after the can, which is when this mounts), on
+// the quick open as the cell lights.
+const FULL_POUR_AT = 1100;
+const FULL_POUR_MS = 1300;
+const POUR_AT = LIT_AT - 60;
+const POUR_MS = 650;
 const IRIS_MS = 700;
-const DONE_AT = IRIS_AT + IRIS_MS;
 
 // The Hive Mark's seven cells in its own 400-unit square (flat-top,
 // radius 58), in the order they light; the last is the orange one.
@@ -120,7 +130,8 @@ function hexPath(cx: number, cy: number, r = 58): SkPath {
   return p;
 }
 
-export function HiveTossSkia({ displayName, onDone }: { displayName: string | null; onDone: () => void }) {
+export function HiveTossSkia({ displayName, onDone, full = false }: { displayName: string | null; onDone: () => void; full?: boolean }) {
+  const irisAt = full ? FULL_IRIS_AT : IRIS_AT;
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const season = currentSeason();
@@ -156,6 +167,7 @@ export function HiveTossSkia({ displayName, onDone }: { displayName: string | nu
   const welcome = useSharedValue(0);
   const sweep = useSharedValue(0);
   const iris = useSharedValue(0);
+  const pour = useSharedValue(0);
 
   useEffect(() => {
     toss.set(withDelay(TOSS_AT, withTiming(1, { duration: TOSS_MS, easing: Easing.bezier(0.3, 0.6, 0.4, 1) })));
@@ -165,12 +177,13 @@ export function HiveTossSkia({ displayName, onDone }: { displayName: string | nu
       // A neon tube catching: flicker, then on.
       c.set(withDelay(at, withSequence(withTiming(0.85, { duration: 80 }), withTiming(0.15, { duration: 50 }), withTiming(1, { duration: 100 }))));
     });
+    pour.set(withDelay(full ? FULL_POUR_AT : POUR_AT, withTiming(1, { duration: full ? FULL_POUR_MS : POUR_MS, easing: Easing.out(Easing.quad) })));
     logo.set(withDelay(LOGO_AT, withTiming(1, { duration: 320, easing: Easing.out(Easing.quad) })));
     welcome.set(withDelay(WELCOME_AT, withTiming(1, { duration: 500, easing: Easing.bezier(0.2, 0.8, 0.2, 1) })));
     sweep.set(withDelay(SWEEP_AT, withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.quad) })));
-    iris.set(withDelay(IRIS_AT, withTiming(1, { duration: IRIS_MS, easing: Easing.bezier(0.6, 0, 0.4, 1) })));
+    iris.set(withDelay(irisAt, withTiming(1, { duration: IRIS_MS, easing: Easing.bezier(0.6, 0, 0.4, 1) })));
     const thud = setTimeout(() => haptics.thud(), LAND_AT);
-    const done = setTimeout(onDone, DONE_AT);
+    const done = setTimeout(onDone, irisAt + IRIS_MS);
     return () => {
       clearTimeout(thud);
       clearTimeout(done);
@@ -275,7 +288,7 @@ export function HiveTossSkia({ displayName, onDone }: { displayName: string | nu
             <Group opacity={front}>
               <Group transform={[{ translateX: hive.x }, { translateY: hive.y }, { scale: hive.k }]}>
                 {hexes.map((p, i) => (
-                  <Cell key={i} path={p} cx={CELLS[i][0]} cy={CELLS[i][1]} on={cells[i]} color={i === 6 ? look.lit[2] : look.tube(i)} lit={i === 6 ? look.lit : null} />
+                  <Cell key={i} path={p} cx={CELLS[i][0]} cy={CELLS[i][1]} on={cells[i]} color={i === 6 ? look.lit[2] : look.tube(i)} lit={i === 6 ? look.lit : null} pour={pour} />
                 ))}
               </Group>
               {emblem && (
@@ -311,23 +324,33 @@ export function HiveTossSkia({ displayName, onDone }: { displayName: string | nu
 
 // One cell: dark glass, then a neon tube (a wide soft bloom, a tight
 // glow and a white-hot core) that catches when `on` runs; the lit cell
-// fills with its color.
-function Cell({ path, cx, cy, on, color, lit }: { path: SkPath; cx: number; cy: number; on: SharedValue<number>; color: string; lit: string[] | null }) {
+// fills with its color from the bottom up as `pour` runs, a bright
+// surface line riding the top.
+const CELL_H = 58 * 0.866;
+function Cell({ path, cx, cy, on, color, lit, pour }: { path: SkPath; cx: number; cy: number; on: SharedValue<number>; color: string; lit: string[] | null; pour: SharedValue<number> }) {
+  const level = useDerivedValue(() => cy + CELL_H - 2 * CELL_H * pour.get());
+  const liquid = useDerivedValue(() => Skia.XYWHRect(cx - 60, level.get(), 120, 2 * CELL_H + 4));
+  const surfaceOpacity = useDerivedValue(() => (pour.get() > 0 && pour.get() < 1 ? 1 : 0));
   return (
     <>
       <Path path={path} color={lit ? 'rgba(255,122,26,0.16)' : '#0b130d'} />
       <Path path={path} style="stroke" strokeWidth={2.5} color={color} opacity={0.55} />
-      <Group opacity={on}>
-        {lit && (
-          <>
+      {lit && (
+        <Group clip={path}>
+          <Group clip={liquid}>
             <Path path={path} color={lit[1]} opacity={0.9}>
               <BlurMask blur={16} style="normal" />
             </Path>
             <Path path={path}>
               <RadialGradient c={vec(cx - 12, cy - 15)} r={70} colors={lit} positions={[0, 0.35, 0.8, 1]} />
             </Path>
-          </>
-        )}
+          </Group>
+          <Rect x={cx - 60} y={level} width={120} height={3} color={lit[0]} opacity={surfaceOpacity}>
+            <BlurMask blur={2} style="solid" />
+          </Rect>
+        </Group>
+      )}
+      <Group opacity={on}>
         <Path path={path} style="stroke" strokeWidth={6} color={color} opacity={0.6}>
           <BlurMask blur={12} style="normal" />
         </Path>

@@ -24,7 +24,7 @@ const POSITIONS = ["QB", "RB", "WR", "TE", "D/ST", "K"];
 
 // players.position stores defenses as "DEF" (Sleeper's own value — see
 // backend/app/providers/sleeper/ingest.py), not the "D/ST" display
-// label — the same translation RosterSlotsSection.tsx's own
+// label — the same translation RosterHiveBuilder.tsx's own
 // SLOT_TO_POSITION already makes. Without it, the D/ST tab's query
 // (?position=D/ST) matched zero rows against the real stored value
 // (2026-09, reported: real available defenses never showed up here).

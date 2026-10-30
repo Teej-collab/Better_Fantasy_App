@@ -251,11 +251,18 @@ function AddRuleDialog({ stats, onAdd, onClose }: { stats: CatalogStat[]; onAdd:
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [requested, setRequested] = useState<Set<string>>(new Set());
   const [custom, setCustom] = useState("");
-  const [customSent, setCustomSent] = useState(false);
   const q = query.trim().toLowerCase();
   const matches = stats.filter((s) => !q || s.label.toLowerCase().includes(q) || s.hint.toLowerCase().includes(q) || s.group.includes(q));
   const tracked = matches.filter((s) => s.tracked);
   const untracked = matches.filter((s) => !s.tracked);
+  // The request box sits up top, above the ~70 catalog stats (it was at
+  // the very bottom, where nobody found it — 2026-10-30). Typing a stat
+  // that isn't in the catalog turns it into a one-tap Request.
+  const typed = query.trim();
+  const exact = typed !== "" && stats.some((s) => s.tracked && s.label.toLowerCase() === q);
+  const requestText = typed || custom.trim();
+  const requestKey = "custom:" + requestText.toLowerCase();
+  const requestSent = requested.has(requestKey);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={onClose}>
@@ -278,6 +285,27 @@ function AddRuleDialog({ stats, onAdd, onClose }: { stats: CatalogStat[]; onAdd:
           placeholder="Search stats, e.g. tackle"
           className="rounded-xl border border-[var(--wl-accent)] bg-transparent px-3 py-2.5 text-sm outline-none"
         />
+        {!exact && (
+          <div className="flex flex-col gap-2 rounded-2xl border border-[var(--wl-accent)]/45 bg-[var(--wl-accent)]/[0.07] p-3.5">
+            <span className="text-sm font-semibold">{typed ? `No “${typed}” stat yet` : "Don’t see your stat?"}</span>
+            <span className="text-xs text-black/55 dark:text-white/55">Ask for it and it goes straight to The Weekend&apos;s inbox.</span>
+            {!typed && (
+              <input
+                value={custom}
+                onChange={(e) => setCustom(e.target.value)}
+                placeholder="e.g. first downs, punt return yards"
+                className="min-w-0 rounded-xl border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/10"
+              />
+            )}
+            <button
+              disabled={!requestText || requestSent}
+              onClick={() => requestScoringStat(requestText).then(() => setRequested((r) => new Set(r).add(requestKey)))}
+              className="rounded-xl bg-[var(--wl-accent)] px-3 py-2.5 text-sm font-extrabold text-[#06110a] disabled:opacity-50"
+            >
+              {requestSent ? "Requested ✓" : typed ? `Request “${typed}”` : "Request it"}
+            </button>
+          </div>
+        )}
         <div className="flex flex-col gap-2 overflow-y-auto">
           {tracked.length > 0 && <span className="text-[11px] font-semibold tracking-widest text-black/45 uppercase dark:text-white/45">Tracked · adds right away</span>}
           {tracked.map((s) => (
@@ -316,27 +344,6 @@ function AddRuleDialog({ stats, onAdd, onClose }: { stats: CatalogStat[]; onAdd:
               </button>
             </div>
           ))}
-          <div className="flex flex-col gap-2 border-t border-black/5 pt-3 dark:border-white/5">
-            <span className="text-sm font-semibold">Don&apos;t see it?</span>
-            <div className="flex gap-2">
-              <input
-                value={custom}
-                onChange={(e) => {
-                  setCustom(e.target.value);
-                  setCustomSent(false);
-                }}
-                placeholder="e.g. first downs, punt return yards"
-                className="min-w-0 flex-1 rounded-xl border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/10"
-              />
-              <button
-                disabled={!custom.trim() || customSent}
-                onClick={() => requestScoringStat(custom.trim()).then(() => setCustomSent(true))}
-                className="shrink-0 rounded-full border border-black/15 px-3 py-1 text-xs font-semibold disabled:opacity-50 dark:border-white/15"
-              >
-                {customSent ? "Requested" : "Request"}
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
