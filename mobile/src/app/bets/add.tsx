@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
@@ -104,6 +105,23 @@ export default function AddBetScreen() {
   }
 
   const LINK_FAILED = 'Couldn’t read the bet from that link. Take a screenshot of the slip and share that instead, or choose one below.';
+
+  // Share links first (2026-10-30): a link is read as text, far cheaper
+  // than a screenshot, and exact. The bet's Share → Copy link in the
+  // sportsbook, then this; the same as sharing the link to the app.
+  async function pasteLink() {
+    setError(null);
+    const copied = await Clipboard.getStringAsync().catch(() => '');
+    const url = copied.match(/https:\/\/\S+/)?.[0];
+    if (!url) {
+      haptics.error();
+      setError('Copy your bet’s share link first: open the bet in your sportsbook, tap Share, then Copy link. Then tap Paste again.');
+      return;
+    }
+    haptics.select();
+    setBusy('reading');
+    setLink(url);
+  }
 
   async function readScreenshot() {
     setError(null);
@@ -257,13 +275,25 @@ export default function AddBetScreen() {
       <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
         <Stack.Screen options={{ title: 'Add a bet' }} />
         <Pressable
+          onPress={() => void pasteLink()}
+          disabled={busy !== null}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.drop, styles.dropLink, { borderColor: accent }, pressed && styles.pressed]}>
+          {busy === 'reading' && link ? <ActivityIndicator color={accent} /> : <Text style={styles.dropIcon}>🔗</Text>}
+          <Text style={styles.dropTitle}>{busy === 'reading' && link ? 'Opening your bet link…' : 'Paste a bet link'}</Text>
+          <Text style={styles.soft}>
+            The quickest and most exact. In your sportsbook, open the bet, tap Share, copy the link, then tap here. Works with DraftKings
+            share links; for other books, use a screenshot.
+          </Text>
+        </Pressable>
+        <Pressable
           onPress={() => void readScreenshot()}
           disabled={busy !== null}
           accessibilityRole="button"
           style={({ pressed }) => [styles.drop, pressed && styles.pressed]}>
-          {busy === 'reading' ? <ActivityIndicator color={accent} /> : <Text style={styles.dropIcon}>🧾</Text>}
+          {busy === 'reading' && !link ? <ActivityIndicator color={accent} /> : <Text style={styles.dropIcon}>🧾</Text>}
           <Text style={styles.dropTitle}>
-            {busy !== 'reading' ? 'Choose a bet-slip screenshot' : link ? 'Opening your bet link…' : 'Reading your slip…'}
+            {busy === 'reading' && !link ? 'Reading your slip…' : 'Choose a bet-slip screenshot'}
           </Text>
           <Text style={styles.soft}>
             Any sportsbook, one bet or several. The screenshot is read and then thrown away — only the bets you confirm are saved.
@@ -660,6 +690,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xl * 1.5,
     paddingHorizontal: Spacing.lg,
   },
+  dropLink: { borderStyle: 'solid', borderWidth: 1.5 },
   dropIcon: { fontSize: 34 },
   dropTitle: { color: Colors.text, fontSize: 16, fontWeight: '700' },
   linkButton: { alignItems: 'center', paddingVertical: Spacing.sm },

@@ -10,12 +10,26 @@ slip can show account details, and only the confirmed legs are worth
 keeping.
 Uses a forced tool call so the answer is always the JSON shape below,
 never prose.
+
+Cost (2026-10-30): Haiku reads first, about 20x cheaper than Sonnet; a
+read that fails _needs_second_look (no bet found, a guessed bet, missing
+odds or a leg without its player, stat, team or line) is read again by
+Sonnet. The same slip or page read again (league-mates adding the same
+shared bet) comes from a short in-memory cache instead of another call.
+Either way the user checks every bet before it's saved.
 """
+import hashlib
+import json
 import logging
+import threading
+import time
+from collections import OrderedDict
 
 from app import ai_usage, config
 from app.domain.bets import STAT_KEYS
 from app.providers.anthropic_narrative import MODEL, _get_client
+
+FIRST_MODEL = "claude-haiku-5-5"
 
 logger = logging.getLogger(__name__)
 
@@ -120,21 +134,92 @@ def read_bet_page(page_text: str, url: str) -> dict:
     )
 
 
+_CACHE_MAX = 256
+_CACHE_SECONDS = 6 * 3600
+_cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
+_cache_lock = threading.Lock()
+
+
+def _cache_key(content: list[dict]) -> str:
+    return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
+
+
+def _cached(key: str) -> dict | None:
+    with _cache_lock:
+        hit = _cache.get(key)
+        if not hit or time.time() - hit[0] > _CACHE_SECONDS:
+            _cache.pop(key, None)
+            return None
+        _cache.move_to_end(key)
+        return json.loads(json.dumps(hit[1]))
+
+
+def _remember(key: str, slip: dict) -> None:
+    with _cache_lock:
+        _cache[key] = (time.time(), json.loads(json.dumps(slip)))
+        _cache.move_to_end(key)
+        while len(_cache) > _CACHE_MAX:
+            _cache.popitem(last=False)
+
+
+def _needs_second_look(slip: dict) -> bool:
+    """True when the cheap read left something a closer read might get:
+    no bet found, a bet the reader flagged as guessed, missing odds, or a
+    leg missing the piece its market needs."""
+    bets = slip.get("bets") or []
+    if not slip.get("is_bet_slip") or not bets:
+        return True
+    for bet in bets:
+        legs = bet.get("legs") or []
+        if bet.get("unclear") or not legs or (bet.get("odds_american") is None and bet.get("payout") is None):
+            return True
+        for leg in legs:
+            market = leg.get("market")
+            if market == "player_prop":
+                if not leg.get("player_name") or not leg.get("stat_key"):
+                    return True
+                if leg.get("stat_key") != "anytime_td" and leg.get("line") is None:
+                    return True
+            elif market == "spread" and (leg.get("line") is None or not leg.get("team_abbr")):
+                return True
+            elif market == "moneyline" and not leg.get("team_abbr"):
+                return True
+            elif market == "total" and leg.get("line") is None:
+                return True
+    return False
+
+
 def _read(content: list[dict]) -> dict:
     if not config.ANTHROPIC_API_KEY:
         raise RuntimeError("Bet-slip reading isn't set up (ANTHROPIC_API_KEY is missing).")
+    key = _cache_key(content)
+    hit = _cached(key)
+    if hit is not None:
+        return hit
+    slip = None
+    try:
+        slip = _ask(FIRST_MODEL, content)
+    except RuntimeError:
+        slip = None
+    if slip is None or _needs_second_look(slip):
+        slip = _ask(MODEL, content)
+    _remember(key, slip)
+    return slip
+
+
+def _ask(model: str, content: list[dict]) -> dict:
     client = _get_client()
     response = client.messages.create(
-        model=MODEL,
+        model=model,
         max_tokens=_MAX_TOKENS,
         system=_SYSTEM,
         tools=[_TOOL],
         tool_choice={"type": "tool", "name": _TOOL["name"]},
         messages=[{"role": "user", "content": content}],
     )
-    ai_usage.record(response, MODEL, "bet_slip")
+    ai_usage.record(response, model, "bet_slip")
     for block in response.content:
         if getattr(block, "type", None) == "tool_use":
             return dict(block.input)
-    logger.warning("Bet slip reader returned no tool call (stop_reason=%s)", getattr(response, "stop_reason", None))
+    logger.warning("Bet slip reader (%s) returned no tool call (stop_reason=%s)", model, getattr(response, "stop_reason", None))
     raise RuntimeError("Couldn't read that slip.")
