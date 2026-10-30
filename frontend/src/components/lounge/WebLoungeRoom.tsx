@@ -22,13 +22,12 @@ import type { Bet } from "@/lib/betsApi";
 import { getPlayFantasy, type GamecastPlay, type GamecastPlayFantasyPlayer, type LiveGame } from "@/lib/gamecastApi";
 import { toggleGameShare } from "@/lib/livekitMedia";
 import { LoungeSweatPanel } from "@/components/lounge/LoungeSweatPanel";
-import { ChugAlertCard, MomentRibbon, MomentsMenu, MomentToasts, SwingStrip, useRoomMoments } from "@/components/lounge/RoomMoments";
+import { ChugAlertCard, MomentsMenu, MomentStrip, NeonTakeover, MomentToasts, SwingStrip, useRoomMoments } from "@/components/lounge/RoomMoments";
 import { getMyLeagues } from "@/lib/leaguesApi";
 import {
   clockLabel,
   delayForPlay,
   downLabel,
-  isTouchdown,
   lastName,
   loungeApi,
   useDelayedGame,
@@ -117,7 +116,6 @@ export function WebLoungeRoom({
   const [seenMessages, setSeenMessages] = useState(messages.length);
   const [momentsOpen, setMomentsOpen] = useState(false);
   const rmRef = useRef<((play: GamecastPlay, game: LiveGame, players: GamecastPlayFantasyPlayer[]) => void) | null>(null);
-  const [moments, setMoments] = useState<FeedItem[]>([]);
   const [lastPlayPoints, setLastPlayPoints] = useState<{ playId: string; players: GamecastPlayFantasyPlayer[] } | null>(null);
   const [reactions, setReactions] = useState<{ key: ReactionKey; at: number }[]>([]);
   const [shareError, setShareError] = useState<string | null>(null);
@@ -129,19 +127,6 @@ export function WebLoungeRoom({
     setLastPlayPoints({ playId: play.play_id, players });
     // Declared further down (it needs the league data); always set by now.
     rmRef.current?.(play, game, players);
-    const top = [...players].sort((a, b) => Number(b.is_mine) - Number(a.is_mine) || Math.abs(b.points) - Math.abs(a.points))[0];
-    if (!top || Math.abs(top.points) < 0.05) return;
-    const yards = play.yards_gained ? `${Math.abs(play.yards_gained)}-yd ${play.play_type === "pass" ? "catch" : play.play_type === "rush" ? "run" : "play"}` : "big play";
-    setMoments((m) => m.some((x) => x.id === `moment-${play.play_id}`) ? m : [
-      ...m.slice(-20),
-      {
-        kind: "moment",
-        id: `moment-${play.play_id}`,
-        text: `${lastName(top.player_name)} ${isTouchdown(play) ? "touchdown" : play.is_turnover ? "turnover" : yards}`,
-        points: `${top.points >= 0 ? "+" : "−"}${Math.abs(top.points).toFixed(1)}`,
-        team: top.team_name,
-      },
-    ]);
   }
   const delayed = useDelayedGame(tv.gameId, tv.delaySeconds, (p, g) => void onPlay(p, g));
   const game = delayed.game;
@@ -229,6 +214,9 @@ export function WebLoungeRoom({
     setTab(next);
   }
 
+  // The chat is people talking (2026-10-29: every fantasy play landing in
+  // it buried the conversation). Plays live in the Moments strip over it
+  // and the Moments menu.
   const feed: FeedItem[] = [
     ...messages
       .filter((m) => !m.deleted && m.body)
@@ -244,25 +232,6 @@ export function WebLoungeRoom({
             : NAME_COLORS[hash(m.owner_name, NAME_COLORS.length)],
         body: m.body,
         plus: m.reactions.reduce((n, r) => n + r.count, 0),
-      })),
-    ...moments,
-    ...rosterMoments.map((m) => ({
-      kind: "moment" as const,
-      id: `roster-${m.id}`,
-      text: `${lastName(m.playerName)} ${m.touchdown ? "touchdown" : "big play"}`,
-      points: `+${m.points.toFixed(1)}`,
-      team: m.proTeam ?? "",
-    })),
-    // League moments stay in the chat after their pop-up is gone.
-    ...rm.history
-      .filter((m) => m.tier === 3)
-      .reverse()
-      .map((m) => ({
-        kind: "moment" as const,
-        id: `league-${m.id}`,
-        text: m.kind === "chug" ? `Chug alert · ${m.detail}` : m.title,
-        points: "",
-        team: m.kind === "chug" ? "" : m.detail,
       })),
   ];
 
@@ -289,7 +258,7 @@ export function WebLoungeRoom({
       game={game}
       catchingUp={delayed.catchingUp}
       accent={accent}
-      overlay={rm.big?.tier === 1 ? <MomentRibbon moment={rm.big} accent={accent} onDismiss={rm.dismissBig} /> : null}
+      overlay={rm.big?.tier === 1 && rm.big.kind !== "chug" ? <NeonTakeover moment={rm.big} onDismiss={rm.dismissBig} /> : null}
     />
   );
 
@@ -502,6 +471,7 @@ export function WebLoungeRoom({
             </div>
           )}
 
+          {tab === "chat" && <MomentStrip latest={rm.history[0] ?? null} count={rm.history.length} accent={accent} onOpen={() => setMomentsOpen(true)} />}
           {tab === "chat" && (
             <ChatPanel feed={feed} members={members} onSend={(body, mentions) => onSend(body, mentions, null, null)} onReact={react} counts={counts} accent={accent} />
           )}
@@ -607,28 +577,26 @@ function Tv({
             )}
             {sharer && (sharer.isLocal ? <SharerGameVolume accent={accent} /> : <GameVolume accent={accent} className="absolute top-3.5 right-3.5" />)}
           </div>
-          {/* A broadcast-style bug in the corner, only as wide as the
-              scores: quarter and clock on top, the score (a dot for who has
-              the ball), down and distance underneath. */}
+          {/* A slim broadcast-style bug in the corner, one line (2026-10-29,
+              same as the app): each team's score (a dot for who has the
+              ball), then the quarter and clock and the down. */}
           {game && !overlay && (
-            <div className="absolute bottom-3.5 left-3.5 flex flex-col overflow-hidden rounded-[10px] bg-[rgba(8,10,16,0.85)] font-mono whitespace-nowrap shadow-lg">
-              <div className="flex items-center justify-center gap-1.5 px-2 py-0.5 text-[11px] text-white/85">
-                <span>{clockLabel(game)}</span>
-                {catchingUp && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#9aa3b2]" title="Syncing to the TV" />}
-              </div>
-              <div className="flex">
-                {[game.away_team, game.home_team].map((t) => (
-                  <div key={t.abbr} className="flex flex-1 items-center gap-1.5 px-2.5 py-1" style={{ background: nflTeamColor(t.abbr) ?? "#2b2d31" }}>
-                    <b className="font-display text-sm">{t.abbr}</b>
-                    <b className="text-lg leading-none">{t.score}</b>
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${game.status === "in_progress" && game.possession_team_abbr === t.abbr ? "bg-[#facc15] shadow-[0_0_4px_#facc15]" : "bg-transparent"}`}
-                      aria-label={game.status === "in_progress" && game.possession_team_abbr === t.abbr ? `${t.abbr} has the ball` : undefined}
-                    />
+            <div className="absolute bottom-3 left-3 flex items-stretch overflow-hidden rounded-md bg-[rgba(8,10,16,0.85)] text-white shadow-lg">
+              {[game.away_team, game.home_team].map((t) => {
+                const ball = game.status === "in_progress" && game.possession_team_abbr === t.abbr;
+                return (
+                  <div key={t.abbr} className="flex items-center gap-1 px-2 py-0.5" style={{ background: nflTeamColor(t.abbr) ?? "#2b2d31" }}>
+                    <b className="font-display text-xs tracking-wide">{t.abbr}</b>
+                    <b className="font-mono text-[13px] leading-none">{t.score}</b>
+                    <span className={`h-1 w-1 rounded-full ${ball ? "bg-[#facc15] shadow-[0_0_4px_#facc15]" : "bg-transparent"}`} aria-label={ball ? `${t.abbr} has the ball` : undefined} />
                   </div>
-                ))}
+                );
+              })}
+              <div className="flex items-center gap-1.5 px-2 font-mono text-[11px] whitespace-nowrap">
+                <span className="text-white/85">{clockLabel(game)}</span>
+                {downLabel(game) && <span className="text-[#facc15]">{downLabel(game)}</span>}
+                {catchingUp && <span className="h-1 w-1 animate-pulse rounded-full bg-[#9aa3b2]" title="Syncing to the TV" />}
               </div>
-              {downLabel(game) && <div className="px-2 py-0.5 text-center text-[11px] text-[#facc15]">{downLabel(game)}</div>}
             </div>
           )}
           {overlay}

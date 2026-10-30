@@ -35,7 +35,8 @@ import type { GamecastPlay, LiveGame, PlayFantasyPlayer } from '@/lib/types';
 // the last unless it's a touchdown. Every moment also goes into the
 // Moments history and the room's chat.
 
-const TIER1_MS = 8000;
+// How long a touchdown or turnover holds the TV (NeonTakeover.tsx).
+const TIER1_MS = 5200;
 const TOAST_MS = 5000;
 const CHUG_MS = 12000;
 const TIER1_COOLDOWN_MS = 30_000;
@@ -541,6 +542,41 @@ export function MomentToasts({ toasts, accent, onDismiss }: { toasts: RoomMoment
 }
 
 /** Every moment this visit, newest first. */
+/** The room's latest fantasy moment, one slim line above the chat
+ *  (2026-10-29: every play used to land in the chat itself). Tap for the
+ *  full list. Nothing until something happens. */
+export function MomentStrip({ latest, count, accent, onOpen }: { latest: RoomMoment | null; count: number; accent: string; onOpen: () => void }) {
+  if (!latest) return null;
+  const color = latest.kind === 'turnover' ? '#ff8a2a' : latest.kind === 'chug' ? '#facc15' : latest.myPoints !== undefined && latest.myPoints < 0 ? '#ff5c77' : accent;
+  return (
+    <Pressable
+      onPress={() => {
+        haptics.tap();
+        onOpen();
+      }}
+      style={({ pressed }) => [styles.strip, { borderColor: `${color}66`, shadowColor: color }, pressed && { opacity: 0.7 }]}
+      accessibilityRole="button"
+      accessibilityLabel={`Latest moment: ${latest.title}, ${latest.detail}. ${count} in all. Open moments`}>
+      <View style={[styles.stripDot, { backgroundColor: color, shadowColor: color }]} />
+      <Text style={styles.stripTitle} numberOfLines={1} maxFontSizeMultiplier={1.15}>
+        {latest.title}
+        <Text style={styles.stripDetail}> · {latest.detail}</Text>
+      </Text>
+      {latest.myPoints !== undefined && (
+        <Text style={[styles.stripPts, { color }]} maxFontSizeMultiplier={1.1}>
+          {fmtPts(latest.myPoints)}
+        </Text>
+      )}
+      {count > 1 && (
+        <Text style={styles.stripMore} maxFontSizeMultiplier={1.1}>
+          +{count - 1}
+        </Text>
+      )}
+      <Text style={styles.stripChev}>›</Text>
+    </Pressable>
+  );
+}
+
 export function MomentsSheet({ visible, onClose, history, accent }: { visible: boolean; onClose: () => void; history: RoomMoment[]; accent: string }) {
   const insets = useSafeAreaInsets();
   return (
@@ -579,6 +615,13 @@ export function MomentsSheet({ visible, onClose, history, accent }: { visible: b
 }
 
 const styles = StyleSheet.create({
+  strip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 10, marginTop: 6, paddingHorizontal: 12, minHeight: 36, borderRadius: 18, borderWidth: 1, backgroundColor: 'rgba(12,15,22,0.92)', shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
+  stripDot: { width: 7, height: 7, borderRadius: 4, shadowOpacity: 1, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } },
+  stripTitle: { flex: 1, color: '#f2f5fa', fontFamily: Fonts.displayBold, fontSize: 14, letterSpacing: 0.3 },
+  stripDetail: { color: '#9aa3b2', fontFamily: Fonts.body, fontSize: 13, letterSpacing: 0 },
+  stripPts: { fontFamily: Fonts.monoBold, fontSize: 14 },
+  stripMore: { color: '#9aa3b2', fontFamily: Fonts.mono, fontSize: 12 },
+  stripChev: { color: '#9aa3b2', fontSize: 18, marginTop: -2 },
   ribbon: { position: 'absolute', left: 10, right: 10, bottom: 0, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, overflow: 'hidden' },
   ribbonTop: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 6 },
   ribbonTitle: { color: '#fff', fontFamily: Fonts.displayBold, fontSize: 24, letterSpacing: 1, fontStyle: 'italic' },

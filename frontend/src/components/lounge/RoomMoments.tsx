@@ -28,7 +28,8 @@ import { nflTeamColor } from "@/lib/nfl-teams";
 // All on the room's delay. One big moment at a time, the rest queue; no
 // new Tier 1 within 30 seconds of the last unless it's a touchdown.
 
-const TIER1_MS = 8000;
+// How long a touchdown or turnover holds the TV (NeonTakeover).
+const TIER1_MS = 5200;
 const TOAST_MS = 5000;
 const CHUG_MS = 12000;
 const TIER1_COOLDOWN_MS = 30_000;
@@ -482,6 +483,84 @@ export function MomentToasts({ toasts, accent, onDismiss }: { toasts: RoomMoment
 }
 
 /** Every moment this visit, newest first: the header's Moments menu. */
+/** The big moment on the TV (2026-10-29 "Neon Takeover", the pick from
+ *  the Scoring Moments mockups): the picture dims, a neon frame lights
+ *  around the TV, the word catches letter by letter, then who did it and
+ *  what it's worth to you. Green when it's good for you, red when it's
+ *  not, orange for a turnover, the scoring team's color for somebody else
+ *  in the room. All CSS (.nt-* in globals.css); click to put it away. */
+export function NeonTakeover({ moment, onDismiss }: { moment: RoomMoment; onDismiss: () => void }) {
+  const neon =
+    moment.kind === "turnover"
+      ? "#ff8a2a"
+      : moment.myPoints !== undefined && moment.myPoints > 0
+        ? "#39ff14"
+        : moment.myPoints !== undefined && moment.myPoints < 0
+          ? "#ff3b5c"
+          : (nflTeamColor(moment.teamAbbr ?? "") ?? "#ffb612");
+  const word = moment.title.toUpperCase();
+  return (
+    <button
+      key={moment.id}
+      onClick={onDismiss}
+      aria-label={`${moment.title}. ${moment.detail}. Dismiss`}
+      className="nt absolute inset-0 z-10 block cursor-pointer border-0 bg-transparent p-0 text-left"
+      style={{ "--nt": neon } as React.CSSProperties}
+    >
+      <span className="nt-veil" />
+      <span className="nt-frame" />
+      <span className="nt-stage">
+        <span className="nt-word font-display" aria-hidden>
+          {word.split("").map((ch, i) => (
+            <span key={i} style={{ animationDelay: `${0.35 + i * 0.06}s` }}>
+              {ch}
+            </span>
+          ))}
+        </span>
+        <span className="nt-who">
+          <b>{moment.detail}</b>
+          {moment.score && (
+            <span>
+              {moment.score.scorer} {moment.score.scorerScore ?? ""} · {moment.score.other} {moment.score.otherScore ?? ""}
+            </span>
+          )}
+        </span>
+        {moment.myPoints !== undefined && <span className="nt-pill font-mono">{fmtPts(moment.myPoints)} for you</span>}
+      </span>
+    </button>
+  );
+}
+
+/** The room's latest fantasy moment, one slim line over the chat
+ *  (2026-10-29: every play used to land in the chat itself). Click for
+ *  the full list. */
+export function MomentStrip({ latest, count, accent, onOpen }: { latest: RoomMoment | null; count: number; accent: string; onOpen: () => void }) {
+  if (!latest) return null;
+  const color =
+    latest.kind === "turnover" ? "#ff8a2a" : latest.kind === "chug" ? "#facc15" : latest.myPoints !== undefined && latest.myPoints < 0 ? "#ff5c77" : accent;
+  return (
+    <button
+      onClick={onOpen}
+      aria-label={`Latest moment: ${latest.title}, ${latest.detail}. ${count} in all. Open moments`}
+      className="flex min-h-9 w-full items-center gap-2 rounded-full border bg-[rgba(12,15,22,0.92)] px-3 py-1.5 text-left text-sm hover:bg-white/[0.04]"
+      style={{ borderColor: `${color}66`, boxShadow: `0 0 12px ${color}33` }}
+    >
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+      <span className="min-w-0 flex-1 truncate">
+        <b className="font-display tracking-wide">{latest.title}</b>
+        <span className="text-[#9aa3b2]"> · {latest.detail}</span>
+      </span>
+      {latest.myPoints !== undefined && (
+        <b className="font-mono" style={{ color }}>
+          {fmtPts(latest.myPoints)}
+        </b>
+      )}
+      {count > 1 && <span className="font-mono text-xs text-[#9aa3b2]">+{count - 1}</span>}
+      <span className="text-[#9aa3b2]">›</span>
+    </button>
+  );
+}
+
 export function MomentsMenu({ history, accent, onClose }: { history: RoomMoment[]; accent: string; onClose: () => void }) {
   return (
     <div className="absolute top-full right-0 z-40 mt-2 flex max-h-[60vh] w-[340px] flex-col gap-2 overflow-y-auto rounded-xl border border-white/10 bg-[#0f1420] p-3 text-[13px] shadow-2xl">

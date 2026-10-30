@@ -26,7 +26,8 @@ import { LoungeField } from '@/components/lounge/LoungeField';
 import { SweatCard, SweatSheet } from '@/components/lounge/LoungeSweat';
 import { LoungeTickers } from '@/components/lounge/LoungeTickers';
 import { LoungeTv } from '@/components/lounge/LoungeTv';
-import { ChugAlertCard, isTouchdown, MomentRibbon, MomentsSheet, MomentToasts, SwingStrip, useRoomMoments } from '@/components/lounge/RoomMoments';
+import { NeonTakeover } from '@/components/lounge/NeonTakeover';
+import { ChugAlertCard, MomentsSheet, MomentStrip, MomentToasts, SwingStrip, useRoomMoments } from '@/components/lounge/RoomMoments';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
 import { cleanChat } from '@/lib/chatFilter';
@@ -38,7 +39,7 @@ import { haptics } from '@/lib/haptics';
 import { useDelayedGame } from '@/lib/loungeLive';
 import { personOf, useOwnDevices, useRoomPeople } from '@/lib/loungePeople';
 import { PERSON_LEVELS, setPersonLevel, useApplyLoungeVolume, useLoungeVolume } from '@/lib/loungeVolume';
-import { lastName, useLoungeSweat } from '@/lib/loungeSweat';
+import { useLoungeSweat } from '@/lib/loungeSweat';
 import { useActiveLeague, useChatMembers, useChatMessages, useMe } from '@/lib/queries';
 import { useRosterMoments } from '@/lib/rosterMoments';
 import { teamGlow, useScoringHighlights, type ScoringHit } from '@/lib/scoringHighlights';
@@ -161,7 +162,6 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
   const hits = useScoringHighlights(sweat.league, sweat.matchupId !== null ? String(sweat.matchupId) : null);
   const [sweatOpen, setSweatOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
-  const [moments, setMoments] = useState<FeedItem[]>([]);
   const [momentsOpen, setMomentsOpen] = useState(false);
   const [reactions, setReactions] = useState<{ key: ReactionKey; at: number; name: string }[]>([]);
   const [burst, setBurst] = useState<{ text: string; id: number } | null>(null);
@@ -191,26 +191,6 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
       players = [];
     }
     rm.onPlay(play, game, players);
-    const top = [...players].sort((a, b) => Number(b.is_mine) - Number(a.is_mine) || Math.abs(b.points) - Math.abs(a.points))[0];
-    if (!top || Math.abs(top.points) < 0.05) return;
-    const yards = play.yards_gained ? `${Math.abs(play.yards_gained)}-yd ${play.play_type === 'pass' ? 'catch' : play.play_type === 'rush' ? 'run' : 'play'}` : 'big play';
-    const what = isTouchdown(play) ? 'touchdown' : play.is_turnover ? 'turnover' : yards;
-    // Once per play, even if it comes around again.
-    setMoments((m) =>
-      m.some((x) => x.id === `moment-${play.play_id}`)
-        ? m
-        : [
-            ...m.slice(-20),
-            {
-              kind: 'moment',
-              id: `moment-${play.play_id}`,
-              text: `${lastName(top.player_name)} ${what}`,
-              points: `${top.points >= 0 ? '+' : '−'}${Math.abs(top.points).toFixed(1)}`,
-              team: top.team_name,
-              odds: null,
-            },
-          ],
-    );
   }
 
   const delayed = useDelayedGame(tvGameId, delaySeconds, (p, g) => void onPlay(p, g));
@@ -257,22 +237,10 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
     rm.onRosterPlay(m.id, m.playerName, m.touchdown, m.points, m.proTeam ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestRosterMoment?.id]);
-  const rosterFeed: FeedItem[] = rosterMoments.map((m) => ({
-    kind: 'moment',
-    id: `roster-${m.id}`,
-    text: `${lastName(m.playerName)} ${m.touchdown ? 'touchdown' : 'big play'}`,
-    points: `+${m.points.toFixed(1)}`,
-    team: m.proTeam ?? '',
-    odds: null,
-  }));
-
-  // League moments (chug alerts, rivalry lead changes, your bets) land in
-  // the room's chat too, so they're there after the pop-up is gone.
-  const leagueFeed: FeedItem[] = rm.history
-    .filter((m) => m.tier === 3)
-    .map((m) => ({ kind: 'moment' as const, id: `league-${m.id}`, text: m.kind === 'chug' ? `Chug alert · ${m.detail}` : m.title, points: '', team: m.kind === 'chug' ? '' : m.detail, odds: null }))
-    .reverse();
-  const feed = useFeed(party, [...moments, ...rosterFeed, ...leagueFeed]);
+  // The chat is people talking (2026-10-29: every fantasy play landing
+  // in it buried the conversation). Plays live in the Moments strip
+  // above it and the Moments sheet.
+  const feed = useFeed(party);
   const game = delayed.game;
   const keyboardOpen = useKeyboardOpen();
   const watching = participants.length;
@@ -322,7 +290,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
           catchingUp={delayed.catchingUp}
           fullScreenRail={<CameraRail participants={participants} accent={accent} hits={hits} chugOwner={rm.chugOwner} />}
         />
-        {rm.big?.tier === 1 && <MomentRibbon moment={rm.big} accent={accent} onDismiss={rm.dismissBig} />}
+        {rm.big?.tier === 1 && rm.big.kind !== 'chug' && <NeonTakeover key={rm.big.id} moment={rm.big} onDismiss={rm.dismissBig} />}
         {burst && (
           <View style={styles.burst} pointerEvents="none">
             <Text style={styles.burstText}>{burst.text}</Text>
@@ -358,6 +326,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
         </>
       )}
 
+      <MomentStrip latest={rm.history[0] ?? null} count={rm.history.length} accent={accent} onOpen={() => setMomentsOpen(true)} />
       <View style={styles.feedWrap}>
       <FlatList
         style={styles.feed}
@@ -415,7 +384,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
 /** Room chat newest-first (the list is inverted): the league
  *  conversation for a Watch Party, LiveKit's chat for a password Lounge,
  *  with fantasy moments merged in. */
-function useFeed(party: LoungeRoomProps['party'], moments: FeedItem[]): FeedItem[] {
+function useFeed(party: LoungeRoomProps['party']): FeedItem[] {
   const conversation = useChatMessages(party?.conversationId ?? 0);
   const lk = useChat();
   const messages: FeedItem[] = party
@@ -435,8 +404,7 @@ function useFeed(party: LoungeRoomProps['party'], moments: FeedItem[]): FeedItem
         const name = m.from?.name || m.from?.identity || 'Someone';
         return { kind: 'message' as const, id: `lk-${m.id}`, name: name.split(' ')[0], color: NAME_COLORS[hashIndex(name, NAME_COLORS.length)], chatColor: null, body: cleanChat(m.message), plus: 0 };
       });
-  // Moments sit after the messages that came before them.
-  return [...messages, ...moments].reverse();
+  return messages.reverse();
 }
 
 /** A camera tile — their video when their camera's on, else initials —
