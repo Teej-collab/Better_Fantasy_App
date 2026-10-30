@@ -32,7 +32,7 @@ export default async function ScoringPage() {
 
   const [catalog, { seasons }, activeLeagueName] = await Promise.all([
     getScoringCatalogServer(sessionCookie),
-    listSeasons(),
+    listSeasons(sessionCookie),
     getActiveLeagueName(sessionCookie),
   ]);
   const latestSeason = safeLatestSeason(seasons);

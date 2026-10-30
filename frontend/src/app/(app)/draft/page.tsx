@@ -36,13 +36,13 @@ export default async function DraftPage() {
   // The active season for the team list isn't known until draftState
   // loads client-side (chicken-and-egg for the "no draft yet" setup
   // case) — same reasoning DraftRoom's own client fetch used to rely on,
-  // just resolved server-side now: listSeasons() returns every season
+  // just resolved server-side now: listSeasons(sessionCookie) returns every season
   // with a synced teams_by_season row, so the highest one is the
   // current one (safeLatestSeason, not a bare Math.max — see its doc).
   const [draftState, pool, { seasons }, myPreferences] = await Promise.all([
     getDraftStateServer(sessionCookie),
     getDraftPoolServer(sessionCookie),
-    listSeasons(),
+    listSeasons(sessionCookie),
     getMyPreferences(sessionCookie),
   ]);
   const latestSeason = safeLatestSeason(seasons);

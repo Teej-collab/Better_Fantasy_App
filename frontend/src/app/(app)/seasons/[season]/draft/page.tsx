@@ -40,7 +40,7 @@ export default async function SeasonDraftPage({
   }
 
   const [{ seasons }, draft, myPreferences, activeLeagueName] = await Promise.all([
-    listSeasons(),
+    listSeasons(sessionCookie),
     getSeasonDraft(Number(season), sessionCookie),
     getMyPreferences(sessionCookie),
     getActiveLeagueName(sessionCookie),

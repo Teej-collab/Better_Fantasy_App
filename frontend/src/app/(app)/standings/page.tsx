@@ -42,7 +42,7 @@ export default async function StandingsPage({
   // backend, and they used to all run one after another (9 deep).
   const [me, { seasons }, { season: seasonParam, view, mode, w }] = await Promise.all([
     getMe(sessionCookie),
-    listSeasons(),
+    listSeasons(sessionCookie),
     searchParams,
   ]);
   if (!me) {

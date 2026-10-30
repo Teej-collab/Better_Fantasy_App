@@ -39,7 +39,7 @@ export default async function SeasonAwardsPage({
   }
 
   const [{ seasons }, { champion, awards }, activeLeagueName] = await Promise.all([
-    listSeasons(),
+    listSeasons(sessionCookie),
     getSeasonAwards(Number(season), sessionCookie),
     getActiveLeagueName(sessionCookie),
   ]);

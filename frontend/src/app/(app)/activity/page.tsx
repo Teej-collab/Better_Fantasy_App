@@ -31,7 +31,7 @@ export default async function ActivityPage() {
     return <NeedsLeagueCard />;
   }
 
-  const { seasons } = await listSeasons();
+  const { seasons } = await listSeasons(sessionCookie);
   const latestSeason = safeLatestSeason(seasons);
 
   const [{ items }, activeLeagueName] = await Promise.all([

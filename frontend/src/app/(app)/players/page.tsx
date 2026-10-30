@@ -35,7 +35,7 @@ export default async function PlayersPage() {
 
   const [{ owners }, { seasons }, activeLeagueName] = await Promise.all([
     listOwners(sessionCookie),
-    listSeasons(),
+    listSeasons(sessionCookie),
     getActiveLeagueName(sessionCookie),
   ]);
 

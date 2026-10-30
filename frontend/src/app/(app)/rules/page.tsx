@@ -36,10 +36,11 @@ const TOC: RuleLink[] = [
 ];
 
 export default async function RulesPage() {
-  const { seasons } = await listSeasons();
+  const sessionCookie = (await cookies()).get("session")?.value;
+  const { seasons } = await listSeasons(sessionCookie);
   const latestSeason = safeLatestSeason(seasons);
   // The league's own name for its chug rule (The Weekend Rule by default).
-  const ruleName = await getChugRuleNameServer((await cookies()).get("session")?.value);
+  const ruleName = await getChugRuleNameServer(sessionCookie);
 
   return (
     <div className="flex flex-col gap-6">

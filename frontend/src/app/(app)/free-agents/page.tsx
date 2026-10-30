@@ -69,7 +69,7 @@ export default async function FreeAgentsPage({
     );
   }
 
-  const { seasons } = await listSeasons();
+  const { seasons } = await listSeasons(sessionCookie);
   const latestSeason = safeLatestSeason(seasons);
   const { current_week: currentWeek } =
     latestSeason !== null ? await getCurrentWeek(latestSeason) : { current_week: null };

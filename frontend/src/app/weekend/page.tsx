@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import { awardsHrefFor, listSeasons, matchupsHrefFor, safeLatestSeason } from "@/lib/api";
 import { WeekendLanding } from "@/components/WeekendLanding";
@@ -5,7 +6,7 @@ import { WeekendLanding } from "@/components/WeekendLanding";
 export const metadata: Metadata = { title: "The Weekend" };
 
 export default async function WeekendPage() {
-  const { seasons } = await listSeasons();
+  const { seasons } = await listSeasons((await cookies()).get("session")?.value);
   const latestSeason = safeLatestSeason(seasons);
 
   const matchupsHref = matchupsHrefFor();

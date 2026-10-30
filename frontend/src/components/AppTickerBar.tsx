@@ -30,7 +30,7 @@ import { LeagueTickerSlot } from "@/components/LeagueTickerSlot";
  * week's own league scores plus each owner's own top scorer, from the
  * lightweight /ticker endpoint (app/domain/league_ticker.py).
  *
- * listSeasons()/getCurrentWeek() are the same calls NavBar.tsx already
+ * listSeasons(sessionCookie)/getCurrentWeek() are the same calls NavBar.tsx already
  * makes for its own matchups link — Next's per-request fetch
  * memoization means adding them here doesn't cost a second round trip.
  *
@@ -46,7 +46,7 @@ export async function AppTickerBar() {
 
   const [nflGames, { seasons }, gamecastGames] = await Promise.all([
     getNflScoreboard(),
-    listSeasons(),
+    listSeasons(sessionCookie),
     getLiveGames(),
   ]);
   const isGameDay = isNflGameLive(nflGames);

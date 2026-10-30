@@ -41,7 +41,7 @@ export default async function AllTimeRecordsPage({
 
   const [{ seasons }, { categories }, { categories: awardCategories }, myPreferences, activeLeagueName] =
     await Promise.all([
-      listSeasons(),
+      listSeasons(sessionCookie),
       getRecordBook(sessionCookie),
       getAwardLeaderboards(sessionCookie),
       getMyPreferences(sessionCookie),

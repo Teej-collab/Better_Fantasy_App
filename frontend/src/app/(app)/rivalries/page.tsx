@@ -26,7 +26,7 @@ export default async function RivalriesPage() {
 
   const [{ rivalries }, { seasons }, activeLeagueName] = await Promise.all([
     listRivalries(sessionCookie),
-    listSeasons(),
+    listSeasons(sessionCookie),
     getActiveLeagueName(sessionCookie),
   ]);
   const latestSeason = safeLatestSeason(seasons);

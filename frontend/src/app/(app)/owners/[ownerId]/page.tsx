@@ -57,7 +57,7 @@ export default async function OwnerProfilePage({
     return <NeedsLeagueCard />;
   }
 
-  const { seasons } = await listSeasons();
+  const { seasons } = await listSeasons(sessionCookie);
   const latestSeason = safeLatestSeason(seasons);
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;

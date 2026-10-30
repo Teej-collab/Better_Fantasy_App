@@ -41,7 +41,7 @@ export default async function ChugLeaderboardPage({
     getChugSeasons(),
     getChugLeaderboard(sessionCookie, season),
     getChugFeed(sessionCookie, season),
-    listSeasons(),
+    listSeasons(sessionCookie),
     getActiveLeagueName(sessionCookie),
     // Each row's "Why?" history — this season's when no season is picked.
     getChugLedger(sessionCookie, season).catch(() => ({ season: season ?? 0, owners: {} as Record<string, never[]> })),

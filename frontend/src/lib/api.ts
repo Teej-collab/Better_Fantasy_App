@@ -221,8 +221,15 @@ export type TeamRoster = {
   roster: RosterPlayer[];
 };
 
-export function listSeasons() {
-  return get<{ seasons: Season[] }>("/seasons");
+// Your active league's seasons. Since 2026-10-28 the backend answers
+// only for a signed-in member (none signed out), so a server page passes
+// its session cookie and the browser goes through the signed-in proxy;
+// a bare call got an empty list, and every page that picks "this
+// season" from it (Home, League, Standings…) showed nothing.
+export function listSeasons(sessionCookie?: string): Promise<{ seasons: Season[] }> {
+  if (typeof window !== "undefined") return authedGet<{ seasons: Season[] }>("/seasons");
+  if (!sessionCookie) return Promise.resolve({ seasons: [] });
+  return getServer<{ seasons: Season[] }>("/seasons", sessionCookie);
 }
 
 // Cached by the backend as a side effect of syncing (see league_state

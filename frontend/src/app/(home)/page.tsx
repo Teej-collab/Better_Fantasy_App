@@ -165,7 +165,7 @@ export default async function HomePage() {
   // single fresh app open, so each hop removed here is felt everywhere).
   // getMe still has to be the thing that decides the early return below;
   // listSeasons's result just rides along for free.
-  const [me, { seasons }] = await Promise.all([getMe(sessionCookie), listSeasons()]);
+  const [me, { seasons }] = await Promise.all([getMe(sessionCookie), listSeasons(sessionCookie)]);
 
   // Mandatory front door: a signed-out visitor sees the Weekend League
   // opening/auth experience instead of the dashboard below, and none of

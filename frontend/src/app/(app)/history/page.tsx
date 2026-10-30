@@ -42,7 +42,7 @@ export default async function HistoryPage() {
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, activeLeagueName] = await Promise.all([listSeasons(), getActiveLeagueName(sessionCookie)]);
+  const [{ seasons }, activeLeagueName] = await Promise.all([listSeasons(sessionCookie), getActiveLeagueName(sessionCookie)]);
   const latestSeason = safeLatestSeason(seasons);
   const awardsHref = awardsHrefFor(latestSeason);
 

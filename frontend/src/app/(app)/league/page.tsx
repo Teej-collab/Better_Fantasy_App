@@ -31,7 +31,7 @@ export default async function LeaguePage({
   // of after it — each await here is a real backend round trip.
   const [me, { seasons }, { season: seasonParam }] = await Promise.all([
     getMe(sessionCookie),
-    listSeasons(),
+    listSeasons(sessionCookie),
     searchParams,
   ]);
   if (!me) {

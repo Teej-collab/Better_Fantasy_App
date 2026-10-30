@@ -53,7 +53,7 @@ export default async function PowerRankingsPage({
       getMe(sessionCookie),
       getMyPreferences(sessionCookie),
       getActiveLeagueName(sessionCookie),
-      listSeasons(),
+      listSeasons(sessionCookie),
       searchParams,
     ]);
   if (!me) {
