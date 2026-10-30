@@ -24,6 +24,9 @@ import { takeFullIntro } from "@/lib/introSoundPreference";
 // on the actual sign-in screen and the "Welcome Back" reveal into
 // Home, not on a reload of an arbitrary already-signed-in page.
 export const WORDS = ["WELCOME", "TO", "THE"];
+// Home's Welcome Back ends on the Hive Mark, which already says The
+// Weekend, so it stops at TO (2026-10-30); the other entries keep THE.
+export const WELCOME_WORDS = ["WELCOME", "TO"];
 // Each word ignites a little quicker than the last — an accelerating
 // cadence that builds anticipation toward WEEKEND instead of a metronomic
 // repeat.
@@ -49,7 +52,7 @@ export function prefersReducedMotion(): boolean {
   return /(?:^|; )wl_motion=reduced(?:;|$)/.test(document.cookie);
 }
 
-export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
+export function useWeekendIntro({ sound = true, words = WORDS }: { sound?: boolean; words?: string[] } = {}) {
   const [stage, setStage] = useState<IntroStage>("dark");
   const [wordIndex, setWordIndex] = useState(0);
   // True once there's no reason to make this visitor wait: reduced
@@ -113,7 +116,7 @@ export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
       let i = 0;
       const advance = () => {
         i++;
-        if (i < WORDS.length) {
+        if (i < words.length) {
           setWordIndex(i);
           playLightSwitch(); // TO, then THE — one "light" per word.
           timeouts.current.push(setTimeout(advance, WORD_INTERVALS_MS[i]));
@@ -122,7 +125,7 @@ export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
             setTimeout(() => {
               setStage("final");
               playCanThenPour();
-            }, WORD_INTERVALS_MS[WORDS.length - 1])
+            }, WORD_INTERVALS_MS[words.length - 1])
           );
         }
       };

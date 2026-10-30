@@ -1887,12 +1887,13 @@ html[data-honeycomb="off"] .hc-bg {
 .wl-word--2 {
   animation-duration: 0.85s;
 }
-/* THE pulls back and shrinks away, like it becomes the Hive Toss's
-   coin (the full intro's finale on Home, 2026-10-30). */
+/* The last word (TO) pulls back and shrinks away, like it becomes the
+   Hive Toss's coin (the full intro's finale on Home, 2026-10-30); it
+   finishes as its 1.15 s beat ends. */
 .wl-word--handoff {
   animation:
-    wl-word-power-on 0.85s ease-out both,
-    wl-word-handoff 0.45s 0.55s ease-in forwards;
+    wl-word-power-on 1s cubic-bezier(0.2, 0.8, 0.3, 1) both,
+    wl-word-handoff 0.45s 0.7s ease-in forwards;
 }
 @keyframes wl-word-handoff {
   to {

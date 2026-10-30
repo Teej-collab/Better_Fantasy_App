@@ -39,6 +39,9 @@ import { Brand, Colors } from '@/constants/theme';
 // along the bottom; tapping Enter Here plays the bloom and calls onDone.
 
 const WORDS = ['WELCOME', 'TO', 'THE'];
+// The Welcome Back ends on the Hive Mark, which already says The Weekend,
+// so it stops at TO (2026-10-30); the front door keeps THE.
+const WELCOME_WORDS = ['WELCOME', 'TO'];
 // Each word ignites a little quicker than the last.
 const WORD_INTERVALS_MS = [1300, 1150, 1000];
 const WORD_FLICKER_MS = [1150, 1000, 850];
@@ -187,6 +190,7 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
   const { width, height } = useWindowDimensions();
   const [stage, setStage] = useState<Stage>('dark');
   const [wordIndex, setWordIndex] = useState(0);
+  const words = mode === 'welcome' ? WELCOME_WORDS : WORDS;
   const [revealing, setRevealing] = useState(false);
   // The toss's canvas takes a frame or two to paint; until it has, this
   // gate stays opaque under it so the app never flashes through.
@@ -284,16 +288,16 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
       let i = 0;
       const advance = () => {
         i++;
-        if (i < WORDS.length) {
+        if (i < words.length) {
           setWordIndex(i);
           word.set(0);
           word.set(flickerOn(WORD_FLICKER_MS[i]));
-          sounds.playLightSwitch(); // TO, then THE
+          sounds.playLightSwitch(); // TO (then THE on the front door)
           after(WORD_INTERVALS_MS[i], advance);
         } else {
-          const last = WORD_INTERVALS_MS[WORDS.length - 1];
+          const last = WORD_INTERVALS_MS[words.length - 1];
           if (mode === 'welcome' && hasSkia) {
-            // THE pulls back and shrinks away, like it becomes the coin.
+            // The last word pulls back and shrinks away, like it becomes the coin.
             after(last - HANDOFF_MS, () => handoff.set(withTiming(1, { duration: HANDOFF_MS, easing: Easing.in(Easing.quad) })));
           }
           after(last, () => showFinal(false));
@@ -387,7 +391,7 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
       <Animated.View style={[styles.scene, sceneStyle]}>
         {stage === 'word' && (
           <Animated.View key={wordIndex} style={wordStyle}>
-            <GlowText style={styles.word}>{WORDS[wordIndex]}</GlowText>
+            <GlowText style={styles.word}>{words[wordIndex]}</GlowText>
           </Animated.View>
         )}
         {stage === 'final' && (
