@@ -2415,6 +2415,13 @@ button[data-lk-source="screen_share"] {
   align-content: start;
 }
 
+/* Theater (the room's Theater button): chat, the gamecast and the
+   tickers step away; on phones the TV, banner and cameras stay. */
+.lounge-grid[data-theater] .lounge-side,
+.lounge-grid[data-theater] .lounge-cast {
+  display: none;
+}
+
 /* Laptops and up (2026-10-29 "Lounge Camera Ring"): the TV with
    everyone's camera ringed around it (LoungeRing.tsx) on the left, chat
    beside it, the gamecast under the ring. The ring is a 7-column grid:
@@ -2446,6 +2453,15 @@ button[data-lk-source="screen_share"] {
   }
   .lounge-cams {
     display: none;
+  }
+  /* Theater: the ring takes the whole width, as big as the window lets
+     the TV be. */
+  .lounge-grid[data-theater] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "tv";
+  }
+  .lounge-grid[data-theater] .lounge-tv-cell {
+    max-width: calc((100dvh - 260px) * 16 / 9 + 2 * var(--ring-side) + 20px);
   }
   .lounge-side {
     grid-area: side;

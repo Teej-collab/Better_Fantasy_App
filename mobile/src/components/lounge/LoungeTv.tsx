@@ -139,35 +139,38 @@ export function LoungeTv({
           </View>
         </FullScreenTv>
       )}
-      {/* A broadcast-style bug in the corner, only as wide as the scores:
-          quarter and clock on top, the score (a dot for who has the ball),
-          down and distance underneath. */}
+      {/* A slim broadcast-style bug in the corner, one line: each team's
+          score (a dot for who has the ball), then the quarter and clock
+          and the down (2026-10-29: the old three-row bug covered a big
+          corner of a phone's picture and broke CAR into CA / R). */}
       {game && (
         <Pressable style={[styles.bug, compact && styles.bugCompact]} onPress={onPressScorebug} disabled={!onPressScorebug} accessibilityRole={onPressScorebug ? 'button' : undefined}>
+          {[game.away_team, game.home_team].map((t) => {
+            const ball = game.status === 'in_progress' && game.possession_team_abbr === t.abbr;
+            return (
+              <View key={t.abbr} style={[styles.team, { backgroundColor: nflTeamColor(t.abbr) ?? '#2b2d31' }]}>
+                <Text style={styles.teamAbbr} numberOfLines={1} maxFontSizeMultiplier={1}>
+                  {t.abbr}
+                </Text>
+                <Text style={styles.teamScore} numberOfLines={1} maxFontSizeMultiplier={1}>
+                  {t.score}
+                </Text>
+                <View style={[styles.ball, ball && styles.ballOn]} accessibilityLabel={ball ? `${t.abbr} has the ball` : undefined} />
+              </View>
+            );
+          })}
           {!compact && (
             <View style={styles.clockRow}>
-              <Text style={styles.clockText} numberOfLines={1}>
+              <Text style={styles.clockText} numberOfLines={1} maxFontSizeMultiplier={1}>
                 {clockLabel(game)}
               </Text>
+              {downLabel(game) ? (
+                <Text style={styles.down} numberOfLines={1} maxFontSizeMultiplier={1}>
+                  {downLabel(game)}
+                </Text>
+              ) : null}
               {catchingUp && <View style={styles.syncDot} accessibilityLabel="Syncing to the TV" />}
             </View>
-          )}
-          <View style={styles.bugScores}>
-            {[game.away_team, game.home_team].map((t) => {
-              const ball = game.status === 'in_progress' && game.possession_team_abbr === t.abbr;
-              return (
-                <View key={t.abbr} style={[styles.team, { backgroundColor: nflTeamColor(t.abbr) ?? '#2b2d31' }]}>
-                  <Text style={styles.teamAbbr}>{t.abbr}</Text>
-                  <Text style={styles.teamScore}>{t.score}</Text>
-                  <View style={[styles.ball, ball && styles.ballOn]} accessibilityLabel={ball ? `${t.abbr} has the ball` : undefined} />
-                </View>
-              );
-            })}
-          </View>
-          {!compact && downLabel(game) && (
-            <Text style={styles.down} numberOfLines={1}>
-              {downLabel(game)}
-            </Text>
           )}
         </Pressable>
       )}
@@ -230,17 +233,16 @@ const styles = StyleSheet.create({
   badges: { position: 'absolute', top: 10, left: 10, flexDirection: 'row', gap: 6, alignItems: 'center' },
   live: { backgroundColor: '#dc143c', color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 1, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, overflow: 'hidden' },
   sharedBy: { backgroundColor: 'rgba(0,0,0,0.6)', color: '#f3f4f6', fontSize: 11, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, overflow: 'hidden' },
-  bug: { position: 'absolute', left: 10, bottom: 10, borderRadius: 8, overflow: 'hidden', backgroundColor: 'rgba(8,10,16,0.85)' },
-  bugCompact: { left: 8, bottom: 8 },
-  bugScores: { flexDirection: 'row' },
-  team: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3 },
-  teamAbbr: { color: '#fff', fontFamily: Fonts.displayBold, fontSize: 13 },
-  teamScore: { color: '#fff', fontFamily: Fonts.monoBold, fontSize: 16 },
-  ball: { width: 6, height: 6, borderRadius: 3 },
+  bug: { position: 'absolute', left: 8, bottom: 8, flexDirection: 'row', alignItems: 'stretch', borderRadius: 6, overflow: 'hidden', backgroundColor: 'rgba(8,10,16,0.85)' },
+  bugCompact: { left: 6, bottom: 6 },
+  team: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 5, paddingVertical: 2 },
+  teamAbbr: { flexShrink: 0, color: '#fff', fontFamily: Fonts.displayBold, fontSize: 11 },
+  teamScore: { flexShrink: 0, color: '#fff', fontFamily: Fonts.monoBold, fontSize: 12 },
+  ball: { width: 4, height: 4, borderRadius: 2 },
   ballOn: { backgroundColor: '#facc15' },
-  clockRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 2 },
-  clockText: { color: 'rgba(255,255,255,0.85)', fontFamily: Fonts.mono, fontSize: 10 },
-  syncDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#9aa3b2' },
-  down: { color: '#facc15', fontFamily: Fonts.mono, fontSize: 10, textAlign: 'center', paddingVertical: 2, paddingHorizontal: 6 },
+  clockRow: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 6 },
+  clockText: { flexShrink: 0, color: 'rgba(255,255,255,0.85)', fontFamily: Fonts.mono, fontSize: 10 },
+  syncDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#9aa3b2' },
+  down: { flexShrink: 0, color: '#facc15', fontFamily: Fonts.mono, fontSize: 10 },
   volume: { position: 'absolute', top: 10, right: 10, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.6)' },
 });

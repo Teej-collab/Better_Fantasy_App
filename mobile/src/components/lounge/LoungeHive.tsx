@@ -105,7 +105,7 @@ export function HexMask({ w, h, ring, ringWidth = 2 }: { w: number; h: number; r
 }
 
 /** The banner plate: brand green, white honeycomb, the logo. */
-function HiveBanner({ w, h }: { w: number; h: number }) {
+export function HiveBanner({ w, h }: { w: number; h: number }) {
   const hex = hexPoints(w, h);
   const logo = Math.round(w * 0.8);
   return (

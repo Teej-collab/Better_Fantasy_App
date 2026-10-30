@@ -21,7 +21,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { ChatNameText } from '@/components/ChatNameText';
 import { GameVolume } from '@/components/lounge/GameVolume';
 import { HexFrame } from '@/components/lounge/HexFrame';
-import { HexMask, LoungeHive } from '@/components/lounge/LoungeHive';
+import { HexMask, LoungeHive, HiveBanner } from '@/components/lounge/LoungeHive';
 import { LoungeField } from '@/components/lounge/LoungeField';
 import { SweatCard, SweatSheet } from '@/components/lounge/LoungeSweat';
 import { LoungeTickers } from '@/components/lounge/LoungeTickers';
@@ -719,6 +719,10 @@ function CameraRail({
     <View style={styles.rail}>
       <Text style={styles.railTitle}>IN THE ROOM · {participants.length}</Text>
       <ScrollView style={styles.railList} contentContainerStyle={styles.railListContent} showsVerticalScrollIndicator={false}>
+        {/* The banner rides along in full screen too. */}
+        <View style={styles.railBanner}>
+          <HiveBanner w={104} h={120} />
+        </View>
         {participants.map((p) => (
           <Person
             key={p.identity}
@@ -922,6 +926,7 @@ const styles = StyleSheet.create({
   rail: { width: 176, paddingTop: 12, paddingBottom: 12, paddingLeft: 10, paddingRight: 34, backgroundColor: '#0d1016', borderLeftWidth: 1, borderLeftColor: '#1c2027', gap: 8 },
   railTitle: { color: '#9aa3b2', fontFamily: Fonts.display, fontSize: 12, letterSpacing: 1.2 },
   railList: { flex: 1 },
+  railBanner: { alignItems: 'center' },
   railListContent: { gap: 8 },
   railButtons: { flexDirection: 'row', justifyContent: 'space-between' },
   personBody: { alignItems: 'center', justifyContent: 'center' },

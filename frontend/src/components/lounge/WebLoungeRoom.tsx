@@ -110,6 +110,9 @@ export function WebLoungeRoom({
   const share = (useTracks([Track.Source.ScreenShare]) as TrackReference[])[0];
   const { localParticipant, isScreenShareEnabled, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const [devicesOpen, setDevicesOpen] = useState(false);
+  // Theater: the TV as big as the window allows with the cameras and
+  // banners around it; chat, the gamecast and the tickers step away.
+  const [theater, setTheater] = useState(false);
   const [tab, setTab] = useState<"chat" | "sweat" | "plays">("chat");
   const [seenMessages, setSeenMessages] = useState(messages.length);
   const [momentsOpen, setMomentsOpen] = useState(false);
@@ -343,6 +346,13 @@ export function WebLoungeRoom({
           >
             {isCameraEnabled ? "Camera on" : "Camera off"}
           </button>
+          <button
+            onClick={() => setTheater((v) => !v)}
+            aria-pressed={theater}
+            className={`h-[38px] rounded-full px-4 text-[13px] font-semibold ${theater ? "bg-[#eceef1] text-[#0d1016]" : "border border-white/[0.12] bg-[#12151d]"}`}
+          >
+            {theater ? "Exit theater" : "Theater"}
+          </button>
           <div className="relative">
             <button
               onClick={() => setDevicesOpen((v) => !v)}
@@ -396,14 +406,14 @@ export function WebLoungeRoom({
       {/* The same strips as every other page (components/LiveTicker.tsx),
           so they can be dragged too — links off, so a tap doesn't pull
           you out of the room. */}
-      <TickerStrip label="NFL" labelColor="#9aa3b2" items={noLinks(nflItems)} fast tint="rgba(255,255,255,0.03)" />
-      {leagueItems.length > 0 && <TickerStrip label="LEAGUE" labelColor={accent} items={noLinks(leagueItems)} fast tint="rgba(57,255,20,0.04)" />}
+      {!theater && <TickerStrip label="NFL" labelColor="#9aa3b2" items={noLinks(nflItems)} fast tint="rgba(255,255,255,0.03)" />}
+      {!theater && leagueItems.length > 0 && <TickerStrip label="LEAGUE" labelColor={accent} items={noLinks(leagueItems)} fast tint="rgba(57,255,20,0.04)" />}
 
       {/* Phones stack everything: TV, gamecast, a banner and the cameras,
           chat. From 1024px everyone's camera rings the TV (LoungeRing),
           banners fill the open border, the gamecast sits under it and chat
           beside it. Layout lives in globals.css (.lounge-grid, .lounge-ring). */}
-      <main className="lounge-grid w-full flex-1 px-4 py-5 sm:px-6">
+      <main className="lounge-grid w-full flex-1 px-4 py-5 sm:px-6" data-theater={theater ? "" : undefined}>
         <div className="lounge-tv-cell">
           {wide ? (
             <>
