@@ -171,12 +171,21 @@ export function IntroOverlay(props: IntroProps) {
   return <WordmarkIntro {...props} full={full} />;
 }
 
+// Required, not imported: older builds have no Skia to load.
+function loadHiveToss(): typeof import('@/components/HiveTossSkia') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('@/components/HiveTossSkia') as typeof import('@/components/HiveTossSkia');
+}
+
 function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, full }: IntroProps & { full: boolean }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [stage, setStage] = useState<Stage>('dark');
   const [wordIndex, setWordIndex] = useState(0);
   const [revealing, setRevealing] = useState(false);
+  // The toss's canvas takes a frame or two to paint; until it has, this
+  // gate stays opaque under it so the app never flashes through.
+  const [tossPainted, setTossPainted] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const sounds = useIntroSounds(full);
 
@@ -201,6 +210,7 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
       // under it; the toss opens the app itself.
       setStage('toss');
       sounds.playCanThenPour();
+      after(400, () => setTossPainted(true));
       return;
     }
     setStage('final');
@@ -254,6 +264,9 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
   }
 
   useEffect(() => {
+    // Load the toss now, not on the can opening, so the switch doesn't
+    // stall a frame.
+    if (full && mode === 'welcome' && hasSkia) loadHiveToss();
     after(INITIAL_DARK_BEAT_MS, () => {
       ambient.set(withTiming(1, { duration: 1400 }));
       if (!full) {
@@ -325,10 +338,12 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
   }));
 
   if (stage === 'toss') {
-    // Required here, not imported: older builds have no Skia to load.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { HiveTossSkia } = require('@/components/HiveTossSkia') as typeof import('@/components/HiveTossSkia');
-    return <HiveTossSkia displayName={displayName} onDone={onDone} full />;
+    const { HiveTossSkia } = loadHiveToss();
+    return (
+      <View style={[styles.gate, tossPainted && styles.clear]} pointerEvents="box-none">
+        <HiveTossSkia displayName={displayName} onDone={onDone} full />
+      </View>
+    );
   }
 
   return (
@@ -433,6 +448,7 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
 
 const styles = StyleSheet.create({
   gate: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 100, backgroundColor: Brand.bg },
+  clear: { backgroundColor: 'transparent' },
   scene: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 24, transformOrigin: 'center 62%' },
   skip: { position: 'absolute', right: 20, zIndex: 10 },
   skipText: { color: 'rgba(245,244,236,0.4)', fontSize: 12 },

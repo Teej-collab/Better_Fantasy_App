@@ -54,6 +54,7 @@ function Editor({ catalog }: { catalog: ScoringCatalog }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [adding, setAdding] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [preview, setPreview] = useState<{ week: number | null; players: PreviewPlayer[] } | null>(null);
   const changed = Object.keys(values).filter((k) => values[k] !== saved[k]);
 
@@ -154,6 +155,10 @@ function Editor({ catalog }: { catalog: ScoringCatalog }) {
       <Pressable onPress={() => setAdding(true)} style={styles.addButton} accessibilityRole="button">
         <Text style={styles.addButtonText}>+ Add a scoring rule</Text>
       </Pressable>
+      <Pressable onPress={() => setRequesting(true)} style={[styles.addButton, styles.requestPill]} accessibilityRole="button">
+        <Text style={[styles.addButtonText, styles.requestPillText]}>Request a new stat</Text>
+      </Pressable>
+      <RequestStatSheet visible={requesting} onClose={() => setRequesting(false)} />
 
       <AddRuleSheet
         visible={adding}
@@ -247,14 +252,10 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
   const matches = stats.filter((s) => !q || s.label.toLowerCase().includes(q) || s.hint.toLowerCase().includes(q) || s.group.includes(q));
   const tracked = matches.filter((s) => s.tracked || added.includes(s.key));
   const untracked = matches.filter((s) => !s.tracked);
-  // The request box sits up top, above the ~70 catalog stats (it was at
-  // the very bottom, where nobody found it — 2026-10-30). Typing a stat
-  // that isn't in the catalog turns it into a one-tap Request.
+  // A search with nothing to add turns into a one-tap Request
+  // (2026-10-30); the page's "Request a new stat" pill does the rest.
   const typed = query.trim();
-  const exact = typed !== '' && stats.some((s) => s.tracked && s.label.toLowerCase() === q);
-  const requestText = typed || custom.trim();
-  const requestKey = 'custom:' + requestText.toLowerCase();
-  const requestSent = requested.includes(requestKey);
+  const typedKey = 'custom:' + typed.toLowerCase();
 
   function request(key: string, message: string) {
     api
@@ -278,23 +279,20 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
             </Pressable>
           </View>
           <TextInput value={query} onChangeText={setQuery} placeholder="Search stats, e.g. tackle" placeholderTextColor={Colors.textSecondary} style={styles.search} autoCorrect={false} />
-          {!exact && (
-            <View style={styles.requestCard}>
-              <Text style={styles.ruleLabel}>{typed ? `No “${typed}” stat yet` : 'Don’t see your stat?'}</Text>
-              <Text style={styles.small}>Ask for it and it goes straight to The Weekend&apos;s inbox.</Text>
-              {!typed && (
-                <TextInput value={custom} onChangeText={setCustom} placeholder="e.g. first downs, punt return yards" placeholderTextColor={Colors.textSecondary} style={[styles.search, styles.requestInput]} />
-              )}
-              <Pressable
-                disabled={!requestText || requestSent}
-                onPress={() => request(requestKey, requestText)}
-                style={[styles.requestButton, (!requestText || requestSent) && styles.dim]}
-                accessibilityRole="button">
-                <Text style={styles.requestButtonText}>{requestSent ? 'Requested ✓' : typed ? `Request “${typed}”` : 'Request it'}</Text>
-              </Pressable>
-            </View>
-          )}
           <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
+            {typed !== '' && tracked.length === 0 && (
+              <View style={styles.requestCard}>
+                <Text style={styles.ruleLabel}>{`No “${typed}” stat yet`}</Text>
+                <Text style={styles.small}>Ask for it and it goes straight to The Weekend&apos;s inbox.</Text>
+                <Pressable
+                  disabled={requested.includes(typedKey)}
+                  onPress={() => request(typedKey, typed)}
+                  style={[styles.requestButton, requested.includes(typedKey) && styles.dim]}
+                  accessibilityRole="button">
+                  <Text style={styles.requestButtonText}>{requested.includes(typedKey) ? 'Requested ✓' : `Request “${typed}”`}</Text>
+                </Pressable>
+              </View>
+            )}
             {tracked.length > 0 && <Text style={styles.kicker}>Tracked · adds right away</Text>}
             {tracked.map((s) => {
               const isAdded = added.includes(s.key);
@@ -329,7 +327,79 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
                 </Pressable>
               </View>
             ))}
+            <Text style={[styles.ruleLabel, { marginTop: Spacing.md }]}>Don&apos;t see it?</Text>
+            <View style={styles.customRow}>
+              <TextInput value={custom} onChangeText={setCustom} placeholder="e.g. first downs" placeholderTextColor={Colors.textSecondary} style={[styles.search, styles.flex]} />
+              <Pressable
+                disabled={!custom.trim() || requested.includes('custom:' + custom.trim())}
+                onPress={() => request('custom:' + custom.trim(), custom.trim())}
+                style={[styles.requestChip, !custom.trim() && styles.dim]}>
+                <Text style={styles.requestText}>{requested.includes('custom:' + custom.trim()) ? 'Requested' : 'Request'}</Text>
+              </Pressable>
+            </View>
           </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// "Request a new stat", the big pill under Add a scoring rule: a stat
+// the catalog doesn't have goes to the feedback inbox and is emailed to
+// theweekend.admin@gmail.com (backend /league/scoring-requests).
+function RequestStatSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const insets = useSafeAreaInsets();
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  function send() {
+    const message = text.trim();
+    if (!message) return;
+    setStatus('sending');
+    api
+      .requestScoringStat(message)
+      .then(() => {
+        haptics.success();
+        setStatus('sent');
+        setText('');
+      })
+      .catch(() => setStatus('error'));
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.md }]} onPress={() => {}}>
+          <View style={styles.grab} />
+          <View style={styles.headRow}>
+            <Text style={styles.sheetTitle}>Request a new stat</Text>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <Text style={styles.done}>Done</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.muted}>A stat you want to score that isn&apos;t in the list. It goes straight to The Weekend&apos;s inbox.</Text>
+          <TextInput
+            value={text}
+            onChangeText={(v) => {
+              setText(v);
+              if (status !== 'sending') setStatus('idle');
+            }}
+            placeholder="e.g. first downs, punt return yards"
+            placeholderTextColor={Colors.textSecondary}
+            style={styles.search}
+            autoFocus
+            returnKeyType="send"
+            onSubmitEditing={send}
+          />
+          <Pressable
+            onPress={send}
+            disabled={!text.trim() || status === 'sending'}
+            style={[styles.requestButton, (!text.trim() || status === 'sending') && styles.dim]}
+            accessibilityRole="button">
+            <Text style={styles.requestButtonText}>{status === 'sending' ? 'Sending…' : 'Send request'}</Text>
+          </Pressable>
+          {status === 'sent' && <Text style={[styles.muted, { color: Colors.win }]}>Sent ✓ Thanks, we&apos;ll take a look.</Text>}
+          {status === 'error' && <Text style={[styles.muted, { color: Colors.loss }]}>Couldn&apos;t send that. Try again.</Text>}
         </Pressable>
       </Pressable>
     </Modal>
@@ -378,14 +448,16 @@ const styles = StyleSheet.create({
   sheetTitle: { flex: 1, color: Colors.text, fontSize: 17, fontWeight: '700' },
   done: { color: Colors.accent, fontSize: 15, fontWeight: '600' },
   search: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: Colors.accent, backgroundColor: Colors.tile, color: Colors.text, paddingHorizontal: 12, fontSize: 15 },
-  sheetList: { flexGrow: 0 },
+  sheetList: { flexGrow: 0, flexShrink: 1 },
   result: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: 12, borderRadius: 12, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, marginBottom: 8 },
   addChip: { borderWidth: 1, borderColor: 'rgba(57,255,20,0.5)', borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 5 },
   addChipText: { color: Colors.accent, fontWeight: '700', fontSize: 12.5 },
   requestChip: { borderWidth: 1, borderColor: '#2a303a', borderRadius: Radius.pill, paddingHorizontal: 11, paddingVertical: 6 },
   requestText: { color: '#aab2bf', fontWeight: '600', fontSize: 12 },
-  requestCard: { gap: 8, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(57,255,20,0.45)', backgroundColor: 'rgba(57,255,20,0.07)' },
-  requestInput: { borderColor: '#2a303a' },
+  requestCard: { gap: 8, padding: 14, marginBottom: Spacing.md, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(57,255,20,0.45)', backgroundColor: 'rgba(57,255,20,0.07)' },
+  requestPill: { borderColor: '#2a303a', marginTop: -Spacing.sm },
+  requestPillText: { color: Colors.text },
+  customRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: 6, marginBottom: Spacing.md },
   requestButton: { minHeight: 44, borderRadius: 12, backgroundColor: Colors.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   requestButtonText: { color: '#06110a', fontWeight: '800', fontSize: 14.5 },
 });
