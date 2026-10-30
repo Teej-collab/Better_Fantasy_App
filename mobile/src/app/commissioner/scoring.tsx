@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CommishScreen, ErrorText, errorMessage } from '@/components/commissioner/CommishUI';
@@ -273,8 +273,10 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       {/* The backdrop sits behind the sheet, not around it: a pressable
           wrapped around the list held onto touches, so it only scrolled
-          from a drag that started on an Add button (2026-10-30). */}
-      <View style={styles.backdrop}>
+          from a drag that started on an Add button (2026-10-30). The
+          request form rides up on the keyboard, which covered its box;
+          the list's search box is at the top, so it stays put. */}
+      <KeyboardAvoidingView behavior={requesting && Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Close" />
         <View style={[styles.sheet, !requesting && styles.sheetTall, { paddingBottom: insets.bottom + Spacing.md }]}>
           <View style={styles.grab} />
@@ -344,7 +346,7 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
