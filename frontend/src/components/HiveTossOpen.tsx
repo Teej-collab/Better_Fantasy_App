@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, type CSSProperties } from "react";
 import { Anton } from "next/font/google";
 import { IntroSeasonDecor } from "@/components/IntroSeasonDecor";
-import { currentSeason, seasonalEmblem } from "@/lib/seasonal";
+import { currentSeason, seasonalPourEmblem } from "@/lib/seasonal";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 
@@ -26,9 +26,11 @@ const anton = Anton({ weight: "400", subsets: ["latin"] });
 export const HIVE_TOSS_MS = 3350;
 const IRIS_AT_MS = 2650;
 // As the full intro's finale (HomeWelcomeBackEntry, 2026-10-30) the pour
-// rides the pour sound and the logo waits until it's poured (.ht-full in
-// globals.css moves the pour, logo, Welcome Back and iris to match).
-const FULL_HOLD_MS = 2190;
+// rides the pour sound and the page opens once it's poured (.ht-full in
+// globals.css moves the pour and the iris to match). The logo is the pour
+// emblem, its lit cell left empty, so the poured cell stays the lit cell
+// (no pumpkin or solid orange), fizzing until the page opens.
+const FULL_HOLD_MS = 1500;
 // The poured cell: beer stops short of the rim (78%), foam fills the rest.
 const CELL_H = 50.2;
 const BEER_H = 78.3;
@@ -176,7 +178,7 @@ export function HiveTossOpen({
                     </g>
                   ))}
                 </svg>
-                <Image src={seasonalEmblem()} alt="" width={400} height={400} priority className="ht-logo" />
+                <Image src={seasonalPourEmblem()} alt="" width={400} height={400} priority className="ht-logo" />
               </div>
             </div>
           </div>

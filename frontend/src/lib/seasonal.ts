@@ -5,13 +5,16 @@
 
 export type Season = "halloween" | "winter";
 
-const SEASONS: { season: Season; from: [number, number]; to: [number, number]; emblem: string }[] = [
+// `pour`: the same emblem with its lit cell (orange, pumpkin, ice) left
+// empty, for the Hive Toss, which pours that cell itself (2026-10-30).
+const SEASONS: { season: Season; from: [number, number]; to: [number, number]; emblem: string; pour: string }[] = [
   // Month is 1-based here.
-  { season: "halloween", from: [10, 1], to: [11, 1], emblem: "/images/the-weekend-emblem-halloween.png" },
-  { season: "winter", from: [12, 1], to: [1, 2], emblem: "/images/the-weekend-emblem-winter.png" },
+  { season: "halloween", from: [10, 1], to: [11, 1], emblem: "/images/the-weekend-emblem-halloween.png", pour: "/images/the-weekend-emblem-pour-halloween.png" },
+  { season: "winter", from: [12, 1], to: [1, 2], emblem: "/images/the-weekend-emblem-winter.png", pour: "/images/the-weekend-emblem-pour-winter.png" },
 ];
 
 const DEFAULT_EMBLEM = "/images/the-weekend-emblem.png";
+const DEFAULT_POUR = "/images/the-weekend-emblem-pour.png";
 
 function inWindow(date: Date, from: [number, number], to: [number, number]): boolean {
   const md = (date.getMonth() + 1) * 100 + date.getDate();
@@ -26,4 +29,8 @@ export function currentSeason(now: Date = new Date()): Season | null {
 
 export function seasonalEmblem(now: Date = new Date()): string {
   return SEASONS.find((s) => inWindow(now, s.from, s.to))?.emblem ?? DEFAULT_EMBLEM;
+}
+
+export function seasonalPourEmblem(now: Date = new Date()): string {
+  return SEASONS.find((s) => inWindow(now, s.from, s.to))?.pour ?? DEFAULT_POUR;
 }

@@ -2617,8 +2617,8 @@ svg.wx-wind{position:absolute;inset:0;width:100%;height:100%;border:0;background
 .ht-iris .ht-stage{animation:ht-stage-out .3s 2.65s ease-in forwards}
 /* The orange cell poured like a beer: a stream, the level rising with
    bubbles, a foam head that builds and rolls. Quick open: a quick pour
-   just after landing. Full intro (.ht-full): on the pour sound, the logo
-   (whose orange cell is solid) waiting until it's poured. */
+   just after landing. Full intro (.ht-full): on the pour sound. The
+   logo over it is the pour emblem (that cell empty), so it stays. */
 .ht-pour,.ht-stream,.ht-foam{animation-duration:.56s;animation-delay:1s;animation-fill-mode:both}
 .ht-pour{animation-name:ht-pour;animation-timing-function:cubic-bezier(.25,.6,.4,1)}
 .ht-stream{animation-name:ht-stream;animation-timing-function:linear;transform-box:fill-box;transform-origin:center}
@@ -2633,11 +2633,8 @@ svg.wx-wind{position:absolute;inset:0;width:100%;height:100%;border:0;background
 .ht-full .ht-pour,.ht-full .ht-stream,.ht-full .ht-foam{animation-duration:1.6s;animation-delay:1.65s}
 .ht-full .ht-pour{animation-timing-function:ease-in-out}
 .ht-full .ht-bub{animation-delay:1.7s}
-.ht-full .ht-logo{animation-duration:.45s;animation-delay:3.4s}
-.ht-full .ht-welcome{animation-delay:3.54s}
-.ht-full .ht-welcome span{animation-delay:3.64s}
-.ht-full.ht-iris{animation-delay:4.84s}
-.ht-full.ht-iris .ht-stage{animation-delay:4.84s}
+.ht-full.ht-iris{animation-delay:4.15s}
+.ht-full.ht-iris .ht-stage{animation-delay:4.15s}
 .ht-stage{position:absolute;inset:0}
 .ht-center{--s:min(86vw,50vh,400px);position:absolute;left:50%;top:42%;width:var(--s);height:var(--s);transform:translate(-50%,-50%)}
 .ht-toss{position:absolute;inset:0;perspective:900px;animation:ht-toss 1s .15s cubic-bezier(.3,.6,.4,1) both}

@@ -33,7 +33,6 @@ export function ScoringRulesSection() {
   const [tab, setTab] = useState("passing");
   const [panel, setPanel] = useState<Panel>({ status: "idle" });
   const [adding, setAdding] = useState(false);
-  const [requesting, setRequesting] = useState(false);
   const [preview, setPreview] = useState<{ week: number | null; players: PreviewPlayer[] } | null>(null);
 
   useEffect(() => {
@@ -150,23 +149,17 @@ export function ScoringRulesSection() {
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setAdding(true)}
-              className="w-fit rounded-full border border-[var(--wl-accent)] px-4 py-2 text-sm font-semibold text-[color:var(--wl-accent)]"
-            >
-              + Add a scoring rule
-            </button>
-            <button onClick={() => setRequesting(true)} className="w-fit rounded-full border border-black/15 px-4 py-2 text-sm font-semibold dark:border-white/15">
-              Request a new stat
-            </button>
-          </div>
+          <button
+            onClick={() => setAdding(true)}
+            className="w-fit rounded-full border border-[var(--wl-accent)] px-4 py-2 text-sm font-semibold text-[color:var(--wl-accent)]"
+          >
+            + Add a scoring rule
+          </button>
         </div>
 
         <Preview preview={preview} />
       </div>
 
-      {requesting && <RequestStatDialog onClose={() => setRequesting(false)} />}
       {adding && (
         <AddRuleDialog
           stats={catalog.stats.filter((s) => values[s.key] === undefined && (!s.idp || showIdp))}
@@ -257,14 +250,15 @@ function AddRuleDialog({ stats, onAdd, onClose }: { stats: CatalogStat[]; onAdd:
   const [query, setQuery] = useState("");
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [requested, setRequested] = useState<Set<string>>(new Set());
-  const [custom, setCustom] = useState("");
   const q = query.trim().toLowerCase();
   const matches = stats.filter((s) => !q || s.label.toLowerCase().includes(q) || s.hint.toLowerCase().includes(q) || s.group.includes(q));
   const tracked = matches.filter((s) => s.tracked);
   const untracked = matches.filter((s) => !s.tracked);
-  const [customSent, setCustomSent] = useState(false);
+  // The "Request a new scoring rule" pill at the bottom of the list
+  // turns the dialog into the request form.
+  const [requesting, setRequesting] = useState(false);
   // A search with nothing to add turns into a one-tap Request
-  // (2026-10-30); the page's "Request a new stat" pill does the rest.
+  // (2026-10-30); the pill at the bottom of the list does the rest.
   const typed = query.trim();
   const typedKey = "custom:" + typed.toLowerCase();
 
@@ -276,6 +270,10 @@ function AddRuleDialog({ stats, onAdd, onClose }: { stats: CatalogStat[]; onAdd:
         className="flex max-h-[85vh] w-full max-w-lg flex-col gap-3 rounded-t-2xl bg-white p-4 sm:rounded-2xl dark:bg-[#151a21]"
         onClick={(e) => e.stopPropagation()}
       >
+        {requesting ? (
+          <RequestRuleForm initial={query.trim()} onBack={() => setRequesting(false)} onClose={onClose} />
+        ) : (
+          <>
         <div className="flex items-center justify-between">
           <span className="font-semibold">Add a scoring rule</span>
           <button onClick={onClose} className="text-sm text-black/50 dark:text-white/50">
@@ -340,38 +338,28 @@ function AddRuleDialog({ stats, onAdd, onClose }: { stats: CatalogStat[]; onAdd:
               </button>
             </div>
           ))}
-          <div className="flex flex-col gap-2 border-t border-black/5 pt-3 dark:border-white/5">
-            <span className="text-sm font-semibold">Don&apos;t see it?</span>
-            <div className="flex gap-2">
-              <input
-                value={custom}
-                onChange={(e) => {
-                  setCustom(e.target.value);
-                  setCustomSent(false);
-                }}
-                placeholder="e.g. first downs, punt return yards"
-                className="min-w-0 flex-1 rounded-xl border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/10"
-              />
-              <button
-                disabled={!custom.trim() || customSent}
-                onClick={() => requestScoringStat(custom.trim()).then(() => setCustomSent(true))}
-                className="shrink-0 rounded-full border border-black/15 px-3 py-1 text-xs font-semibold disabled:opacity-50 dark:border-white/15"
-              >
-                {customSent ? "Requested" : "Request"}
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={() => setRequesting(true)}
+            className="mt-2 mb-1 shrink-0 rounded-full border border-[var(--wl-accent)] px-4 py-2.5 text-sm font-semibold text-[color:var(--wl-accent)]"
+          >
+            Request a new scoring rule
+          </button>
         </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-// "Request a new stat", next to Add a scoring rule: a stat the catalog
-// doesn't have goes to the feedback inbox and is emailed to
-// theweekend.admin@gmail.com (backend /league/scoring-requests).
-function RequestStatDialog({ onClose }: { onClose: () => void }) {
-  const [text, setText] = useState("");
+// "Request a new scoring rule", from the pill at the bottom of Add a
+// scoring rule: a stat the catalog doesn't have goes to the feedback
+// inbox and is emailed to theweekend.admin@gmail.com (backend
+// /league/scoring-requests). Once a stat is tracked it's in the shared
+// catalog (backend app/domain/scoring_catalog.py), so every league can
+// add it.
+function RequestRuleForm({ initial, onBack, onClose }: { initial: string; onBack: () => void; onClose: () => void }) {
+  const [text, setText] = useState(initial);
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   function send(e: React.FormEvent) {
@@ -388,16 +376,12 @@ function RequestStatDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={onClose}>
-      <form
-        role="dialog"
-        aria-label="Request a new stat"
-        onSubmit={send}
-        className="flex w-full max-w-lg flex-col gap-3 rounded-t-2xl bg-white p-4 sm:rounded-2xl dark:bg-[#151a21]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <span className="font-semibold">Request a new stat</span>
+    <form onSubmit={send} className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <button type="button" onClick={onBack} className="text-sm text-[color:var(--wl-accent)]">
+            ‹ Back
+          </button>
+          <span className="flex-1 font-semibold">Request a new scoring rule</span>
           <button type="button" onClick={onClose} className="text-sm text-black/50 dark:text-white/50">
             Done
           </button>
@@ -422,8 +406,7 @@ function RequestStatDialog({ onClose }: { onClose: () => void }) {
         </button>
         {status === "sent" && <p className="text-sm text-green-500">Sent ✓ Thanks, we&apos;ll take a look.</p>}
         {status === "error" && <p className="text-sm text-red-400">Couldn&apos;t send that. Try again.</p>}
-      </form>
-    </div>
+    </form>
   );
 }
 

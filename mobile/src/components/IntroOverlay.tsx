@@ -99,30 +99,35 @@ function weekendPowerOn() {
 }
 
 function useIntroSounds(enabled: boolean) {
-  const players = useRef<{ light: AudioPlayer; can: AudioPlayer; pour: AudioPlayer } | null>(null);
+  const players = useRef<{ light: AudioPlayer[]; can: AudioPlayer; pour: AudioPlayer } | null>(null);
+  const lightIndex = useRef(0);
   useEffect(() => {
     if (!enabled) return;
     // Respects the ringer switch (App Store pass, 2026-10: a beer can
     // cracking open at work or in church was the wrong surprise), and
     // never stops whatever music is already playing.
     setAudioModeAsync({ playsInSilentMode: false, interruptionMode: 'mixWithOthers' }).catch(() => {});
+    // One click player per word: replaying a finished player meant a
+    // seekTo(0) that hadn't landed before play(), so TO was silent
+    // (2026-10-30).
     players.current = {
-      light: createAudioPlayer(require('@/assets/audio/light-switch.m4a')),
+      light: WORDS.map(() => createAudioPlayer(require('@/assets/audio/light-switch.m4a'))),
       can: createAudioPlayer(require('@/assets/audio/can-opening.m4a')),
       pour: createAudioPlayer(require('@/assets/audio/intro-pour.m4a')),
     };
     return () => {
       const p = players.current;
       players.current = null;
-      p?.light.remove();
+      p?.light.forEach((l) => l.remove());
       p?.can.remove();
       p?.pour.remove();
     };
   }, [enabled]);
 
   function play(which: 'light' | 'can' | 'pour') {
-    const p = players.current?.[which];
-    if (!p) return;
+    const set = players.current;
+    if (!set) return;
+    const p = which === 'light' ? set.light[lightIndex.current++ % set.light.length] : set[which];
     p.seekTo(0).catch(() => {});
     // iOS refuses the audio session now and then (a call, Siri, another
     // app holding it): "Session activation failed" (2026-10-22). The

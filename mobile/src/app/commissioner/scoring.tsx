@@ -54,7 +54,6 @@ function Editor({ catalog }: { catalog: ScoringCatalog }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [adding, setAdding] = useState(false);
-  const [requesting, setRequesting] = useState(false);
   const [preview, setPreview] = useState<{ week: number | null; players: PreviewPlayer[] } | null>(null);
   const changed = Object.keys(values).filter((k) => values[k] !== saved[k]);
 
@@ -155,10 +154,6 @@ function Editor({ catalog }: { catalog: ScoringCatalog }) {
       <Pressable onPress={() => setAdding(true)} style={styles.addButton} accessibilityRole="button">
         <Text style={styles.addButtonText}>+ Add a scoring rule</Text>
       </Pressable>
-      <Pressable onPress={() => setRequesting(true)} style={[styles.addButton, styles.requestPill]} accessibilityRole="button">
-        <Text style={[styles.addButtonText, styles.requestPillText]}>Request a new stat</Text>
-      </Pressable>
-      <RequestStatSheet visible={requesting} onClose={() => setRequesting(false)} />
 
       <AddRuleSheet
         visible={adding}
@@ -247,13 +242,15 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
   const [query, setQuery] = useState('');
   const [added, setAdded] = useState<string[]>([]);
   const [requested, setRequested] = useState<string[]>([]);
-  const [custom, setCustom] = useState('');
+  // The "Request a new scoring rule" pill at the bottom of the list
+  // turns the sheet into the request form.
+  const [requesting, setRequesting] = useState(false);
   const q = query.trim().toLowerCase();
   const matches = stats.filter((s) => !q || s.label.toLowerCase().includes(q) || s.hint.toLowerCase().includes(q) || s.group.includes(q));
   const tracked = matches.filter((s) => s.tracked || added.includes(s.key));
   const untracked = matches.filter((s) => !s.tracked);
   // A search with nothing to add turns into a one-tap Request
-  // (2026-10-30); the page's "Request a new stat" pill does the rest.
+  // (2026-10-30); the pill at the bottom of the list does the rest.
   const typed = query.trim();
   const typedKey = 'custom:' + typed.toLowerCase();
 
@@ -267,14 +264,23 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
       .catch(() => {});
   }
 
+  function close() {
+    setRequesting(false);
+    onClose();
+  }
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
+      <Pressable style={styles.backdrop} onPress={close}>
         <Pressable style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.md }]} onPress={() => {}}>
           <View style={styles.grab} />
+          {requesting ? (
+            <RequestRuleForm initial={query.trim()} onBack={() => setRequesting(false)} onClose={close} />
+          ) : (
+            <>
           <View style={styles.headRow}>
             <Text style={styles.sheetTitle}>Add a scoring rule</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
+            <Pressable onPress={close} hitSlop={8}>
               <Text style={styles.done}>Done</Text>
             </Pressable>
           </View>
@@ -327,29 +333,26 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
                 </Pressable>
               </View>
             ))}
-            <Text style={[styles.ruleLabel, { marginTop: Spacing.md }]}>Don&apos;t see it?</Text>
-            <View style={styles.customRow}>
-              <TextInput value={custom} onChangeText={setCustom} placeholder="e.g. first downs" placeholderTextColor={Colors.textSecondary} style={[styles.search, styles.flex]} />
-              <Pressable
-                disabled={!custom.trim() || requested.includes('custom:' + custom.trim())}
-                onPress={() => request('custom:' + custom.trim(), custom.trim())}
-                style={[styles.requestChip, !custom.trim() && styles.dim]}>
-                <Text style={styles.requestText}>{requested.includes('custom:' + custom.trim()) ? 'Requested' : 'Request'}</Text>
-              </Pressable>
-            </View>
+            <Pressable onPress={() => setRequesting(true)} style={[styles.addButton, styles.requestPill]} accessibilityRole="button">
+              <Text style={styles.addButtonText}>Request a new scoring rule</Text>
+            </Pressable>
           </ScrollView>
+            </>
+          )}
         </Pressable>
       </Pressable>
     </Modal>
   );
 }
 
-// "Request a new stat", the big pill under Add a scoring rule: a stat
-// the catalog doesn't have goes to the feedback inbox and is emailed to
-// theweekend.admin@gmail.com (backend /league/scoring-requests).
-function RequestStatSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const insets = useSafeAreaInsets();
-  const [text, setText] = useState('');
+// "Request a new scoring rule", from the pill at the bottom of Add a
+// scoring rule: a stat the catalog doesn't have goes to the feedback
+// inbox and is emailed to theweekend.admin@gmail.com (backend
+// /league/scoring-requests). Once a stat is tracked it's in the shared
+// catalog (backend app/domain/scoring_catalog.py), so every league can
+// add it.
+function RequestRuleForm({ initial, onBack, onClose }: { initial: string; onBack: () => void; onClose: () => void }) {
+  const [text, setText] = useState(initial);
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
   function send() {
@@ -367,12 +370,12 @@ function RequestStatSheet({ visible, onClose }: { visible: boolean; onClose: () 
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.md }]} onPress={() => {}}>
-          <View style={styles.grab} />
+    <>
           <View style={styles.headRow}>
-            <Text style={styles.sheetTitle}>Request a new stat</Text>
+            <Pressable onPress={onBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to the list">
+              <Text style={styles.done}>‹ Back</Text>
+            </Pressable>
+            <Text style={styles.sheetTitle}>Request a new scoring rule</Text>
             <Pressable onPress={onClose} hitSlop={8}>
               <Text style={styles.done}>Done</Text>
             </Pressable>
@@ -400,9 +403,7 @@ function RequestStatSheet({ visible, onClose }: { visible: boolean; onClose: () 
           </Pressable>
           {status === 'sent' && <Text style={[styles.muted, { color: Colors.win }]}>Sent ✓ Thanks, we&apos;ll take a look.</Text>}
           {status === 'error' && <Text style={[styles.muted, { color: Colors.loss }]}>Couldn&apos;t send that. Try again.</Text>}
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </>
   );
 }
 
@@ -455,9 +456,7 @@ const styles = StyleSheet.create({
   requestChip: { borderWidth: 1, borderColor: '#2a303a', borderRadius: Radius.pill, paddingHorizontal: 11, paddingVertical: 6 },
   requestText: { color: '#aab2bf', fontWeight: '600', fontSize: 12 },
   requestCard: { gap: 8, padding: 14, marginBottom: Spacing.md, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(57,255,20,0.45)', backgroundColor: 'rgba(57,255,20,0.07)' },
-  requestPill: { borderColor: '#2a303a', marginTop: -Spacing.sm },
-  requestPillText: { color: Colors.text },
-  customRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: 6, marginBottom: Spacing.md },
+  requestPill: { marginTop: Spacing.md, marginBottom: Spacing.md },
   requestButton: { minHeight: 44, borderRadius: 12, backgroundColor: Colors.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   requestButtonText: { color: '#06110a', fontWeight: '800', fontSize: 14.5 },
 });

@@ -19,14 +19,14 @@ import {
 } from '@shopify/react-native-skia';
 import { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useDerivedValue, useSharedValue, withDelay, withSequence, withTiming, type SharedValue } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useDerivedValue, useSharedValue, withDelay, withRepeat, withSequence, withTiming, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IntroSeasonDecor } from '@/components/IntroSeasonDecor';
 import { Text as RNText } from '@/components/Text';
 import { Brand } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
-import { currentSeason, seasonalEmblem, type Season } from '@/lib/seasonal';
+import { currentSeason, seasonalPourEmblem, type Season } from '@/lib/seasonal';
 
 // The quick open, every launch after the day's full intro (2026-10-29
 // "Hive Toss", Niko's pick: the coin toss's motion with Hive Ignite's
@@ -56,14 +56,14 @@ const IRIS_AT = WELCOME_AT + 750;
 // The orange cell fills like a glass of beer: a stream, the level
 // rising with bubbles, a foam head on top. On the full intro it rides
 // the pour sound (which starts 1.1 s after the can, i.e. when this
-// mounts, and really pours from about 0.6 s to 2.1 s into the file), and
-// the logo, whose own orange cell is solid, waits until it's poured. On
-// the quick open it's a quick pour just before the logo.
+// mounts, and really pours from about 0.6 s to 2.1 s into the file); on
+// the quick open it's a quick pour as it lands. The logo drawn over the
+// cells is the pour emblem, with that cell left empty, so the poured
+// cell stays the lit cell (no pumpkin or solid orange), fizzing and
+// rolling until the app opens.
 const FULL_POUR_AT = 1650;
 const FULL_POUR_MS = 1600;
-const FULL_LOGO_AT = FULL_POUR_AT + FULL_POUR_MS + 150;
-const FULL_WELCOME_AT = FULL_LOGO_AT + 140;
-const FULL_IRIS_AT = FULL_WELCOME_AT + 1300;
+const FULL_IRIS_AT = FULL_POUR_AT + FULL_POUR_MS + 900;
 const POUR_AT = LAND_AT - 30;
 const POUR_MS = 560;
 const IRIS_MS = 700;
@@ -137,8 +137,6 @@ function hexPath(cx: number, cy: number, r = 58): SkPath {
 
 export function HiveTossSkia({ displayName, onDone, full = false }: { displayName: string | null; onDone: () => void; full?: boolean }) {
   const irisAt = full ? FULL_IRIS_AT : IRIS_AT;
-  const logoAt = full ? FULL_LOGO_AT : LOGO_AT;
-  const welcomeAt = full ? FULL_WELCOME_AT : WELCOME_AT;
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const season = currentSeason();
@@ -152,7 +150,7 @@ export function HiveTossSkia({ displayName, onDone, full = false }: { displayNam
   const irisMax = Math.hypot(Math.max(ox, W - ox), Math.max(oy, H - oy)) * 1.25;
   const groundY = y0 + S * 0.9;
 
-  const emblem = useImage(seasonalEmblem() as number);
+  const emblem = useImage(seasonalPourEmblem() as number);
   const font = useFont(require('@expo-google-fonts/anton/400Regular/Anton_400Regular.ttf'), 30);
   const hexes = useMemo(() => CELLS.map(([cx, cy]) => hexPath(cx, cy)), []);
   const text = `Welcome Back${displayName ? `, ${displayName}` : ''}`;
@@ -175,6 +173,8 @@ export function HiveTossSkia({ displayName, onDone, full = false }: { displayNam
   const sweep = useSharedValue(0);
   const iris = useSharedValue(0);
   const pour = useSharedValue(0);
+  // Keeps the beer alive once poured: bubbles rising, the head rolling.
+  const fizz = useSharedValue(0);
 
   useEffect(() => {
     toss.set(withDelay(TOSS_AT, withTiming(1, { duration: TOSS_MS, easing: Easing.bezier(0.3, 0.6, 0.4, 1) })));
@@ -186,9 +186,10 @@ export function HiveTossSkia({ displayName, onDone, full = false }: { displayNam
     });
     // A steady pour: eases in as the stream starts, slows as it tops off.
     pour.set(withDelay(full ? FULL_POUR_AT : POUR_AT, withTiming(1, { duration: full ? FULL_POUR_MS : POUR_MS, easing: full ? Easing.inOut(Easing.sin) : Easing.out(Easing.quad) })));
-    logo.set(withDelay(logoAt, withTiming(1, { duration: full ? 450 : 320, easing: Easing.out(Easing.quad) })));
-    welcome.set(withDelay(welcomeAt, withTiming(1, { duration: 500, easing: Easing.bezier(0.2, 0.8, 0.2, 1) })));
-    sweep.set(withDelay(welcomeAt + (SWEEP_AT - WELCOME_AT), withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.quad) })));
+    fizz.set(withDelay(full ? FULL_POUR_AT : POUR_AT, withRepeat(withTiming(1, { duration: 1600, easing: Easing.linear }), -1, false)));
+    logo.set(withDelay(LOGO_AT, withTiming(1, { duration: 320, easing: Easing.out(Easing.quad) })));
+    welcome.set(withDelay(WELCOME_AT, withTiming(1, { duration: 500, easing: Easing.bezier(0.2, 0.8, 0.2, 1) })));
+    sweep.set(withDelay(SWEEP_AT, withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.quad) })));
     iris.set(withDelay(irisAt, withTiming(1, { duration: IRIS_MS, easing: Easing.bezier(0.6, 0, 0.4, 1) })));
     const thud = setTimeout(() => haptics.thud(), LAND_AT);
     const done = setTimeout(onDone, irisAt + IRIS_MS);
@@ -296,7 +297,7 @@ export function HiveTossSkia({ displayName, onDone, full = false }: { displayNam
             <Group opacity={front}>
               <Group transform={[{ translateX: hive.x }, { translateY: hive.y }, { scale: hive.k }]}>
                 {hexes.map((p, i) => (
-                  <Cell key={i} path={p} cx={CELLS[i][0]} cy={CELLS[i][1]} on={cells[i]} color={i === 6 ? look.lit[2] : look.tube(i)} lit={i === 6 ? look.lit : null} pour={pour} />
+                  <Cell key={i} path={p} cx={CELLS[i][0]} cy={CELLS[i][1]} on={cells[i]} color={i === 6 ? look.lit[2] : look.tube(i)} lit={i === 6 ? look.lit : null} pour={pour} fizz={fizz} />
                 ))}
               </Group>
               {emblem && (
@@ -334,12 +335,30 @@ export function HiveTossSkia({ displayName, onDone, full = false }: { displayNam
 // glow and a white-hot core) that catches when `on` runs; the lit cell
 // is poured full (Pour).
 const CELL_H = 58 * 0.866;
-function Cell({ path, cx, cy, on, color, lit, pour }: { path: SkPath; cx: number; cy: number; on: SharedValue<number>; color: string; lit: string[] | null; pour: SharedValue<number> }) {
+function Cell({
+  path,
+  cx,
+  cy,
+  on,
+  color,
+  lit,
+  pour,
+  fizz,
+}: {
+  path: SkPath;
+  cx: number;
+  cy: number;
+  on: SharedValue<number>;
+  color: string;
+  lit: string[] | null;
+  pour: SharedValue<number>;
+  fizz: SharedValue<number>;
+}) {
   return (
     <>
       <Path path={path} color={lit ? 'rgba(255,122,26,0.16)' : '#0b130d'} />
       <Path path={path} style="stroke" strokeWidth={2.5} color={color} opacity={0.55} />
-      {lit && <Pour path={path} cx={cx} cy={cy} lit={lit} pour={pour} />}
+      {lit && <Pour path={path} cx={cx} cy={cy} lit={lit} pour={pour} fizz={fizz} />}
       <Group opacity={on}>
         <Path path={path} style="stroke" strokeWidth={6} color={color} opacity={0.6}>
           <BlurMask blur={12} style="normal" />
@@ -365,7 +384,7 @@ const BUBBLES = [
   [-6, 0.3],
   [12, 0.9],
 ];
-function Pour({ path, cx, cy, lit, pour }: { path: SkPath; cx: number; cy: number; lit: string[]; pour: SharedValue<number> }) {
+function Pour({ path, cx, cy, lit, pour, fizz }: { path: SkPath; cx: number; cy: number; lit: string[]; pour: SharedValue<number>; fizz: SharedValue<number> }) {
   const bottom = cy + CELL_H;
   const top = cy - CELL_H;
   const level = useDerivedValue(() => bottom - 2 * CELL_H * FILL * pour.get());
@@ -376,14 +395,14 @@ function Pour({ path, cx, cy, lit, pour }: { path: SkPath; cx: number; cy: numbe
   const liquid = useDerivedValue(() => Skia.XYWHRect(cx - 60, level.get(), 120, bottom - level.get() + 2));
   // The head: a soft rolling top edge that keeps moving as it pours.
   const head = useDerivedValue(() => {
-    const p = pour.get();
+    const p = fizz.get();
     const y0 = level.get() + 2;
     const y1 = level.get() - foam.get();
     const path = Skia.Path.Make();
     path.moveTo(cx - 60, y0);
     path.lineTo(cx - 60, y1);
     for (let x = -60; x <= 60; x += 6) {
-      path.lineTo(cx + x, y1 + 2.4 * Math.sin(x / 7 + p * 22) + 1.2 * Math.sin(x / 3.1 - p * 31));
+      path.lineTo(cx + x, y1 + 2.4 * Math.sin(x / 7 + p * 2 * Math.PI) + 1.2 * Math.sin(x / 3.1 - p * 4 * Math.PI));
     }
     path.lineTo(cx + 60, y0);
     path.close();
@@ -405,7 +424,7 @@ function Pour({ path, cx, cy, lit, pour }: { path: SkPath; cx: number; cy: numbe
           <LinearGradient start={vec(cx, top)} end={vec(cx, bottom)} colors={[lit[1], lit[2], lit[3]]} />
         </Rect>
         {BUBBLES.map(([dx, phase], i) => (
-          <Bubble key={i} x={cx + dx} bottom={bottom} level={level} pour={pour} phase={phase} />
+          <Bubble key={i} x={cx + dx} bottom={bottom} level={level} pour={pour} fizz={fizz} phase={phase} />
         ))}
         <Path path={head} color="#fff3dc" opacity={headOpacity} />
         <Path path={head} style="stroke" strokeWidth={1.2} color="rgba(255,214,160,0.9)" opacity={headOpacity} />
@@ -417,9 +436,9 @@ function Pour({ path, cx, cy, lit, pour }: { path: SkPath; cx: number; cy: numbe
   );
 }
 
-function Bubble({ x, bottom, level, pour, phase }: { x: number; bottom: number; level: SharedValue<number>; pour: SharedValue<number>; phase: number }) {
+function Bubble({ x, bottom, level, pour, fizz, phase }: { x: number; bottom: number; level: SharedValue<number>; pour: SharedValue<number>; fizz: SharedValue<number>; phase: number }) {
   const cy = useDerivedValue(() => {
-    const t = (pour.get() * 3 + phase) % 1;
+    const t = (fizz.get() + phase) % 1;
     return bottom - t * (bottom - level.get());
   });
   const opacity = useDerivedValue(() => (pour.get() > 0 && cy.get() > level.get() + 3 ? 0.75 : 0));
