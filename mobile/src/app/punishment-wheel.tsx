@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -39,6 +39,12 @@ import type { PunishmentWheel } from '@/lib/types';
 // lands, the winning slice lights orange like the logo's lit cell, the
 // rest dim, hex confetti bursts off the pointer and the verdict card
 // glows orange.
+//
+// Spin for fun (2026-10-30): until the real spin, anyone can spin the
+// wheel as often as they like. Those spins happen on their own phone
+// only (a random slice, nothing saved or sent). The commissioner has a
+// Real spin switch; with it on, their button is the season's one real
+// spin (the server picks, everyone watches) instead.
 
 const GREEN = '#39ff14';
 const ORANGE = '#ff7a1a';
@@ -199,7 +205,9 @@ export default function PunishmentWheelScreen() {
   const burst = useSharedValue(0);
   // "Watch it again" replays without the "you missed it" note.
   const [again, setAgain] = useState(false);
-  const [phase, setPhase] = useState<'idle' | 'spinning' | 'replaying' | 'done'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'spinning' | 'replaying' | 'done' | 'fun' | 'funDone'>('idle');
+  const [funIndex, setFunIndex] = useState<number | null>(null);
+  const [realSpin, setRealSpin] = useState(false);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const handled = useRef<string | null>(null);
@@ -218,6 +226,31 @@ export default function PunishmentWheelScreen() {
     burst.set(0);
     burst.set(withDelay(80, withTiming(1, { duration: 1400, easing: Easing.out(Easing.quad) })));
     void AsyncStorage.setItem(key, '1').catch(() => {});
+  }
+
+  // A spin for fun: a random slice, on this phone only.
+  function funSpin() {
+    const count = faceItems.length;
+    if (count < 2 || phase === 'fun' || phase === 'spinning') return;
+    const index = Math.floor(Math.random() * count);
+    haptics.thud();
+    setFunIndex(null);
+    setPhase('fun');
+    cancelAnimation(rotation);
+    const from = rotation.get();
+    rotation.set(
+      withTiming(landing(from, index, count), { duration: SPIN_MS, easing: Easing.bezier(0.12, 0.62, 0.08, 1) }, (finished) => {
+        if (finished) runOnJS(onFunLanded)(index);
+      }),
+    );
+  }
+
+  function onFunLanded(index: number) {
+    haptics.success();
+    setFunIndex(index);
+    setPhase('funDone');
+    burst.set(0);
+    burst.set(withDelay(80, withTiming(1, { duration: 1400, easing: Easing.out(Easing.quad) })));
   }
 
   // Watch it again: the same spin, from where it rests now.
@@ -321,6 +354,9 @@ export default function PunishmentWheelScreen() {
   if (wheel.isPending) return <LoadingState />;
   if (!data) return <MessageState message="Couldn't load the wheel." />;
   const revealed = result && phase === 'done';
+  const funLanded = !result && phase === 'funDone' ? funIndex : null;
+  const lit = !!revealed || funLanded !== null;
+  const spinningNow = phase === 'spinning' || phase === 'fun';
   const landedText = result ? result.text : '';
 
   return (
@@ -340,15 +376,15 @@ export default function PunishmentWheelScreen() {
 
       <View style={styles.stage}>
         <View style={styles.ring} />
-        <GlowBox color={revealed ? ORANGE : GREEN} radius={R} intensity={0.55} spread={16} style={styles.faceWrap}>
+        <GlowBox color={lit ? ORANGE : GREEN} radius={R} intensity={0.55} spread={16} style={styles.faceWrap}>
           <Animated.View style={[styles.face, spinStyle]}>
-            <WheelFace items={faceItems} landed={revealed && result ? result.landed_index : null} />
+            <WheelFace items={faceItems} landed={revealed && result ? result.landed_index : funLanded} />
           </Animated.View>
         </GlowBox>
         <View style={styles.hub}>
           <Image source={seasonalEmblem()} style={styles.hubLogo} accessibilityIgnoresInvertColors />
         </View>
-        <Pointer lit={!!revealed} />
+        <Pointer lit={lit} />
         {CONFETTI.map(([dx, dy, color], i) => (
           <ConfettiHex key={i} burst={burst} dx={dx} dy={dy} color={color} />
         ))}
@@ -382,19 +418,60 @@ export default function PunishmentWheelScreen() {
         </Animated.View>
       )}
 
-      {!result && data.is_commissioner && (
-        <GlowBox color={GREEN} radius={16} intensity={!data.can_spin || phase === 'spinning' ? 0 : 0.5} spread={14}>
-        <Pressable
-          onPress={confirmSpin}
-          disabled={!data.can_spin || phase === 'spinning'}
-          style={({ pressed }) => [styles.spin, (!data.can_spin || phase === 'spinning') && styles.spinOff, pressed && styles.pressed]}>
-          <Text style={[styles.spinText, (!data.can_spin || phase === 'spinning') && styles.spinTextOff]}>
-            {phase === 'spinning' ? 'SPINNING…' : data.items.length < 2 ? 'ADD AT LEAST 2' : `SPIN FOR ${data.season}`}
-          </Text>
-        </Pressable>
-        </GlowBox>
+      {funLanded !== null && (
+        <Animated.View entering={FadeInDown.duration(350)} style={styles.funCard}>
+          <Text style={styles.funKicker}>JUST FOR FUN</Text>
+          <Text style={styles.funText}>{faceItems[funLanded]?.toUpperCase()}</Text>
+          <Text style={styles.funNote}>Doesn&apos;t count. Only the commissioner&apos;s real spin locks it in.</Text>
+        </Animated.View>
       )}
-      {!result && !data.is_commissioner && <Text style={styles.memberNote}>Only the commissioner can spin the wheel.</Text>}
+
+      {!result && data.is_commissioner && (
+        <View style={styles.realRow}>
+          <View style={styles.flex}>
+            <Text style={styles.realTitle}>Real spin</Text>
+            <Text style={styles.realSub}>{realSpin ? 'Your next spin is the season’s punishment. Everyone watches it live.' : 'Off: spins are just for fun, like everyone else’s.'}</Text>
+          </View>
+          <Switch
+            value={realSpin}
+            onValueChange={(v) => {
+              haptics.select();
+              setRealSpin(v);
+            }}
+            disabled={spinningNow}
+            trackColor={{ false: '#2a313b', true: ORANGE }}
+            thumbColor="#f5f4ec"
+            ios_backgroundColor="#2a313b"
+            accessibilityLabel="Real spin"
+          />
+        </View>
+      )}
+
+      {!result &&
+        (data.is_commissioner && realSpin ? (
+          <GlowBox color={ORANGE} radius={16} intensity={!data.can_spin || spinningNow ? 0 : 0.6} spread={14}>
+            <Pressable
+              onPress={confirmSpin}
+              disabled={!data.can_spin || spinningNow}
+              style={({ pressed }) => [styles.spin, styles.spinReal, (!data.can_spin || spinningNow) && styles.spinOff, pressed && styles.pressed]}>
+              <Text style={[styles.spinText, (!data.can_spin || spinningNow) && styles.spinTextOff]}>
+                {phase === 'spinning' ? 'SPINNING…' : data.items.length < 2 ? 'ADD AT LEAST 2' : `SPIN FOR REAL · ${data.season}`}
+              </Text>
+            </Pressable>
+          </GlowBox>
+        ) : (
+          <GlowBox color={GREEN} radius={16} intensity={faceItems.length < 2 || spinningNow ? 0 : 0.5} spread={14}>
+            <Pressable
+              onPress={funSpin}
+              disabled={faceItems.length < 2 || spinningNow}
+              style={({ pressed }) => [styles.spin, (faceItems.length < 2 || spinningNow) && styles.spinOff, pressed && styles.pressed]}>
+              <Text style={[styles.spinText, (faceItems.length < 2 || spinningNow) && styles.spinTextOff]}>
+                {spinningNow ? 'SPINNING…' : faceItems.length < 2 ? 'ADD AT LEAST 2' : funLanded !== null ? 'SPIN AGAIN' : 'SPIN FOR FUN'}
+              </Text>
+            </Pressable>
+          </GlowBox>
+        ))}
+      {!result && !data.is_commissioner && <Text style={styles.memberNote}>Spin it all you want. The real spin is the commissioner&apos;s.</Text>}
 
       <View style={styles.listHead}>
         <Text style={styles.listTitle}>{`ON THE WHEEL (${faceItems.length})`}</Text>
@@ -494,6 +571,15 @@ const styles = StyleSheet.create({
   againText: { color: Colors.text, fontSize: 15, fontWeight: '700' },
   spin: { minHeight: 56, borderRadius: 16, borderWidth: 2, borderColor: GREEN, backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center' },
   spinOff: { backgroundColor: 'transparent' },
+  spinReal: { borderColor: ORANGE, backgroundColor: ORANGE },
+  flex: { flex: 1, minWidth: 0 },
+  realRow: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 16, backgroundColor: '#141a22', borderWidth: 1, borderColor: 'rgba(255,122,26,0.35)' },
+  realTitle: { color: Colors.text, fontSize: 15, fontWeight: '700' },
+  realSub: { color: Colors.textSecondary, fontSize: 12, lineHeight: 16, marginTop: 2 },
+  funCard: { alignItems: 'center', gap: 4, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(57,255,20,0.45)', backgroundColor: 'rgba(57,255,20,0.06)' },
+  funKicker: { color: GREEN, fontFamily: ANTON, fontSize: 13, letterSpacing: 3 },
+  funText: { color: Colors.text, fontFamily: ANTON, fontSize: 24, lineHeight: 30, textAlign: 'center' },
+  funNote: { color: Colors.textSecondary, fontSize: 12, textAlign: 'center' },
   spinText: { color: '#06110a', fontFamily: ANTON, fontSize: 22, letterSpacing: 2 },
   spinTextOff: { color: GREEN, opacity: 0.7 },
   memberNote: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'center', padding: 14, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#2a303a' },

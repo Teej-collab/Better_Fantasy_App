@@ -19,6 +19,11 @@ const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 // lands, the winning slice lights orange like the logo's lit cell, the
 // rest dim, hex confetti bursts off the pointer (.pw-confetti in
 // globals.css) and the verdict card glows orange.
+//
+// Spin for fun (2026-10-30): until the real spin, anyone can spin the
+// wheel as often as they like, in their own browser only (a random slice,
+// nothing saved or sent). The commissioner has a Real spin switch; with it
+// on, their button is the season's one real spin instead.
 
 type Wheel = {
   season: number;
@@ -117,7 +122,9 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
   const [wheel, setWheel] = useState<Wheel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
-  const [phase, setPhase] = useState<"idle" | "spinning" | "replaying" | "done">("idle");
+  const [phase, setPhase] = useState<"idle" | "spinning" | "replaying" | "done" | "fun" | "funDone">("idle");
+  const [funIndex, setFunIndex] = useState<number | null>(null);
+  const [realSpin, setRealSpin] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [burst, setBurst] = useState(0);
@@ -229,12 +236,32 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
   const label = labelStyle(n);
   const band = R - HUB_CLEAR - RIM_CLEAR;
   const maxChars = Math.max(6, Math.floor(band / (label.fontSize * 0.6)));
-  const landed = result && phase === "done" ? result.landed_index : null;
+  const funLanded = !result && phase === "funDone" ? funIndex : null;
+  const landed = result && phase === "done" ? result.landed_index : funLanded;
   const sliceColor = (i: number) => (landed === i ? ORANGE : landed === null ? GLASS[i % 2] : i % 2 ? "#080b0f" : "#0c1015");
   const gradient = items.length
     ? `conic-gradient(from 0deg, ${items.map((_, i) => `${landed === i || landed === i - 1 || (landed === n - 1 && i === 0) ? "#ffd0a0" : "rgba(57,255,20,0.75)"} ${i * seg}deg ${i * seg + 0.8}deg, ${sliceColor(i)} ${i * seg + 0.8}deg ${(i + 1) * seg}deg`).join(", ")})`
     : GLASS[0];
-  const spinning = phase === "spinning" || phase === "replaying";
+  const spinning = phase === "spinning" || phase === "replaying" || phase === "fun";
+  const busySpinning = phase === "spinning" || phase === "fun";
+
+  // A spin for fun: a random slice, in this browser only.
+  function funSpin() {
+    const count = items.length;
+    if (count < 2 || busySpinning) return;
+    const index = Math.floor(Math.random() * count);
+    setFunIndex(null);
+    setPhase("fun");
+    window.setTimeout(() => {
+      rotationRef.current = landing(rotationRef.current, index, count);
+      setRotation(rotationRef.current);
+      window.setTimeout(() => {
+        setFunIndex(index);
+        setPhase("funDone");
+        setBurst((b) => b + 1);
+      }, SPIN_MS + 100);
+    }, 30);
+  }
 
   // Watch it again: the same spin, from where it rests now.
   function replay() {
@@ -329,25 +356,63 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
         </div>
       )}
 
-      {!result && wheel.is_commissioner && (
-        <button
-          type="button"
-          onClick={() => {
-            // Spinning is final for the season, so it asks first.
-            if (window.confirm(`Spin for ${wheel.season}?\n\nWherever it lands is locked in as this season's punishment. You can't re-spin or change the wheel after.`)) {
-              void spin();
-            }
-          }}
-          disabled={!wheel.can_spin || phase === "spinning"}
-          className={`${anton.className} h-14 rounded-2xl border-2 border-[#39ff14] bg-[#39ff14] text-[22px] tracking-[0.1em] text-[#06110a] shadow-[0_0_24px_rgba(57,255,20,0.45)] disabled:bg-transparent disabled:text-[#39ff14] disabled:opacity-60 disabled:shadow-none`}
-        >
-          {phase === "spinning" ? "SPINNING…" : items.length < 2 ? "ADD AT LEAST 2" : `SPIN FOR ${wheel.season}`}
-        </button>
+      {funLanded !== null && (
+        <section aria-live="polite" className="pw-verdict flex flex-col items-center gap-1 rounded-2xl border border-[#39ff14]/45 bg-[#39ff14]/[0.06] p-3.5 text-center">
+          <span className={`${anton.className} text-[13px] tracking-[3px] text-[#39ff14]`}>JUST FOR FUN</span>
+          <span className={`${anton.className} text-2xl leading-tight`}>{items[funLanded]?.toUpperCase()}</span>
+          <span className="text-xs text-white/55">Doesn&apos;t count. Only the commissioner&apos;s real spin locks it in.</span>
+        </section>
       )}
+
+      {!result && wheel.is_commissioner && (
+        <div className="flex items-center gap-3.5 rounded-2xl border border-[#ff7a1a]/35 bg-[#141a22] p-3.5">
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-bold">Real spin</div>
+            <div className="text-xs text-white/55">
+              {realSpin ? "Your next spin is the season’s punishment. Everyone watches it live." : "Off: spins are just for fun, like everyone else’s."}
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={realSpin}
+            aria-label="Real spin"
+            disabled={busySpinning}
+            onClick={() => setRealSpin((v) => !v)}
+            className={`relative h-[34px] w-[58px] shrink-0 rounded-full transition-colors ${realSpin ? "bg-[#ff7a1a]" : "bg-[#2a313b]"} disabled:opacity-60`}
+          >
+            <span className={`absolute top-[3px] size-7 rounded-full bg-[#f5f4ec] transition-[left] ${realSpin ? "left-[27px]" : "left-[3px]"}`} />
+          </button>
+        </div>
+      )}
+
+      {!result &&
+        (wheel.is_commissioner && realSpin ? (
+          <button
+            type="button"
+            onClick={() => {
+              // Spinning is final for the season, so it asks first.
+              if (window.confirm(`Spin for ${wheel.season}?\n\nWherever it lands is locked in as this season's punishment. You can't re-spin or change the wheel after.`)) {
+                void spin();
+              }
+            }}
+            disabled={!wheel.can_spin || busySpinning}
+            className={`${anton.className} h-14 rounded-2xl border-2 border-[#ff7a1a] bg-[#ff7a1a] text-[22px] tracking-[0.1em] text-[#1a0b00] shadow-[0_0_24px_rgba(255,122,26,0.5)] disabled:bg-transparent disabled:text-[#ff7a1a] disabled:opacity-60 disabled:shadow-none`}
+          >
+            {phase === "spinning" ? "SPINNING…" : items.length < 2 ? "ADD AT LEAST 2" : `SPIN FOR REAL · ${wheel.season}`}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={funSpin}
+            disabled={items.length < 2 || busySpinning}
+            className={`${anton.className} h-14 rounded-2xl border-2 border-[#39ff14] bg-[#39ff14] text-[22px] tracking-[0.1em] text-[#06110a] shadow-[0_0_24px_rgba(57,255,20,0.45)] disabled:bg-transparent disabled:text-[#39ff14] disabled:opacity-60 disabled:shadow-none`}
+          >
+            {busySpinning ? "SPINNING…" : items.length < 2 ? "ADD AT LEAST 2" : funLanded !== null ? "SPIN AGAIN" : "SPIN FOR FUN"}
+          </button>
+        ))}
       {!result && !wheel.is_commissioner && (
-        <p className="rounded-xl border border-dashed border-white/15 p-3.5 text-center text-sm font-semibold text-white/50">
-          Only the commissioner can spin the wheel.
-        </p>
+        <p className="text-center text-sm text-white/55">Spin it all you want. The real spin is the commissioner&apos;s.</p>
       )}
       {error && <p className="text-center text-sm text-red-400">{error}</p>}
 
