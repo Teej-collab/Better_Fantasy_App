@@ -207,6 +207,7 @@ export default function PunishmentWheelScreen() {
   const [again, setAgain] = useState(false);
   const [phase, setPhase] = useState<'idle' | 'spinning' | 'replaying' | 'done' | 'fun' | 'funDone'>('idle');
   const [funIndex, setFunIndex] = useState<number | null>(null);
+  const [funTarget, setFunTarget] = useState<number | null>(null);
   const [realSpin, setRealSpin] = useState(false);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -228,30 +229,41 @@ export default function PunishmentWheelScreen() {
     void AsyncStorage.setItem(key, '1').catch(() => {});
   }
 
-  // A spin for fun: a random slice, on this phone only.
+  // A spin for fun: a random slice, on this phone only. The spin itself
+  // starts in the effect below, once the idle lap's cleanup (which
+  // cancels whatever the wheel is doing) has run; started here, the
+  // cleanup cancelled it and the wheel only kept idling (2026-10-30).
   function funSpin() {
     const count = faceItems.length;
     if (count < 2 || phase === 'fun' || phase === 'spinning') return;
-    const index = Math.floor(Math.random() * count);
     haptics.thud();
     setFunIndex(null);
+    setFunTarget(Math.floor(Math.random() * count));
     setPhase('fun');
-    cancelAnimation(rotation);
-    const from = rotation.get();
-    rotation.set(
-      withTiming(landing(from, index, count), { duration: SPIN_MS, easing: Easing.bezier(0.12, 0.62, 0.08, 1) }, (finished) => {
-        if (finished) runOnJS(onFunLanded)(index);
-      }),
-    );
   }
 
   function onFunLanded(index: number) {
     haptics.success();
+    setFunTarget(null);
     setFunIndex(index);
     setPhase('funDone');
     burst.set(0);
     burst.set(withDelay(80, withTiming(1, { duration: 1400, easing: Easing.out(Easing.quad) })));
   }
+
+  useEffect(() => {
+    if (phase !== 'fun' || funTarget === null) return;
+    const index = funTarget;
+    cancelAnimation(rotation);
+    const from = rotation.get();
+    rotation.set(
+      withTiming(landing(from, index, faceItems.length), { duration: SPIN_MS, easing: Easing.bezier(0.12, 0.62, 0.08, 1) }, (finished) => {
+        if (finished) runOnJS(onFunLanded)(index);
+      }),
+    );
+    // Once per fun spin; the item count is read, not tracked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, funTarget]);
 
   // Watch it again: the same spin, from where it rests now.
   function replay() {
