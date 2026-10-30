@@ -27,6 +27,8 @@ export const WORDS = ["WELCOME", "TO", "THE"];
 // Home's Welcome Back ends on the Hive Mark, which already says The
 // Weekend, so it stops at TO (2026-10-30); the other entries keep THE.
 export const WELCOME_WORDS = ["WELCOME", "TO"];
+// TO's beat there is shorter than THE's slot so it doesn't linger.
+export const WELCOME_LAST_MS = 850;
 // Each word ignites a little quicker than the last — an accelerating
 // cadence that builds anticipation toward WEEKEND instead of a metronomic
 // repeat.
@@ -52,7 +54,11 @@ export function prefersReducedMotion(): boolean {
   return /(?:^|; )wl_motion=reduced(?:;|$)/.test(document.cookie);
 }
 
-export function useWeekendIntro({ sound = true, words = WORDS }: { sound?: boolean; words?: string[] } = {}) {
+export function useWeekendIntro({
+  sound = true,
+  words = WORDS,
+  lastBeatMs,
+}: { sound?: boolean; words?: string[]; lastBeatMs?: number } = {}) {
   const [stage, setStage] = useState<IntroStage>("dark");
   const [wordIndex, setWordIndex] = useState(0);
   // True once there's no reason to make this visitor wait: reduced
@@ -125,7 +131,7 @@ export function useWeekendIntro({ sound = true, words = WORDS }: { sound?: boole
             setTimeout(() => {
               setStage("final");
               playCanThenPour();
-            }, WORD_INTERVALS_MS[words.length - 1])
+            }, lastBeatMs ?? WORD_INTERVALS_MS[words.length - 1])
           );
         }
       };

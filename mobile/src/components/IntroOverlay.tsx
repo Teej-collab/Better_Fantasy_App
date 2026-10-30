@@ -42,6 +42,8 @@ const WORDS = ['WELCOME', 'TO', 'THE'];
 // The Welcome Back ends on the Hive Mark, which already says The Weekend,
 // so it stops at TO (2026-10-30); the front door keeps THE.
 const WELCOME_WORDS = ['WELCOME', 'TO'];
+// TO's beat there is shorter than THE's slot so it doesn't linger.
+const WELCOME_LAST_MS = 850;
 // Each word ignites a little quicker than the last.
 const WORD_INTERVALS_MS = [1300, 1150, 1000];
 const WORD_FLICKER_MS = [1150, 1000, 850];
@@ -50,7 +52,7 @@ const HOLD_MS = 3600;
 const FAST_HOLD_MS = 150;
 const REVEAL_MS = 900;
 const CAN_OPENING_MS = 1100;
-const HANDOFF_MS = 450;
+const HANDOFF_MS = 350;
 
 // The brand green, never the user's accent: the opening looks the same
 // for everyone, whatever their theme (2026-10-28).
@@ -295,7 +297,7 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
           sounds.playLightSwitch(); // TO (then THE on the front door)
           after(WORD_INTERVALS_MS[i], advance);
         } else {
-          const last = WORD_INTERVALS_MS[words.length - 1];
+          const last = mode === 'welcome' ? WELCOME_LAST_MS : WORD_INTERVALS_MS[words.length - 1];
           if (mode === 'welcome' && hasSkia) {
             // The last word pulls back and shrinks away, like it becomes the coin.
             after(last - HANDOFF_MS, () => handoff.set(withTiming(1, { duration: HANDOFF_MS, easing: Easing.in(Easing.quad) })));

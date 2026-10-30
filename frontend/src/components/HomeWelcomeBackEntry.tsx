@@ -7,7 +7,7 @@ import { HiveTossOpen } from "@/components/HiveTossOpen";
 import { IntroSeasonDecor } from "@/components/IntroSeasonDecor";
 import { TheWordmark } from "@/components/TheWordmark";
 import { WelcomeBackStage } from "@/components/WelcomeBackStage";
-import { WELCOME_WORDS as WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
+import { WELCOME_LAST_MS, WELCOME_WORDS as WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
 import { markBootedThisPageLoad, useHasBootedSnapshot } from "@/lib/appBoot";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
@@ -87,7 +87,7 @@ export function HomeWelcomeBackEntry({
   children: ReactNode;
 }) {
   const router = useRouter();
-  const { stage, wordIndex, fast, quick, skip, markSeen } = useWeekendIntro({ words: WORDS });
+  const { stage, wordIndex, fast, quick, skip, markSeen } = useWeekendIntro({ words: WORDS, lastBeatMs: WELCOME_LAST_MS });
   // The Hive Toss stands in for the plain wordmark on a quick open, and
   // is the full intro's finale after WELCOME / TO / THE (2026-10-30).
   const tossFinale = stage === "final" && !fast && !needsLeague;
