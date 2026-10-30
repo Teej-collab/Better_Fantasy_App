@@ -43,6 +43,7 @@ import { GameVolume } from "@/components/lounge/GameVolume";
 import { LoungeBanner } from "@/components/lounge/LoungeBanner";
 import { LoungeRing } from "@/components/lounge/LoungeRing";
 import { gameGain, useApplyLoungeVolume, useLoungeVolume } from "@/lib/loungeVolume";
+import { canSplitGameAudio, setGameOutput, useApplyGameOutput, useGameOutput } from "@/lib/loungeGameOutput";
 import { useScoringHighlights, type ScoringHit } from "@/lib/scoringHighlights";
 import { useRosterMoments, type RosterMoment } from "@/lib/rosterMoments";
 import { isHexColor, MULTI, MULTI_COLORS } from "@/components/settings/ColorChoices";
@@ -105,6 +106,7 @@ export function WebLoungeRoom({
   const participants = useRoomPeople();
   useOwnDevices();
   useApplyLoungeVolume();
+  useApplyGameOutput();
   const share = (useTracks([Track.Source.ScreenShare]) as TrackReference[])[0];
   const { localParticipant, isScreenShareEnabled, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const [devicesOpen, setDevicesOpen] = useState(false);
@@ -355,8 +357,15 @@ export function WebLoungeRoom({
                 <DeviceList kind="audioinput" />
                 <p className="pt-3 pb-1 text-xs text-[#9aa3b2]">Camera</p>
                 <DeviceList kind="videoinput" />
-                <p className="pt-3 pb-1 text-xs text-[#9aa3b2]">Speakers</p>
+                <p className="pt-3 pb-1 text-xs text-[#9aa3b2]">{canSplitGameAudio ? "Speakers · everyone's voices" : "Speakers"}</p>
                 <DeviceList kind="audiooutput" />
+                {canSplitGameAudio && (
+                  <>
+                    <p className="pt-3 pb-1 text-xs text-[#9aa3b2]">Game audio</p>
+                    <GameOutputList />
+                    <p className="pt-1 text-[11px] leading-snug text-white/40">Send the game to its own output, like a mixer&apos;s Game channel, with voices on Chat.</p>
+                  </>
+                )}
                 <button onClick={() => setDevicesOpen(false)} className="mt-3 w-full rounded-full bg-white/10 py-1.5 font-semibold">
                   Done
                 </button>
@@ -619,6 +628,28 @@ function Tv({
   );
 }
 
+// Where the game plays: with the voices, or an output of its own
+// (lib/loungeGameOutput.ts).
+function GameOutputList() {
+  const { devices } = useMediaDeviceSelect({ kind: "audiooutput" });
+  const output = useGameOutput();
+  const options = [{ id: null as string | null, label: "Same as speakers" }, ...devices.map((d) => ({ id: d.deviceId as string | null, label: d.label || "Speaker" }))];
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {options.map((o) => (
+        <li key={o.id ?? "same"}>
+          <button
+            onClick={() => setGameOutput(o.id)}
+            className={`w-full rounded px-2 py-1.5 text-left break-words ${o.id === output ? "bg-white/15 font-semibold" : "hover:bg-white/5"}`}
+          >
+            {o.label}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // Pick which mic, camera or speakers the call uses (the browser's own
 // device list; built on the hook rather than LiveKit's <MediaDeviceSelect/>,
 // see LoungeVideoRoom.tsx's DeviceList for why).
@@ -653,6 +684,7 @@ function SharerGameVolume({ accent }: { accent: string }) {
   // A plain audio element can't go past its own full volume.
   const volume = Math.min(1, gameGain(useLoungeVolume().game));
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const gameOutput = useGameOutput();
 
   useEffect(() => {
     if (!gameAudio) return;
@@ -660,7 +692,9 @@ function SharerGameVolume({ accent }: { accent: string }) {
     audio.srcObject = new MediaStream([gameAudio]);
     audio.volume = volume;
     // Same speakers the rest of the call plays through (Devices).
-    const sink = room.getActiveDevice("audiooutput");
+    // The game's own output when one is picked (split audio), else the
+    // same speakers as the rest of the call.
+    const sink = gameOutput ?? room.getActiveDevice("audiooutput");
     if (sink && "setSinkId" in audio) void (audio as HTMLAudioElement & { setSinkId: (id: string) => Promise<void> }).setSinkId(sink).catch(() => {});
     void audio.play().catch(() => {});
     audioRef.current = audio;
@@ -671,7 +705,7 @@ function SharerGameVolume({ accent }: { accent: string }) {
     };
     // volume is applied live below; restarting playback on every step would stutter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameAudio, room, localParticipant]);
+  }, [gameAudio, room, localParticipant, gameOutput]);
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;
   }, [volume]);
