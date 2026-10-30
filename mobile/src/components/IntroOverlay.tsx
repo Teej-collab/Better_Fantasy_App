@@ -42,8 +42,11 @@ const WORDS = ['WELCOME', 'TO', 'THE'];
 // The Welcome Back ends on the Hive Mark, which already says The Weekend,
 // so it stops at TO (2026-10-30); the front door keeps THE.
 const WELCOME_WORDS = ['WELCOME', 'TO'];
-// TO's beat there is shorter than THE's slot so it doesn't linger.
-const WELCOME_LAST_MS = 850;
+// And it moves: WELCOME and TO are done and the can opens by 1.75 s
+// (2026-10-30, "should all happen in under 2 seconds").
+const WELCOME_INTERVALS_MS = [850, 700];
+const WELCOME_FLICKER_MS = [700, 600];
+const WELCOME_DARK_BEAT_MS = 200;
 // Each word ignites a little quicker than the last.
 const WORD_INTERVALS_MS = [1300, 1150, 1000];
 const WORD_FLICKER_MS = [1150, 1000, 850];
@@ -52,7 +55,7 @@ const HOLD_MS = 3600;
 const FAST_HOLD_MS = 150;
 const REVEAL_MS = 900;
 const CAN_OPENING_MS = 1100;
-const HANDOFF_MS = 350;
+const HANDOFF_MS = 300;
 
 // The brand green, never the user's accent: the opening looks the same
 // for everyone, whatever their theme (2026-10-28).
@@ -193,6 +196,8 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
   const [stage, setStage] = useState<Stage>('dark');
   const [wordIndex, setWordIndex] = useState(0);
   const words = mode === 'welcome' ? WELCOME_WORDS : WORDS;
+  const intervals = mode === 'welcome' ? WELCOME_INTERVALS_MS : WORD_INTERVALS_MS;
+  const flickers = mode === 'welcome' ? WELCOME_FLICKER_MS : WORD_FLICKER_MS;
   const [revealing, setRevealing] = useState(false);
   // The toss's canvas takes a frame or two to paint; until it has, this
   // gate stays opaque under it so the app never flashes through.
@@ -278,14 +283,14 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
     // Load the toss now, not on the can opening, so the switch doesn't
     // stall a frame.
     if (full && mode === 'welcome' && hasSkia) loadHiveToss();
-    after(INITIAL_DARK_BEAT_MS, () => {
+    after(mode === 'welcome' ? WELCOME_DARK_BEAT_MS : INITIAL_DARK_BEAT_MS, () => {
       ambient.set(withTiming(1, { duration: 1400 }));
       if (!full) {
         showFinal(true);
         return;
       }
       setStage('word');
-      word.set(flickerOn(WORD_FLICKER_MS[0]));
+      word.set(flickerOn(flickers[0]));
       sounds.playLightSwitch(); // WELCOME
       let i = 0;
       const advance = () => {
@@ -293,11 +298,11 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
         if (i < words.length) {
           setWordIndex(i);
           word.set(0);
-          word.set(flickerOn(WORD_FLICKER_MS[i]));
+          word.set(flickerOn(flickers[i]));
           sounds.playLightSwitch(); // TO (then THE on the front door)
-          after(WORD_INTERVALS_MS[i], advance);
+          after(intervals[i], advance);
         } else {
-          const last = mode === 'welcome' ? WELCOME_LAST_MS : WORD_INTERVALS_MS[words.length - 1];
+          const last = intervals[words.length - 1];
           if (mode === 'welcome' && hasSkia) {
             // The last word pulls back and shrinks away, like it becomes the coin.
             after(last - HANDOFF_MS, () => handoff.set(withTiming(1, { duration: HANDOFF_MS, easing: Easing.in(Easing.quad) })));
@@ -305,7 +310,7 @@ function WordmarkIntro({ displayName = null, onDone, mode = 'welcome', footer, f
           after(last, () => showFinal(false));
         }
       };
-      after(WORD_INTERVALS_MS[0], advance);
+      after(intervals[0], advance);
     });
     // Absolute backstop: the app is never stuck behind the welcome
     // intro. (The front door waits for Enter Here instead.)

@@ -27,8 +27,11 @@ export const WORDS = ["WELCOME", "TO", "THE"];
 // Home's Welcome Back ends on the Hive Mark, which already says The
 // Weekend, so it stops at TO (2026-10-30); the other entries keep THE.
 export const WELCOME_WORDS = ["WELCOME", "TO"];
-// TO's beat there is shorter than THE's slot so it doesn't linger.
-export const WELCOME_LAST_MS = 850;
+// And it moves: WELCOME and TO are done and the can opens by 1.75 s
+// (2026-10-30, "should all happen in under 2 seconds"); .wl-word--quick
+// in globals.css matches the flicker to these beats.
+export const WELCOME_INTERVALS_MS = [850, 700];
+export const WELCOME_DARK_BEAT_MS = 200;
 // Each word ignites a little quicker than the last — an accelerating
 // cadence that builds anticipation toward WEEKEND instead of a metronomic
 // repeat.
@@ -57,8 +60,9 @@ export function prefersReducedMotion(): boolean {
 export function useWeekendIntro({
   sound = true,
   words = WORDS,
-  lastBeatMs,
-}: { sound?: boolean; words?: string[]; lastBeatMs?: number } = {}) {
+  beatsMs = WORD_INTERVALS_MS,
+  darkBeatMs = INITIAL_DARK_BEAT_MS,
+}: { sound?: boolean; words?: string[]; beatsMs?: number[]; darkBeatMs?: number } = {}) {
   const [stage, setStage] = useState<IntroStage>("dark");
   const [wordIndex, setWordIndex] = useState(0);
   // True once there's no reason to make this visitor wait: reduced
@@ -125,18 +129,18 @@ export function useWeekendIntro({
         if (i < words.length) {
           setWordIndex(i);
           playLightSwitch(); // TO, then THE — one "light" per word.
-          timeouts.current.push(setTimeout(advance, WORD_INTERVALS_MS[i]));
+          timeouts.current.push(setTimeout(advance, beatsMs[i]));
         } else {
           timeouts.current.push(
             setTimeout(() => {
               setStage("final");
               playCanThenPour();
-            }, lastBeatMs ?? WORD_INTERVALS_MS[words.length - 1])
+            }, beatsMs[words.length - 1])
           );
         }
       };
-      timeouts.current.push(setTimeout(advance, WORD_INTERVALS_MS[0]));
-    }, INITIAL_DARK_BEAT_MS);
+      timeouts.current.push(setTimeout(advance, beatsMs[0]));
+    }, darkBeatMs);
 
     timeouts.current.push(startTimeout);
     return () => {
