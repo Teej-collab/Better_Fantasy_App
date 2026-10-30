@@ -516,6 +516,8 @@ function noLinks(items: TickerItem[]): TickerItem[] {
   return items.map((item) => ({ ...item, href: undefined }));
 }
 
+const CHROME_FADE_MS = 3000;
+
 function Tv({
   share,
   game,
@@ -531,9 +533,30 @@ function Tv({
   overlay: React.ReactNode;
 }) {
   const sharer = share?.participant;
+  // Like the app's TV: LIVE, who's sharing and the sound control fade
+  // CHROME_FADE_MS after the mouse last moved over the game (LIVE shrinks
+  // to a red dot), and come back on any move or tap. The score bug stays.
+  const [chrome, setChrome] = useState(true);
+  const fadeTimer = useRef<number | undefined>(undefined);
+  const fades = !!share;
+  const wake = () => {
+    if (!fades) return;
+    setChrome(true);
+    window.clearTimeout(fadeTimer.current);
+    fadeTimer.current = window.setTimeout(() => setChrome(false), CHROME_FADE_MS);
+  };
+  useEffect(() => {
+    if (!fades) return;
+    fadeTimer.current = window.setTimeout(() => setChrome(false), CHROME_FADE_MS);
+    return () => window.clearTimeout(fadeTimer.current);
+  }, [fades]);
+  const shown = !fades || chrome;
   return (
     <section
       aria-label="Shared game"
+      onPointerMove={wake}
+      onPointerDown={wake}
+      onFocus={wake}
       className="lounge-tv relative overflow-hidden rounded-2xl border"
       style={{ borderColor: "rgba(255,255,255,0.08)", background: "radial-gradient(120% 90% at 50% 20%, #1d3a24 0%, #0f1f14 55%, #070b08 100%)" }}
     >
@@ -547,13 +570,24 @@ function Tv({
       )}
       {(
         <>
-          {share && (
-            <div className="absolute top-3.5 left-3.5 flex gap-2">
-              <span className="rounded bg-[#dc143c] px-2 py-1 text-[11px] font-extrabold tracking-wider text-white">LIVE</span>
-              <span className="rounded bg-black/60 px-2.5 py-1 text-xs">Shared by {sharer?.isLocal ? "you" : sharer?.name || "someone"}</span>
-            </div>
+          {fades && (
+            <span
+              aria-hidden
+              className="absolute top-4 left-4 h-2.5 w-2.5 rounded-full bg-[#dc143c] shadow-[0_0_6px_#dc143c] transition-opacity duration-300"
+              style={{ opacity: shown ? 0 : 1 }}
+            />
           )}
-          {sharer && (sharer.isLocal ? <SharerGameVolume accent={accent} /> : <GameVolume accent={accent} className="absolute top-3.5 right-3.5" />)}
+          <div
+            className={`absolute inset-0 transition-opacity duration-300 ${shown ? "pointer-events-none [&>*]:pointer-events-auto" : "pointer-events-none opacity-0 [&_*]:pointer-events-none"}`}
+          >
+            {share && (
+              <div className="absolute top-3.5 left-3.5 flex gap-2">
+                <span className="rounded bg-[#dc143c] px-2 py-1 text-[11px] font-extrabold tracking-wider text-white">LIVE</span>
+                <span className="rounded bg-black/60 px-2.5 py-1 text-xs">Shared by {sharer?.isLocal ? "you" : sharer?.name || "someone"}</span>
+              </div>
+            )}
+            {sharer && (sharer.isLocal ? <SharerGameVolume accent={accent} /> : <GameVolume accent={accent} className="absolute top-3.5 right-3.5" />)}
+          </div>
           {/* A broadcast-style bug in the corner, only as wide as the
               scores: quarter and clock on top, the score (a dot for who has
               the ball), down and distance underneath. */}

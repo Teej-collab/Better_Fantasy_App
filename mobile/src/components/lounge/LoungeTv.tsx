@@ -72,8 +72,9 @@ export function LoungeTv({
   }, [fades, fadeLater]);
   // Nothing on the TV: the full-screen exit button stays put.
   const chromeShown = !fades || chrome;
-  const chromeStyle = useAnimatedStyle(() => ({ opacity: withTiming(chromeShown ? 1 : 0, { duration: 350 }) }));
-  const dotStyle = useAnimatedStyle(() => ({ opacity: withTiming(chromeShown ? 0 : 1, { duration: 350 }) }));
+  // Explicit dependencies, so the fade always follows chromeShown.
+  const chromeStyle = useAnimatedStyle(() => ({ opacity: withTiming(chromeShown ? 1 : 0, { duration: 350 }) }), [chromeShown]);
+  const dotStyle = useAnimatedStyle(() => ({ opacity: withTiming(chromeShown ? 0 : 1, { duration: 350 }) }), [chromeShown]);
   return (
     <View style={[styles.tv, fullScreen ? styles.tvFull : { height }]} accessibilityLabel={game ? `${game.away_team.abbr} at ${game.home_team.abbr} on the TV` : 'The TV'}>
       <LinearGradient colors={['#1d3a24', '#0f1f14', '#070b08']} style={StyleSheet.absoluteFill} />
