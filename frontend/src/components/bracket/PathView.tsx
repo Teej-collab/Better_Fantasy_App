@@ -28,10 +28,13 @@ function floorsFor(games: BracketGame[], playoffCount: number): Floor[] {
     });
   }
   floors.push({ code: "G", name: `LOBBY · TOP ${playoffCount} GO UP`, color: "#eceef1", slab: "linear-gradient(180deg,#151a20,#111419)", edge: "#2b3340", games: [], lobby: true });
+  // The Toilet Bowl's games (its own bracket in a league with byes, T1…)
+  // get their own floor; the rest of the consolation games stack above.
+  const isBowl = (g: BracketGame) => g.toilet_bowl || g.code.startsWith("T");
   const cons = games.filter((g) => g.bracket === "consolation");
   const rounds = [...new Set(cons.map((g) => g.round))].sort();
   rounds.forEach((r, i) => {
-    const here = cons.filter((g) => g.round === r && !g.toilet_bowl);
+    const here = cons.filter((g) => g.round === r && !isBowl(g));
     if (here.length)
       floors.push({
         code: `B${i + 1}`,
@@ -42,7 +45,7 @@ function floorsFor(games: BracketGame[], playoffCount: number): Floor[] {
         games: here,
       });
   });
-  const bowl = cons.filter((g) => g.toilet_bowl);
+  const bowl = cons.filter(isBowl);
   if (bowl.length)
     floors.push({ code: `B${rounds.length + 1}`, name: "THE BOWL", color: "#d9a066", slab: "linear-gradient(180deg,#2a1d12,#140e09)", edge: "#a8743c", games: bowl });
   return floors;

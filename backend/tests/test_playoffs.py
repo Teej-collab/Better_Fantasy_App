@@ -415,3 +415,18 @@ async def test_ladder_sends_losers_to_the_toilet_bowl(pool):
     assert bowl_weeks == 1
     # GmC4's winner waits in GmC7 for GmC2's loser.
     assert (c7["team_a_id"], c7["team_b_id"]) == (None, seeds[12])
+
+
+def test_bracket_spec_bye_league_gets_consolation_and_toilet_bowl():
+    # 6 of 12: 8v9 then 7 for 7th; 11v12, the loser meets 10, and the
+    # Toilet Bowl's loser is last.
+    games = {g["code"]: g for g in playoffs.bracket_spec(6, 12)}
+    assert games["C1"]["sources"] == [{"kind": "seed", "seed": 8}, {"kind": "seed", "seed": 9}]
+    assert games["C2"]["sources"] == [{"kind": "seed", "seed": 7}, {"kind": "winner", "code": "C1"}]
+    assert games["C2"]["places"] == [7, 8]
+    assert games["T1"]["sources"] == [{"kind": "seed", "seed": 11}, {"kind": "seed", "seed": 12}]
+    assert games["T2"]["sources"] == [{"kind": "seed", "seed": 10}, {"kind": "loser", "code": "T1"}]
+    assert games["T2"]["places"] == [11, 12] and games["T2"]["toilet_bowl"]
+    # Both end the week of the final.
+    assert games["C2"]["round"] == games["T2"]["round"] == games["F"]["round"]
+

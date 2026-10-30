@@ -202,9 +202,72 @@ def bracket_spec(team_count: int, total_teams: int) -> list[dict]:
         for code, r, slot, label, sources, places in ladder:
             games.append({
                 "code": code, "bracket": "consolation", "round": r, "slot": slot, "label": label,
-                "sources": sources, "places": places,
+                "sources": sources, "places": places, "toilet_bowl": code == "C8",
             })
+    elif size != team_count:
+        games += _consolation_and_bowl(team_count, total_teams, rounds)
     return games
+
+
+def _consolation_and_bowl(team_count: int, total_teams: int, rounds: int) -> list[dict]:
+    """For a playoff with byes (2026-10-29): the teams that miss it split
+    in two. The better half plays a consolation bracket for the next place
+    (7th in a 6-team playoff); the worse half plays the Toilet Bowl, where
+    the LOSER moves on and the loser of its last game finishes last. The
+    best seed in each gets any bye, and both end the week of the final."""
+    missed = list(range(team_count + 1, total_teams + 1))
+    if len(missed) < 2:
+        return []
+    bowl_n = max(2, len(missed) // 2)
+    cap = 2 ** rounds  # each bracket has to fit in the playoff weeks
+    bowl = missed[-bowl_n:][-cap:]
+    cons = missed[: len(missed) - bowl_n][:cap]
+    games = []
+    if len(cons) >= 2:
+        games += _side_bracket(cons, "C", "consolation", rounds, advance="winner", final_label=f"Consolation Final · {_ordinal(cons[0])} Place", final_places=[cons[0], cons[0] + 1])
+    games += _side_bracket(bowl, "T", "consolation", rounds, advance="loser", final_label="Toilet Bowl", final_places=[total_teams - 1, total_teams], toilet=True)
+    return games
+
+
+def _side_bracket(seeds: list[int], prefix: str, bracket: str, rounds: int, advance: str, final_label: str, final_places: list[int], toilet: bool = False) -> list[dict]:
+    """A small bracket for `seeds` (best first) that ends in the playoffs'
+    last round. `advance` is who moves on: "winner", or "loser" for the
+    Toilet Bowl."""
+    size = 1 << max(1, math.ceil(math.log2(len(seeds))))
+    own_rounds = int(math.log2(size))
+    first = rounds - own_rounds + 1
+    order = _bracket_order(size)
+    name = "Toilet Bowl" if toilet else "Consolation"
+    games: list[dict] = []
+    feeds: dict[tuple[int, int], dict] = {}
+    count = 0
+
+    def add(r: int, slot: int, sources: list[dict]) -> None:
+        nonlocal count
+        count += 1
+        last = r == own_rounds
+        code = f"{prefix}{count}"
+        games.append({
+            "code": code, "bracket": bracket, "round": first + r - 1, "slot": slot,
+            "label": final_label if last else f"{name} · Round {r}",
+            "sources": sources, "places": final_places if last else None, "toilet_bowl": toilet and last,
+        })
+        feeds[(r, slot)] = {"kind": advance, "code": code}
+
+    for slot in range(size // 2):
+        high, low = order[2 * slot], order[2 * slot + 1]
+        if low > len(seeds):
+            feeds[(1, slot)] = {"kind": "seed", "seed": seeds[high - 1]}
+        else:
+            add(1, slot, [{"kind": "seed", "seed": seeds[high - 1]}, {"kind": "seed", "seed": seeds[low - 1]}])
+    for r in range(2, own_rounds + 1):
+        for slot in range(size // (2 ** r)):
+            add(r, slot, [feeds[(r - 1, 2 * slot)], feeds[(r - 1, 2 * slot + 1)]])
+    return games
+
+
+def _ordinal(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
 
 
 async def _bracket_shape(conn, season: int, league_id: int) -> tuple[dict, int, list]:
@@ -521,7 +584,7 @@ async def get_playoff_world(conn, season: int, league_id: int = DEFAULT_LEAGUE_I
         spec_games.append({
             **game,
             "weeks": list(range(first, first + weeks_per_matchup)),
-            "toilet_bowl": game["code"] == "C8",
+            "toilet_bowl": bool(game.get("toilet_bowl")),
             "team_a_id": node["team_a_id"] if node else None,
             "team_b_id": node["team_b_id"] if node else None,
             "team_a_seed": node["team_a_seed"] if node else None,

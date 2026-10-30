@@ -45,7 +45,9 @@ export function routeLabel(g: BracketGame, all: BracketGame[], punishment: strin
     all.find((x) => x.sources.some((s) => s.kind === kind && s.code === g.code));
   const w = next("winner");
   const l = next("loser");
-  return [w && `W → ${shortName(w)}`, l && `L → ${shortName(l)}`].filter(Boolean).join(" · ");
+  // A Toilet Bowl round: the winner is out of it, the loser goes on.
+  const safe = !w && l && g.code.startsWith("T") ? "Winner: safe" : null;
+  return [safe, w && `W → ${shortName(w)}`, l && `L → ${shortName(l)}`].filter(Boolean).join(" · ");
 }
 
 function shortName(g: BracketGame): string {

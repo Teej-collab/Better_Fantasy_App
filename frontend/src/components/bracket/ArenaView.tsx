@@ -70,6 +70,8 @@ function nameFor(team: number | null, seed: number | null, teams: Record<number,
   return `${seed ? `#${seed} ` : ""}${teams[team].name}`;
 }
 
+const STANDARD_CODES = new Set(["SF1", "SF2", "F", "3RD", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"]);
+
 function BracketLayout(props: LayoutProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -81,7 +83,9 @@ function BracketLayout(props: LayoutProps) {
     return () => ro.disconnect();
   }, []);
   const byCode = Object.fromEntries(props.w.games.map((g) => [g.code, g]));
-  const standard = ["SF1", "SF2", "F", "3RD"].every((c) => byCode[c]);
+  // This league's own shape (4 playoff teams, ESPN's consolation ladder)
+  // gets the drawn bracket; any other shape is listed by section.
+  const standard = props.w.games.every((g) => STANDARD_CODES.has(g.code)) && ["SF1", "SF2", "F", "3RD"].every((c) => byCode[c]);
   return (
     <div ref={ref} className="w-full">
       {!standard ? (
@@ -270,9 +274,11 @@ function RoundPager(p: LayoutProps & { byCode: Record<string, BracketGame> }) {
 /** Any other bracket shape: each bracket's rounds in order. */
 function ByRound(p: LayoutProps) {
   const byCode = Object.fromEntries(p.w.games.map((g) => [g.code, g]));
+  const isBowl = (g: BracketGame) => g.toilet_bowl || g.code.startsWith("T");
   const groups: [string, BracketGame[]][] = [
     ["Winner's bracket", p.w.games.filter((g) => g.bracket === "winners")],
-    ["Consolation ladder", p.w.games.filter((g) => g.bracket === "consolation")],
+    ["Consolation", p.w.games.filter((g) => g.bracket === "consolation" && !isBowl(g))],
+    ["Toilet Bowl", p.w.games.filter(isBowl)],
   ];
   return (
     <div className="flex flex-col gap-5 rounded-3xl bg-[#0d1016] p-3">

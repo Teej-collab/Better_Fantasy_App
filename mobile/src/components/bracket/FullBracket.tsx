@@ -18,6 +18,11 @@ const PAGES = [
   { title: 'Round 2', round: 2, winners: ['F', '3RD'], ladder: ['C5', 'C6', 'C7', 'C8'], winnersTitle: 'CHAMPIONSHIP & 3RD' },
 ];
 
+const STANDARD_CODES = new Set(['SF1', 'SF2', 'F', '3RD', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8']);
+// The Toilet Bowl's games: its own bracket for leagues with byes (T1…),
+// or this league's last ladder game.
+const isBowl = (g: BracketGame) => g.toilet_bowl || g.code.startsWith('T');
+
 export function FullBracket({
   world,
   w,
@@ -38,7 +43,10 @@ export function FullBracket({
   const [page, setPage] = useState(0);
   const [scroller, setScroller] = useState<ScrollView | null>(null);
   const byCode: Record<string, BracketGame> = Object.fromEntries(w.games.map((g) => [g.code, g]));
-  const standard = ['SF1', 'SF2', 'F', '3RD'].every((c) => byCode[c]);
+  // This league's own shape (4 playoff teams, ESPN's consolation ladder)
+  // gets the two swipeable round pages; any other shape is listed by
+  // section, round by round.
+  const standard = w.games.every((g) => STANDARD_CODES.has(g.code)) && ['SF1', 'SF2', 'F', '3RD'].every((c) => byCode[c]);
   const weeksFor = (round: number) => {
     const g = w.games.find((x) => x.round === round);
     return g ? weeksLabel(g.weeks) : '';
@@ -58,7 +66,24 @@ export function FullBracket({
     ) : null;
 
   if (!standard) {
-    return <View style={styles.page}>{w.games.map((g) => card(g.code))}</View>;
+    const sections: [string, BracketGame[], boolean][] = [
+      ["WINNER'S BRACKET", w.games.filter((g) => g.bracket === 'winners'), true],
+      ['CONSOLATION', w.games.filter((g) => g.bracket === 'consolation' && !isBowl(g)), false],
+      ['TOILET BOWL', w.games.filter(isBowl), false],
+    ];
+    return (
+      <View style={styles.page}>
+        {sections
+          .filter(([, games]) => games.length > 0)
+          .map(([title, games, green], i) => (
+            <View key={title} style={styles.section}>
+              {i > 0 && <View style={styles.line} />}
+              <Text style={[styles.sectionTitle, green && styles.green]}>{title}</Text>
+              {games.map((g) => card(g.code))}
+            </View>
+          ))}
+      </View>
+    );
   }
 
   const go = (i: number) => {
@@ -117,6 +142,7 @@ const styles = StyleSheet.create({
   tabText: { fontFamily: Fonts.display, fontSize: 13, letterSpacing: 1, color: '#9aa3b2' },
   tabTextOn: { color: '#0d1016' },
   page: { paddingHorizontal: 16, gap: 12 },
+  section: { gap: 12 },
   sectionTitle: { fontFamily: Fonts.displayBold, fontSize: 18, letterSpacing: 1, color: '#eceef1' },
   green: { color: '#39ff14' },
   line: { height: 2, marginVertical: 4, backgroundColor: '#39ff14', shadowColor: '#39ff14', shadowOpacity: 1, shadowRadius: 8 },
