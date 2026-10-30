@@ -53,14 +53,19 @@ const SWEEP_AT = WELCOME_AT + 100;
 const IRIS_AT = WELCOME_AT + 750;
 // As the full intro's finale (IntroOverlay, 2026-10-30) it holds about
 // as long as the old wordmark did, so the pour plays out under it.
-const FULL_IRIS_AT = WELCOME_AT + 1900;
-// The orange cell fills like a glass: on the full intro with the pour
-// sound (it starts 1.1 s after the can, which is when this mounts), on
-// the quick open as the cell lights.
-const FULL_POUR_AT = 1100;
-const FULL_POUR_MS = 1300;
-const POUR_AT = LIT_AT - 60;
-const POUR_MS = 650;
+// The orange cell fills like a glass of beer: a stream, the level
+// rising with bubbles, a foam head on top. On the full intro it rides
+// the pour sound (which starts 1.1 s after the can, i.e. when this
+// mounts, and really pours from about 0.6 s to 2.1 s into the file), and
+// the logo, whose own orange cell is solid, waits until it's poured. On
+// the quick open it's a quick pour just before the logo.
+const FULL_POUR_AT = 1650;
+const FULL_POUR_MS = 1600;
+const FULL_LOGO_AT = FULL_POUR_AT + FULL_POUR_MS + 150;
+const FULL_WELCOME_AT = FULL_LOGO_AT + 140;
+const FULL_IRIS_AT = FULL_WELCOME_AT + 1300;
+const POUR_AT = LAND_AT - 30;
+const POUR_MS = 560;
 const IRIS_MS = 700;
 
 // The Hive Mark's seven cells in its own 400-unit square (flat-top,
@@ -132,6 +137,8 @@ function hexPath(cx: number, cy: number, r = 58): SkPath {
 
 export function HiveTossSkia({ displayName, onDone, full = false }: { displayName: string | null; onDone: () => void; full?: boolean }) {
   const irisAt = full ? FULL_IRIS_AT : IRIS_AT;
+  const logoAt = full ? FULL_LOGO_AT : LOGO_AT;
+  const welcomeAt = full ? FULL_WELCOME_AT : WELCOME_AT;
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const season = currentSeason();
@@ -177,10 +184,11 @@ export function HiveTossSkia({ displayName, onDone, full = false }: { displayNam
       // A neon tube catching: flicker, then on.
       c.set(withDelay(at, withSequence(withTiming(0.85, { duration: 80 }), withTiming(0.15, { duration: 50 }), withTiming(1, { duration: 100 }))));
     });
-    pour.set(withDelay(full ? FULL_POUR_AT : POUR_AT, withTiming(1, { duration: full ? FULL_POUR_MS : POUR_MS, easing: Easing.out(Easing.quad) })));
-    logo.set(withDelay(LOGO_AT, withTiming(1, { duration: 320, easing: Easing.out(Easing.quad) })));
-    welcome.set(withDelay(WELCOME_AT, withTiming(1, { duration: 500, easing: Easing.bezier(0.2, 0.8, 0.2, 1) })));
-    sweep.set(withDelay(SWEEP_AT, withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.quad) })));
+    // A steady pour: eases in as the stream starts, slows as it tops off.
+    pour.set(withDelay(full ? FULL_POUR_AT : POUR_AT, withTiming(1, { duration: full ? FULL_POUR_MS : POUR_MS, easing: full ? Easing.inOut(Easing.sin) : Easing.out(Easing.quad) })));
+    logo.set(withDelay(logoAt, withTiming(1, { duration: full ? 450 : 320, easing: Easing.out(Easing.quad) })));
+    welcome.set(withDelay(welcomeAt, withTiming(1, { duration: 500, easing: Easing.bezier(0.2, 0.8, 0.2, 1) })));
+    sweep.set(withDelay(welcomeAt + (SWEEP_AT - WELCOME_AT), withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.quad) })));
     iris.set(withDelay(irisAt, withTiming(1, { duration: IRIS_MS, easing: Easing.bezier(0.6, 0, 0.4, 1) })));
     const thud = setTimeout(() => haptics.thud(), LAND_AT);
     const done = setTimeout(onDone, irisAt + IRIS_MS);
@@ -324,32 +332,14 @@ export function HiveTossSkia({ displayName, onDone, full = false }: { displayNam
 
 // One cell: dark glass, then a neon tube (a wide soft bloom, a tight
 // glow and a white-hot core) that catches when `on` runs; the lit cell
-// fills with its color from the bottom up as `pour` runs, a bright
-// surface line riding the top.
+// is poured full (Pour).
 const CELL_H = 58 * 0.866;
 function Cell({ path, cx, cy, on, color, lit, pour }: { path: SkPath; cx: number; cy: number; on: SharedValue<number>; color: string; lit: string[] | null; pour: SharedValue<number> }) {
-  const level = useDerivedValue(() => cy + CELL_H - 2 * CELL_H * pour.get());
-  const liquid = useDerivedValue(() => Skia.XYWHRect(cx - 60, level.get(), 120, 2 * CELL_H + 4));
-  const surfaceOpacity = useDerivedValue(() => (pour.get() > 0 && pour.get() < 1 ? 1 : 0));
   return (
     <>
       <Path path={path} color={lit ? 'rgba(255,122,26,0.16)' : '#0b130d'} />
       <Path path={path} style="stroke" strokeWidth={2.5} color={color} opacity={0.55} />
-      {lit && (
-        <Group clip={path}>
-          <Group clip={liquid}>
-            <Path path={path} color={lit[1]} opacity={0.9}>
-              <BlurMask blur={16} style="normal" />
-            </Path>
-            <Path path={path}>
-              <RadialGradient c={vec(cx - 12, cy - 15)} r={70} colors={lit} positions={[0, 0.35, 0.8, 1]} />
-            </Path>
-          </Group>
-          <Rect x={cx - 60} y={level} width={120} height={3} color={lit[0]} opacity={surfaceOpacity}>
-            <BlurMask blur={2} style="solid" />
-          </Rect>
-        </Group>
-      )}
+      {lit && <Pour path={path} cx={cx} cy={cy} lit={lit} pour={pour} />}
       <Group opacity={on}>
         <Path path={path} style="stroke" strokeWidth={6} color={color} opacity={0.6}>
           <BlurMask blur={12} style="normal" />
@@ -361,6 +351,79 @@ function Cell({ path, cx, cy, on, color, lit, pour }: { path: SkPath; cx: number
       </Group>
     </>
   );
+}
+
+// The lit cell filling like a glass of beer as `pour` runs 0 → 1: a
+// stream falling in from above, the level rising with bubbles, and a
+// foam head that builds on top and keeps rolling. The beer stops short
+// of the rim; the foam fills the rest.
+const FILL = 0.78;
+const BUBBLES = [
+  [-18, 0.1],
+  [6, 0.45],
+  [20, 0.75],
+  [-6, 0.3],
+  [12, 0.9],
+];
+function Pour({ path, cx, cy, lit, pour }: { path: SkPath; cx: number; cy: number; lit: string[]; pour: SharedValue<number> }) {
+  const bottom = cy + CELL_H;
+  const top = cy - CELL_H;
+  const level = useDerivedValue(() => bottom - 2 * CELL_H * FILL * pour.get());
+  const foam = useDerivedValue(() => {
+    const p = pour.get();
+    return p <= 0 ? 0 : 3 + 2 * CELL_H * (1 - FILL) * Math.min(1, p * 1.25);
+  });
+  const liquid = useDerivedValue(() => Skia.XYWHRect(cx - 60, level.get(), 120, bottom - level.get() + 2));
+  // The head: a soft rolling top edge that keeps moving as it pours.
+  const head = useDerivedValue(() => {
+    const p = pour.get();
+    const y0 = level.get() + 2;
+    const y1 = level.get() - foam.get();
+    const path = Skia.Path.Make();
+    path.moveTo(cx - 60, y0);
+    path.lineTo(cx - 60, y1);
+    for (let x = -60; x <= 60; x += 6) {
+      path.lineTo(cx + x, y1 + 2.4 * Math.sin(x / 7 + p * 22) + 1.2 * Math.sin(x / 3.1 - p * 31));
+    }
+    path.lineTo(cx + 60, y0);
+    path.close();
+    return path;
+  });
+  const headOpacity = useDerivedValue(() => (pour.get() > 0 ? 1 : 0));
+  const streamTop = top - 46;
+  const stream = useDerivedValue(() => {
+    const p = pour.get();
+    // Thins out at the end of the pour.
+    const w = p <= 0 || p >= 1 ? 0 : p > 0.85 ? 6 * ((1 - p) / 0.15) : 6;
+    const end = level.get() - foam.get() + 4;
+    return Skia.XYWHRect(cx - w / 2 + Math.sin(p * 40) * 0.8, streamTop, w, Math.max(0, end - streamTop));
+  });
+  return (
+    <>
+      <Group clip={path}>
+        <Rect rect={liquid}>
+          <LinearGradient start={vec(cx, top)} end={vec(cx, bottom)} colors={[lit[1], lit[2], lit[3]]} />
+        </Rect>
+        {BUBBLES.map(([dx, phase], i) => (
+          <Bubble key={i} x={cx + dx} bottom={bottom} level={level} pour={pour} phase={phase} />
+        ))}
+        <Path path={head} color="#fff3dc" opacity={headOpacity} />
+        <Path path={head} style="stroke" strokeWidth={1.2} color="rgba(255,214,160,0.9)" opacity={headOpacity} />
+      </Group>
+      <Rect rect={stream}>
+        <LinearGradient start={vec(cx, streamTop)} end={vec(cx, bottom)} colors={['rgba(255,190,110,0)', lit[1], lit[2]]} positions={[0, 0.35, 1]} />
+      </Rect>
+    </>
+  );
+}
+
+function Bubble({ x, bottom, level, pour, phase }: { x: number; bottom: number; level: SharedValue<number>; pour: SharedValue<number>; phase: number }) {
+  const cy = useDerivedValue(() => {
+    const t = (pour.get() * 3 + phase) % 1;
+    return bottom - t * (bottom - level.get());
+  });
+  const opacity = useDerivedValue(() => (pour.get() > 0 && cy.get() > level.get() + 3 ? 0.75 : 0));
+  return <Circle cx={x} cy={cy} r={1.8} color="#fff1d6" opacity={opacity} />;
 }
 
 function Spark({ x, y, dx, dy, land, color, big }: { x: number; y: number; dx: number; dy: number; land: SharedValue<number>; color: string; big: boolean }) {

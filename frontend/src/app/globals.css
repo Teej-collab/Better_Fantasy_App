@@ -2615,11 +2615,29 @@ svg.wx-wind{position:absolute;inset:0;width:100%;height:100%;border:0;background
 .ht-winter{background:radial-gradient(60% 40% at 50% 42%,rgba(120,200,255,.14),transparent 70%),radial-gradient(30% 20% at 66% 34%,rgba(220,245,255,.12),transparent 70%),#0d1016}
 .ht-iris{animation:ht-iris .7s 2.65s cubic-bezier(.6,0,.4,1) forwards;clip-path:polygon(evenodd,0 0,100% 0,100% 100%,0 100%,0 0,var(--ox) calc(var(--oy) - var(--ht-r)),calc(var(--ox) + var(--ht-r) * .866) calc(var(--oy) - var(--ht-r) * .5),calc(var(--ox) + var(--ht-r) * .866) calc(var(--oy) + var(--ht-r) * .5),var(--ox) calc(var(--oy) + var(--ht-r)),calc(var(--ox) - var(--ht-r) * .866) calc(var(--oy) + var(--ht-r) * .5),calc(var(--ox) - var(--ht-r) * .866) calc(var(--oy) - var(--ht-r) * .5))}
 .ht-iris .ht-stage{animation:ht-stage-out .3s 2.65s ease-in forwards}
-.ht-pour{animation:ht-pour .65s 1.69s cubic-bezier(.25,.6,.4,1) both}
-@keyframes ht-pour{from{transform:translateY(101px)}to{transform:translateY(0)}}
-.ht-full .ht-pour{animation-duration:1.3s;animation-delay:1.1s}
-.ht-full.ht-iris{animation-delay:3.8s}
-.ht-full.ht-iris .ht-stage{animation-delay:3.8s}
+/* The orange cell poured like a beer: a stream, the level rising with
+   bubbles, a foam head that builds and rolls. Quick open: a quick pour
+   just after landing. Full intro (.ht-full): on the pour sound, the logo
+   (whose orange cell is solid) waiting until it's poured. */
+.ht-pour,.ht-stream,.ht-foam{animation-duration:.56s;animation-delay:1s;animation-fill-mode:both}
+.ht-pour{animation-name:ht-pour;animation-timing-function:cubic-bezier(.25,.6,.4,1)}
+.ht-stream{animation-name:ht-stream;animation-timing-function:linear;transform-box:fill-box;transform-origin:center}
+.ht-foam{animation-name:ht-foam;transform-box:fill-box;transform-origin:50% 100%}
+.ht-roll{animation:ht-roll .9s ease-in-out infinite alternate}
+.ht-bub{opacity:0;animation:ht-bub .7s 1s linear infinite}
+@keyframes ht-pour{from{transform:translateY(80px)}to{transform:translateY(0)}}
+@keyframes ht-stream{0%{opacity:0;transform:scaleX(1)}6%,85%{opacity:1;transform:scaleX(1)}100%{opacity:0;transform:scaleX(0)}}
+@keyframes ht-foam{from{transform:scaleY(.15)}80%,to{transform:scaleY(1)}}
+@keyframes ht-roll{from{transform:translateX(-5px)}to{transform:translateX(5px)}}
+@keyframes ht-bub{0%{opacity:0;transform:translateY(0)}15%{opacity:.75}100%{opacity:0;transform:translateY(-70px)}}
+.ht-full .ht-pour,.ht-full .ht-stream,.ht-full .ht-foam{animation-duration:1.6s;animation-delay:1.65s}
+.ht-full .ht-pour{animation-timing-function:ease-in-out}
+.ht-full .ht-bub{animation-delay:1.7s}
+.ht-full .ht-logo{animation-duration:.45s;animation-delay:3.4s}
+.ht-full .ht-welcome{animation-delay:3.54s}
+.ht-full .ht-welcome span{animation-delay:3.64s}
+.ht-full.ht-iris{animation-delay:4.84s}
+.ht-full.ht-iris .ht-stage{animation-delay:4.84s}
 .ht-stage{position:absolute;inset:0}
 .ht-center{--s:min(86vw,50vh,400px);position:absolute;left:50%;top:42%;width:var(--s);height:var(--s);transform:translate(-50%,-50%)}
 .ht-toss{position:absolute;inset:0;perspective:900px;animation:ht-toss 1s .15s cubic-bezier(.3,.6,.4,1) both}
