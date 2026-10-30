@@ -271,8 +271,12 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
-      <Pressable style={styles.backdrop} onPress={close}>
-        <Pressable style={[styles.sheet, !requesting && styles.sheetTall, { paddingBottom: insets.bottom + Spacing.md }]} onPress={() => {}}>
+      {/* The backdrop sits behind the sheet, not around it: a pressable
+          wrapped around the list held onto touches, so it only scrolled
+          from a drag that started on an Add button (2026-10-30). */}
+      <View style={styles.backdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Close" />
+        <View style={[styles.sheet, !requesting && styles.sheetTall, { paddingBottom: insets.bottom + Spacing.md }]}>
           <View style={styles.grab} />
           {requesting ? (
             <RequestRuleForm initial={query.trim()} onBack={() => setRequesting(false)} onClose={close} />
@@ -339,8 +343,8 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
           </ScrollView>
             </>
           )}
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
