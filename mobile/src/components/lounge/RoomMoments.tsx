@@ -10,6 +10,8 @@ import { scoringHeadline, shade } from '@/lib/loungeLive';
 import type { LoungeSweat } from '@/lib/loungeSweat';
 import { lastName } from '@/lib/loungeSweat';
 import { nflTeamColor } from '@/lib/nflTeams';
+import { BIG_SWING, redZoneNow, useLeagueMoments, type RedZone } from '@/lib/leagueMoments';
+import type { MomentsMode } from '@/lib/momentsMode';
 import type { GamecastPlay, LiveGame, PlayFantasyPlayer } from '@/lib/types';
 
 // The Lounge's pop-ups (2026-10, mockup "Combined" on the Lounge Moment
@@ -43,7 +45,7 @@ const TIER1_COOLDOWN_MS = 30_000;
 const SWING_HOLD_MS = 25_000;
 const MAX_TOASTS = 3;
 
-export type MomentKind = 'touchdown' | 'turnover' | 'safety' | 'play' | 'roster' | 'chug' | 'bet' | 'rivalry';
+export type MomentKind = 'touchdown' | 'turnover' | 'safety' | 'play' | 'roster' | 'chug' | 'bet' | 'rivalry' | 'swing' | 'elsewhere' | 'cash';
 
 export type RoomMoment = {
   id: string;
@@ -62,7 +64,18 @@ export type RoomMoment = {
   chugOwnerName?: string;
   chugIsMe?: boolean;
   good?: boolean;
+  // For or against you (the "Mine only" setting keeps just these).
+  mine?: boolean;
+  // Notifications folded into this one (several plays close together).
+  folded?: number;
 };
+
+/** A touchdown on the TV that nobody in the room has a stake in: a slim
+ *  broadcast strip across the bottom of the picture. */
+export type TvTouchdown = { id: string; team: string; text: string; score: string };
+
+// Plays this close together fold into one notification.
+const FOLD_MS = 20_000;
 
 export type Swing = {
   before: number | null;
@@ -93,6 +106,8 @@ export function useRoomMoments({
   roomOwnerIds,
   chugEnabled,
   chugRuleName,
+  mode = 'all',
+  tvTeams,
 }: {
   sweat: LoungeSweat;
   myOwnerId: number | null;
@@ -100,7 +115,12 @@ export function useRoomMoments({
   roomOwnerIds: string[];
   chugEnabled: boolean;
   chugRuleName: string | null;
+  // The Moments setting (lib/momentsMode.ts).
+  mode?: MomentsMode;
+  // The two teams in the TV's game: its own play-by-play covers them.
+  tvTeams?: { current: string[] };
 }) {
+  const [tvTd, setTvTd] = useState<TvTouchdown | null>(null);
   const [big, setBig] = useState<RoomMoment | null>(null);
   const bigQueue = useRef<RoomMoment[]>([]);
   const [toasts, setToasts] = useState<RoomMoment[]>([]);
@@ -122,9 +142,16 @@ export function useRoomMoments({
     setHistory((h) => (h.some((x) => x.id === m.id) ? h : [m, ...h].slice(0, 60)));
   }, []);
 
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
   const showBig = useCallback(
     (m: RoomMoment) => {
       record(m);
+      // "Mine only": someone else's touchdown just gets the TV strip.
+      if (modeRef.current === 'mine' && m.tier === 1 && !m.mine && m.kind !== 'cash') return;
       setBig((current) => {
         if (current) {
           if (bigQueue.current.length < 3) bigQueue.current.push(m);
@@ -139,7 +166,32 @@ export function useRoomMoments({
   const toast = useCallback(
     (m: RoomMoment) => {
       record(m);
-      setToasts((t) => (t.some((x) => x.id === m.id) ? t : [...t, m]));
+      if (modeRef.current === 'big') return;
+      if (modeRef.current === 'mine' && !m.mine) return;
+      setToasts((t) => {
+        if (t.some((x) => x.id === m.id)) return t;
+        // Plays close together fold into one: "3 plays · +12.4 for you".
+        const last = t[t.length - 1];
+        const foldable = (k: MomentKind) => k === 'play' || k === 'roster' || k === 'elsewhere';
+        if (last && foldable(last.kind) && foldable(m.kind) && m.at - last.at < FOLD_MS) {
+          const n = (last.folded ?? 1) + 1;
+          const mine = (last.myPoints ?? 0) + (m.myPoints ?? 0);
+          return [
+            ...t.slice(0, -1),
+            {
+              ...m,
+              id: `${last.id}+${m.id}`,
+              folded: n,
+              title: `${n} plays`,
+              detail: mine ? `${fmtPts(mine)} for you · latest ${m.title}` : `Latest: ${m.title}`,
+              myPoints: mine || undefined,
+              good: mine ? mine >= 0 : m.good,
+              mine: last.mine || m.mine,
+            },
+          ];
+        }
+        return [...t, m];
+      });
     },
     [record],
   );
@@ -193,6 +245,16 @@ export function useRoomMoments({
       const scorerSide = scorer === game.home_team.abbr ? game.home_team : game.away_team;
       const otherSide = scorerSide === game.home_team ? game.away_team : game.home_team;
 
+      if (kind === 'touchdown' && !(relevant(1) && !coolingDown && !(modeRef.current === 'mine' && !myPoints))) {
+        // Nobody in the room (or, with "Mine only", you) has a stake: the
+        // TV still gets its touchdown, as a broadcast strip.
+        setTvTd({
+          id: play.play_id,
+          team: scorer,
+          text: scoringHeadline(play, game),
+          score: `${scorerSide.abbr} ${scorerSide.score ?? ''} · ${otherSide.abbr} ${otherSide.score ?? ''}`,
+        });
+      }
       if (kind && relevant(1) && !coolingDown) {
         lastTier1.current = now;
         swingBase.current = {
@@ -210,6 +272,7 @@ export function useRoomMoments({
           detail: kind === 'touchdown' ? scoringHeadline(play, game) : play.description.replace(/\.$/, ''),
           teamAbbr: kind === 'turnover' ? otherSide.abbr : scorer,
           myPoints: myPoints || undefined,
+          mine: !!myPoints,
           impacts,
           score: { scorer: scorerSide.abbr, scorerScore: scorerSide.score, other: otherSide.abbr, otherScore: otherSide.score },
         });
@@ -230,6 +293,7 @@ export function useRoomMoments({
           myPoints: myPoints || undefined,
           impacts,
           good: top.is_mine ? top.points >= 0 : undefined,
+          mine: !!myPoints,
         });
       }
     },
@@ -250,6 +314,7 @@ export function useRoomMoments({
         myPoints: points,
         impacts: myOwnerId !== null ? { [String(myOwnerId)]: points } : undefined,
         good: points >= 0,
+        mine: true,
       });
     },
     [myOwnerId, toast],
@@ -367,6 +432,120 @@ export function useRoomMoments({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sweat.allBets]);
 
+  // Everyone's starters in every game (lib/leagueMoments.ts): yours and
+  // your opponent's anywhere, everyone else in the room's, and any play
+  // that swings someone in the room's chance to win by BIG_SWING points.
+  const leagueKey = sweat.league[0] ? `${sweat.league[0].season}-${sweat.league[0].week}` : null;
+  const leagueMoments = useLeagueMoments(sweat.league, leagueKey);
+  const handled = useRef(new Set<string>());
+  useEffect(() => {
+    const me = myOwnerId !== null ? String(myOwnerId) : null;
+    for (const lm of leagueMoments) {
+      if (handled.current.has(lm.id)) continue;
+      handled.current.add(lm.id);
+      const forMe = lm.ownerId === me;
+      const againstMe = lm.againstId === me;
+      const inRoom = room.current.has(lm.ownerId);
+      if (!forMe && !againstMe && !inRoom) continue;
+      const onTv = !!lm.proTeam && (tvTeams?.current ?? []).includes(lm.proTeam);
+      const swing = lm.winBefore !== null && lm.winAfter !== null ? lm.winAfter - lm.winBefore : 0;
+      const myView = forMe ? swing : againstMe ? -swing : 0;
+      const what = lm.touchdown ? 'touchdown' : `${fmtPts(lm.points)}`;
+      const first = (n: string) => n.split(' ')[0];
+      // A big swing on the TV that wasn't a touchdown (those take over
+      // already) gets its own takeover.
+      if (onTv) {
+        if (!lm.touchdown && Math.abs(swing) >= BIG_SWING) {
+          // Each league moment is handled once (handled.current), so this
+          // can't cascade.
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          showBig({
+            id: `swing-${lm.id}`,
+            tier: 1,
+            kind: 'swing',
+            at: lm.at,
+            title: 'Big swing',
+            detail: `${lastName(lm.playerName)} ${fmtPts(lm.points)} · ${first(lm.ownerName)} ${Math.round(lm.winBefore ?? 0)}% → ${Math.round(lm.winAfter ?? 0)}%`,
+            teamAbbr: lm.proTeam,
+            myPoints: forMe ? lm.points : againstMe ? -lm.points : undefined,
+            impacts: { [lm.ownerId]: lm.points },
+            mine: forMe || againstMe,
+          });
+        }
+        continue;
+      }
+      const odds = forMe || againstMe ? (Math.abs(myView) >= 3 ? ` · you ${Math.round((forMe ? lm.winBefore : 100 - (lm.winBefore ?? 0)) ?? 0)}% → ${Math.round((forMe ? lm.winAfter : 100 - (lm.winAfter ?? 0)) ?? 0)}%` : '') : '';
+      toast({
+        id: `else-${lm.id}`,
+        tier: 2,
+        kind: 'elsewhere',
+        at: lm.at,
+        title: forMe
+          ? `${lastName(lm.playerName)}, ${what}`
+          : againstMe
+            ? `Ouch · ${lastName(lm.playerName)}, ${what}`
+            : `${first(lm.ownerName)} · ${lastName(lm.playerName)}, ${what}`,
+        detail: `Elsewhere${lm.proTeam ? ` · ${lm.proTeam}` : ''} · ${fmtPts(lm.points)} for ${forMe ? 'you' : first(lm.ownerName)}${odds}`,
+        teamAbbr: lm.proTeam,
+        myPoints: forMe ? lm.points : againstMe ? -lm.points : undefined,
+        impacts: { [lm.ownerId]: lm.points },
+        good: forMe ? true : againstMe ? false : undefined,
+        mine: forMe || againstMe,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueMoments]);
+
+  // Bets: yours cashing takes over the TV in gold; one leg left is a
+  // nudge; a shared bet cashing anywhere in the league is a notification.
+  const betSeen = useRef<Map<string, string> | null>(null);
+  useEffect(() => {
+    const first = betSeen.current === null;
+    if (first) betSeen.current = new Map();
+    const s = betSeen.current!;
+    const look = (key: string, state: string, fire: () => void) => {
+      const prev = s.get(key);
+      s.set(key, state);
+      if (!first && prev !== undefined && prev !== state) fire();
+    };
+    for (const bet of sweat.allBets) {
+      const open = bet.legs.filter((l) => l.status === 'open').length;
+      const lost = bet.legs.some((l) => l.status === 'lost');
+      const desc = bet.legs.length > 1 ? `${bet.legs.length}-leg parlay` : (bet.legs[0]?.description ?? 'Your bet');
+      look(`mine-${bet.id}`, bet.status, () => {
+        if (bet.status !== 'won') return;
+        showBig({ id: `cash-${bet.id}`, tier: 1, kind: 'cash', at: Date.now(), title: 'Cashed', detail: `${desc}${bet.payout ? ` · ${bet.payout.toFixed(2)} back` : ''}`, mine: true });
+      });
+      look(`mine-leg-${bet.id}`, bet.legs.length > 1 && open === 1 && !lost ? 'one' : 'no', () => {
+        if (!(bet.legs.length > 1 && open === 1 && !lost)) return;
+        const left = bet.legs.find((l) => l.status === 'open');
+        toast({ id: `one-${bet.id}`, tier: 3, kind: 'bet', at: Date.now(), title: 'One leg away', detail: left ? `Needs ${left.description}` : desc, good: true, mine: true });
+      });
+    }
+    for (const bet of sweat.leagueOpenBets) {
+      look(`league-${bet.id}`, bet.status, () => {
+        if (bet.status !== 'won') return;
+        toast({ id: `lcash-${bet.id}`, tier: 3, kind: 'bet', at: Date.now(), title: `${bet.member.name.split(' ')[0]} cashed`, detail: bet.legs.length > 1 ? `${bet.legs.length}-leg parlay` : (bet.legs[0]?.description ?? 'A bet'), good: true });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sweat.allBets, sweat.leagueOpenBets]);
+
+  // Who's in the red zone right now: yours, your opponent's, and anyone
+  // in the room's.
+  const me = myOwnerId !== null ? String(myOwnerId) : null;
+  const inRoom = new Set(roomKey ? roomKey.split(',') : []);
+  const redZone: RedZone[] = redZoneNow(sweat.league).filter(
+    (r) => r.ownerId === me || inRoom.has(r.ownerId) || sweat.opponentStarters.some((p) => p.player_name === r.playerName),
+  );
+
+  // The TV's touchdown strip clears itself.
+  useEffect(() => {
+    if (!tvTd) return;
+    const id = setTimeout(() => setTvTd(null), 6000);
+    return () => clearTimeout(id);
+  }, [tvTd]);
+
   const dismissBig = useCallback(() => setBig(bigQueue.current.shift() ?? null), []);
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 
@@ -386,6 +565,8 @@ export function useRoomMoments({
     onRosterPlay,
     dismissBig,
     dismissToast,
+    tvTd,
+    redZone,
   };
 }
 
@@ -577,7 +758,85 @@ export function MomentStrip({ latest, count, accent, onOpen }: { latest: RoomMom
   );
 }
 
-export function MomentsSheet({ visible, onClose, history, accent }: { visible: boolean; onClose: () => void; history: RoomMoment[]; accent: string }) {
+/** A touchdown on the TV nobody in the room has a stake in: a slim
+ *  broadcast strip across the bottom of the picture. */
+export function TvTouchdownStrip({ td }: { td: TvTouchdown }) {
+  const color = nflTeamColor(td.team) ?? '#2b2d31';
+  return (
+    <View style={styles.tvTd} pointerEvents="none" accessibilityLiveRegion="polite" accessibilityLabel={`Touchdown ${td.team}. ${td.text}. ${td.score}`}>
+      <View style={[styles.tvTdTag, { backgroundColor: color }]}>
+        <Text style={styles.tvTdTagText} maxFontSizeMultiplier={1}>
+          TD {td.team}
+        </Text>
+      </View>
+      <Text style={styles.tvTdText} numberOfLines={1} maxFontSizeMultiplier={1}>
+        {td.text}
+      </Text>
+      <Text style={styles.tvTdScore} maxFontSizeMultiplier={1}>
+        {td.score}
+      </Text>
+    </View>
+  );
+}
+
+/** Who's inside the 20 in another game, pulsing by the score bug. */
+export function RedZoneChip({ zones }: { zones: RedZone[] }) {
+  if (zones.length === 0) return null;
+  const z = zones[0];
+  return (
+    <View style={styles.rz} pointerEvents="none" accessibilityLabel={`Red zone: ${z.playerName}${zones.length > 1 ? ` and ${zones.length - 1} more` : ''}`}>
+      <View style={styles.rzDot} />
+      <Text style={styles.rzText} numberOfLines={1} maxFontSizeMultiplier={1}>
+        RED ZONE · {lastName(z.playerName)}
+        {z.proTeam ? ` (${z.proTeam})` : ''}
+        {zones.length > 1 ? ` +${zones.length - 1}` : ''}
+      </Text>
+    </View>
+  );
+}
+
+const MODES: { mode: MomentsMode; label: string }[] = [
+  { mode: 'all', label: 'All' },
+  { mode: 'mine', label: 'Mine only' },
+  { mode: 'big', label: 'Big only' },
+];
+
+/** All / Mine only / Big only, for you alone. */
+export function MomentsModePicker({ mode, onChange, accent }: { mode: MomentsMode; onChange: (m: MomentsMode) => void; accent: string }) {
+  return (
+    <View style={styles.modes} accessibilityRole="radiogroup">
+      {MODES.map((m) => (
+        <Pressable
+          key={m.mode}
+          onPress={() => {
+            haptics.select();
+            onChange(m.mode);
+          }}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: mode === m.mode }}
+          style={[styles.mode, mode === m.mode && { backgroundColor: `${accent}26`, borderColor: accent }]}>
+          <Text style={[styles.modeText, mode === m.mode && { color: accent }]}>{m.label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+export function MomentsSheet({
+  visible,
+  onClose,
+  history,
+  accent,
+  mode,
+  onMode,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  history: RoomMoment[];
+  accent: string;
+  mode?: MomentsMode;
+  onMode?: (m: MomentsMode) => void;
+}) {
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -589,12 +848,13 @@ export function MomentsSheet({ visible, onClose, history, accent }: { visible: b
               <Text style={styles.sheetDone}>Done</Text>
             </Pressable>
           </View>
+          {mode && onMode && <MomentsModePicker mode={mode} onChange={onMode} accent={accent} />}
           <ScrollView contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
             {history.length === 0 && <Text style={styles.swingMuted}>Big plays, fantasy swings and league moments show up here as they happen.</Text>}
             {history.map((m) => (
               <View key={m.id} style={styles.historyRow}>
                 <Text style={[styles.historyTier, { color: m.tier === 1 ? accent : m.kind === 'chug' ? '#facc15' : '#9aa3b2' }]}>
-                  {m.kind === 'chug' ? 'CHUG' : m.kind === 'bet' ? 'BET' : m.kind === 'rivalry' ? 'RIVAL' : m.tier === 1 ? m.title.toUpperCase() : 'PLAY'}
+                  {m.kind === 'chug' ? 'CHUG' : m.kind === 'bet' ? 'BET' : m.kind === 'rivalry' ? 'RIVAL' : m.kind === 'elsewhere' ? 'ELSEWHERE' : m.tier === 1 ? m.title.toUpperCase() : 'PLAY'}
                 </Text>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.toastTitle} numberOfLines={1}>
@@ -615,6 +875,17 @@ export function MomentsSheet({ visible, onClose, history, accent }: { visible: b
 }
 
 const styles = StyleSheet.create({
+  tvTd: { position: 'absolute', left: 10, right: 10, bottom: 0, height: 34, flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 10, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(8,10,16,0.92)', zIndex: 15 },
+  tvTdTag: { alignSelf: 'stretch', justifyContent: 'center', paddingHorizontal: 10 },
+  tvTdTagText: { color: '#fff', fontFamily: 'Anton_400Regular', fontSize: 15, letterSpacing: 1 },
+  tvTdText: { flex: 1, color: '#f2f5fa', fontFamily: Fonts.displayBold, fontSize: 12 },
+  tvTdScore: { color: '#fff', fontFamily: Fonts.monoBold, fontSize: 12 },
+  rz: { position: 'absolute', right: 52, bottom: 10, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, height: 22, borderRadius: 11, backgroundColor: 'rgba(120,10,24,0.88)', borderWidth: 1, borderColor: '#ff3b5c', zIndex: 14 },
+  rzDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ff3b5c' },
+  rzText: { color: '#fff', fontFamily: Fonts.monoBold, fontSize: 10, letterSpacing: 0.5 },
+  modes: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingBottom: 10 },
+  mode: { flex: 1, minHeight: 36, borderRadius: 10, borderWidth: 1, borderColor: '#2a313b', alignItems: 'center', justifyContent: 'center' },
+  modeText: { color: '#c9d2e0', fontSize: 13, fontWeight: '600' },
   strip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 10, marginTop: 6, paddingHorizontal: 12, minHeight: 36, borderRadius: 18, borderWidth: 1, backgroundColor: 'rgba(12,15,22,0.92)', shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
   stripDot: { width: 7, height: 7, borderRadius: 4, shadowOpacity: 1, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } },
   stripTitle: { flex: 1, color: '#f2f5fa', fontFamily: Fonts.displayBold, fontSize: 14, letterSpacing: 0.3 },

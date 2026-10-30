@@ -22,6 +22,7 @@ const LETTER_STEP = 60;
 
 function toneFor(m: RoomMoment): { neon: string; core: string } {
   if (m.kind === 'turnover') return { neon: '#ff8a2a', core: '#fff1e0' };
+  if (m.kind === 'cash') return { neon: '#f5c542', core: '#fff6d6' };
   if (m.myPoints !== undefined && m.myPoints > 0) return { neon: '#39ff14', core: '#eaffdf' };
   if (m.myPoints !== undefined && m.myPoints < 0) return { neon: '#ff3b5c', core: '#ffe1e6' };
   const team = nflTeamColor(m.teamAbbr ?? '') ?? '#ffb612';

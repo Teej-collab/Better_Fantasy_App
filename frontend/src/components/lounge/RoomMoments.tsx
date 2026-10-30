@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WeekMatchupContextItem } from "@/lib/api";
-import type { Bet } from "@/lib/betsApi";
+import type { Bet, LeagueBet } from "@/lib/betsApi";
+import { BIG_SWING, redZoneNow, useLeagueMoments, type RedZone } from "@/lib/leagueMoments";
+import type { MomentsMode } from "@/lib/momentsMode";
 import type { GamecastPlay, GamecastPlayFantasyPlayer, LiveGame } from "@/lib/gamecastApi";
 import { isTouchdown, lastName, scoringHeadline, shade } from "@/lib/loungeLive";
 import { nflTeamColor } from "@/lib/nfl-teams";
@@ -36,7 +38,7 @@ const TIER1_COOLDOWN_MS = 30_000;
 const SWING_HOLD_MS = 25_000;
 const MAX_TOASTS = 3;
 
-export type MomentKind = "touchdown" | "turnover" | "safety" | "play" | "roster" | "chug" | "bet" | "rivalry";
+export type MomentKind = "touchdown" | "turnover" | "safety" | "play" | "roster" | "chug" | "bet" | "rivalry" | "swing" | "elsewhere" | "cash";
 
 export type RoomMoment = {
   id: string;
@@ -53,7 +55,18 @@ export type RoomMoment = {
   chugRule?: string;
   chugIsMe?: boolean;
   good?: boolean;
+  // For or against you (the "Mine only" setting keeps just these).
+  mine?: boolean;
+  // Notifications folded into this one (several plays close together).
+  folded?: number;
 };
+
+/** A touchdown on the TV nobody in the room has a stake in: a slim
+ *  broadcast strip across the bottom of the picture. */
+export type TvTouchdown = { id: string; team: string; text: string; score: string };
+
+// Plays this close together fold into one notification.
+const FOLD_MS = 20_000;
 
 export type Swing = { before: number | null; after: number | null; moved: { label: string; delta: number }[]; ready: boolean };
 
@@ -80,6 +93,9 @@ export function useRoomMoments({
   roomOwnerIds,
   chugEnabled,
   chugRuleName,
+  leagueBets = [],
+  mode = "all",
+  tvTeams,
 }: {
   winPct: number | null;
   league: WeekMatchupContextItem[];
@@ -88,7 +104,14 @@ export function useRoomMoments({
   roomOwnerIds: string[];
   chugEnabled: boolean;
   chugRuleName: string | null;
+  // Everyone's shared bets (League Bets).
+  leagueBets?: LeagueBet[];
+  // The Moments setting (lib/momentsMode.ts).
+  mode?: MomentsMode;
+  // The two teams in the TV's game: its own play-by-play covers them.
+  tvTeams?: { current: string[] };
 }) {
+  const [tvTd, setTvTd] = useState<TvTouchdown | null>(null);
   const [big, setBig] = useState<RoomMoment | null>(null);
   const bigQueue = useRef<RoomMoment[]>([]);
   const [toasts, setToasts] = useState<RoomMoment[]>([]);
@@ -109,9 +132,15 @@ export function useRoomMoments({
   const record = useCallback((m: RoomMoment) => {
     setHistory((h) => (h.some((x) => x.id === m.id) ? h : [m, ...h].slice(0, 60)));
   }, []);
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
   const showBig = useCallback(
     (m: RoomMoment) => {
       record(m);
+      // "Mine only": someone else's touchdown just gets the TV strip.
+      if (modeRef.current === "mine" && m.tier === 1 && !m.mine && m.kind !== "cash") return;
       setBig((current) => {
         if (current) {
           if (bigQueue.current.length < 3) bigQueue.current.push(m);
@@ -125,7 +154,32 @@ export function useRoomMoments({
   const toast = useCallback(
     (m: RoomMoment) => {
       record(m);
-      setToasts((t) => (t.some((x) => x.id === m.id) ? t : [...t, m]));
+      if (modeRef.current === "big") return;
+      if (modeRef.current === "mine" && !m.mine) return;
+      setToasts((t) => {
+        if (t.some((x) => x.id === m.id)) return t;
+        // Plays close together fold into one: "3 plays · +12.4 for you".
+        const last = t[t.length - 1];
+        const foldable = (k: MomentKind) => k === "play" || k === "roster" || k === "elsewhere";
+        if (last && foldable(last.kind) && foldable(m.kind) && m.at - last.at < FOLD_MS) {
+          const n = (last.folded ?? 1) + 1;
+          const mine = (last.myPoints ?? 0) + (m.myPoints ?? 0);
+          return [
+            ...t.slice(0, -1),
+            {
+              ...m,
+              id: `${last.id}+${m.id}`,
+              folded: n,
+              title: `${n} plays`,
+              detail: mine ? `${fmtPts(mine)} for you · latest ${m.title}` : `Latest: ${m.title}`,
+              myPoints: mine || undefined,
+              good: mine ? mine >= 0 : m.good,
+              mine: last.mine || m.mine,
+            },
+          ];
+        }
+        return [...t, m];
+      });
     },
     [record]
   );
@@ -164,6 +218,16 @@ export function useRoomMoments({
       const scorerSide = scorer === game.home_team.abbr ? game.home_team : game.away_team;
       const otherSide = scorerSide === game.home_team ? game.away_team : game.home_team;
 
+      if (kind === "touchdown" && !(relevant(1) && !(modeRef.current === "mine" && !myPoints))) {
+        // Nobody in the room (or, with "Mine only", you) has a stake: the
+        // TV still gets its touchdown, as a broadcast strip.
+        setTvTd({
+          id: play.play_id,
+          team: scorer,
+          text: scoringHeadline(play, game),
+          score: `${scorerSide.abbr} ${scoreOf(scorerSide) ?? ""} · ${otherSide.abbr} ${scoreOf(otherSide) ?? ""}`,
+        });
+      }
       if (kind && relevant(1) && !coolingDown) {
         lastTier1.current = now;
         swingBase.current = {
@@ -181,6 +245,7 @@ export function useRoomMoments({
           detail: kind === "touchdown" ? scoringHeadline(play, game) : play.description.replace(/\.$/, ""),
           teamAbbr: kind === "turnover" ? otherSide.abbr : scorer,
           myPoints: myPoints || undefined,
+          mine: !!myPoints,
           impacts,
           score: { scorer: scorerSide.abbr, scorerScore: scoreOf(scorerSide), other: otherSide.abbr, otherScore: scoreOf(otherSide) },
         });
@@ -201,6 +266,7 @@ export function useRoomMoments({
           myPoints: myPoints || undefined,
           impacts,
           good: top.is_mine ? top.points >= 0 : undefined,
+          mine: !!myPoints,
         });
       }
     },
@@ -220,6 +286,7 @@ export function useRoomMoments({
         myPoints: points,
         impacts: { [String(myOwnerId)]: points },
         good: points >= 0,
+        mine: true,
       });
     },
     [myOwnerId, toast]
@@ -331,11 +398,128 @@ export function useRoomMoments({
 
   const dismissBig = useCallback(() => setBig(bigQueue.current.shift() ?? null), []);
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+
+  // Everyone's starters in every game (lib/leagueMoments.ts): yours and
+  // your opponent's anywhere, everyone else in the room's, and any play
+  // that swings someone in the room's chance to win by BIG_SWING points.
+  const leagueKey = league[0] ? `${league[0].season}-${league[0].week}` : null;
+  const leagueMoments = useLeagueMoments(league, leagueKey);
+  const handled = useRef(new Set<string>());
+  useEffect(() => {
+    const me = String(myOwnerId);
+    for (const lm of leagueMoments) {
+      if (handled.current.has(lm.id)) continue;
+      handled.current.add(lm.id);
+      const forMe = lm.ownerId === me;
+      const againstMe = lm.againstId === me;
+      if (!forMe && !againstMe && !room.current.has(lm.ownerId)) continue;
+      const onTv = !!lm.proTeam && (tvTeams?.current ?? []).includes(lm.proTeam);
+      const swing = lm.winBefore !== null && lm.winAfter !== null ? lm.winAfter - lm.winBefore : 0;
+      const myView = forMe ? swing : againstMe ? -swing : 0;
+      const what = lm.touchdown ? "touchdown" : fmtPts(lm.points);
+      const first = (n: string) => n.split(" ")[0];
+      // A big swing on the TV that wasn't a touchdown (those take over
+      // already) gets its own takeover.
+      if (onTv) {
+        if (!lm.touchdown && Math.abs(swing) >= BIG_SWING) {
+          // Each league moment is handled once (handled.current), so this
+          // can't cascade.
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          showBig({
+            id: `swing-${lm.id}`,
+            tier: 1,
+            kind: "swing",
+            at: lm.at,
+            title: "Big swing",
+            detail: `${lastName(lm.playerName)} ${fmtPts(lm.points)} · ${first(lm.ownerName)} ${Math.round(lm.winBefore ?? 0)}% → ${Math.round(lm.winAfter ?? 0)}%`,
+            teamAbbr: lm.proTeam,
+            myPoints: forMe ? lm.points : againstMe ? -lm.points : undefined,
+            impacts: { [lm.ownerId]: lm.points },
+            mine: forMe || againstMe,
+          });
+        }
+        continue;
+      }
+      const wb = forMe ? lm.winBefore : 100 - (lm.winBefore ?? 0);
+      const wa = forMe ? lm.winAfter : 100 - (lm.winAfter ?? 0);
+      const odds = (forMe || againstMe) && Math.abs(myView) >= 3 ? ` · you ${Math.round(wb ?? 0)}% → ${Math.round(wa ?? 0)}%` : "";
+      toast({
+        id: `else-${lm.id}`,
+        tier: 2,
+        kind: "elsewhere",
+        at: lm.at,
+        title: forMe
+          ? `${lastName(lm.playerName)}, ${what}`
+          : againstMe
+            ? `Ouch · ${lastName(lm.playerName)}, ${what}`
+            : `${first(lm.ownerName)} · ${lastName(lm.playerName)}, ${what}`,
+        detail: `Elsewhere${lm.proTeam ? ` · ${lm.proTeam}` : ""} · ${fmtPts(lm.points)} for ${forMe ? "you" : first(lm.ownerName)}${odds}`,
+        teamAbbr: lm.proTeam,
+        myPoints: forMe ? lm.points : againstMe ? -lm.points : undefined,
+        impacts: { [lm.ownerId]: lm.points },
+        good: forMe ? true : againstMe ? false : undefined,
+        mine: forMe || againstMe,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueMoments]);
+
+  // Bets: yours cashing takes over the TV in gold; one leg left is a
+  // nudge; a shared bet cashing anywhere in the league is a notification.
+  const betSeen = useRef<Map<string, string> | null>(null);
+  useEffect(() => {
+    const firstLook = betSeen.current === null;
+    if (firstLook) betSeen.current = new Map();
+    const s = betSeen.current!;
+    const look = (key: string, state: string, fire: () => void) => {
+      const prev = s.get(key);
+      s.set(key, state);
+      if (!firstLook && prev !== undefined && prev !== state) fire();
+    };
+    for (const bet of bets) {
+      const open = bet.legs.filter((l) => l.status === "open").length;
+      const lost = bet.legs.some((l) => l.status === "lost");
+      const desc = bet.legs.length > 1 ? `${bet.legs.length}-leg parlay` : (bet.legs[0]?.description ?? "Your bet");
+      look(`mine-${bet.id}`, bet.status, () => {
+        if (bet.status !== "won") return;
+        showBig({ id: `cash-${bet.id}`, tier: 1, kind: "cash", at: Date.now(), title: "Cashed", detail: `${desc}${bet.payout ? ` · ${bet.payout.toFixed(2)} back` : ""}`, mine: true });
+      });
+      const oneLeft = bet.legs.length > 1 && open === 1 && !lost;
+      look(`mine-leg-${bet.id}`, oneLeft ? "one" : "no", () => {
+        if (!oneLeft) return;
+        const left = bet.legs.find((l) => l.status === "open");
+        toast({ id: `one-${bet.id}`, tier: 3, kind: "bet", at: Date.now(), title: "One leg away", detail: left ? `Needs ${left.description}` : desc, good: true, mine: true });
+      });
+    }
+    for (const bet of leagueBets) {
+      if (bet.mine) continue;
+      look(`league-${bet.id}`, bet.status, () => {
+        if (bet.status !== "won") return;
+        toast({ id: `lcash-${bet.id}`, tier: 3, kind: "bet", at: Date.now(), title: `${bet.member.name.split(" ")[0]} cashed`, detail: bet.legs.length > 1 ? `${bet.legs.length}-leg parlay` : (bet.legs[0]?.description ?? "A bet"), good: true });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bets, leagueBets]);
+
+  // Who's in the red zone right now: yours, your opponent's, and anyone
+  // in the room's.
+  const meId = String(myOwnerId);
+  const inRoom = new Set(roomKey ? roomKey.split(",") : []);
+  const myGame = league.find((m) => String(m.home.owner_id) === meId || String(m.away.owner_id) === meId);
+  const opponentId = myGame ? String(String(myGame.home.owner_id) === meId ? myGame.away.owner_id : myGame.home.owner_id) : null;
+  const redZone: RedZone[] = redZoneNow(league).filter((r) => r.ownerId === meId || r.ownerId === opponentId || inRoom.has(r.ownerId));
+
+  // The TV's touchdown strip clears itself.
+  useEffect(() => {
+    if (!tvTd) return;
+    const id = setTimeout(() => setTvTd(null), 6000);
+    return () => clearTimeout(id);
+  }, [tvTd]);
   const latestToast = toasts[toasts.length - 1];
   const tileImpacts = big?.impacts ?? latestToast?.impacts ?? {};
   const chugOwner = big?.kind === "chug" ? (Object.keys(big.impacts ?? {})[0] ?? null) : null;
 
-  return { big, toasts, history, swing, tileImpacts, chugOwner, onPlay, onRosterPlay, dismissBig, dismissToast };
+  return { big, toasts, history, swing, tileImpacts, chugOwner, onPlay, onRosterPlay, dismissBig, dismissToast, tvTd, redZone };
 }
 
 /** Tier 1: across the bottom of the TV, the stream still playing above. */
@@ -493,7 +677,9 @@ export function NeonTakeover({ moment, onDismiss }: { moment: RoomMoment; onDism
   const neon =
     moment.kind === "turnover"
       ? "#ff8a2a"
-      : moment.myPoints !== undefined && moment.myPoints > 0
+      : moment.kind === "cash"
+        ? "#f5c542"
+        : moment.myPoints !== undefined && moment.myPoints > 0
         ? "#39ff14"
         : moment.myPoints !== undefined && moment.myPoints < 0
           ? "#ff3b5c"
@@ -561,7 +747,57 @@ export function MomentStrip({ latest, count, accent, onOpen }: { latest: RoomMom
   );
 }
 
-export function MomentsMenu({ history, accent, onClose }: { history: RoomMoment[]; accent: string; onClose: () => void }) {
+/** A touchdown on the TV nobody in the room has a stake in: a slim
+ *  broadcast strip across the bottom of the picture. */
+export function TvTouchdownStrip({ td }: { td: TvTouchdown }) {
+  const color = nflTeamColor(td.team) ?? "#2b2d31";
+  return (
+    <div role="status" className="tvtd absolute right-0 bottom-0 left-0 z-10 flex h-10 items-center gap-3 overflow-hidden bg-[rgba(8,10,16,0.92)] pr-3 text-white">
+      <span className="font-display flex h-full items-center px-3 text-lg tracking-wider" style={{ background: color }}>
+        TD {td.team}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{td.text}</span>
+      <span className="font-mono text-sm font-bold whitespace-nowrap">{td.score}</span>
+    </div>
+  );
+}
+
+/** Who's inside the 20 in another game, pulsing by the score bug. */
+export function RedZoneChip({ zones }: { zones: RedZone[] }) {
+  if (zones.length === 0) return null;
+  const z = zones[0];
+  return (
+    <span
+      className="absolute right-3 bottom-3 z-[5] flex h-6 items-center gap-1.5 rounded-full border border-[#ff3b5c] bg-[rgba(120,10,24,0.88)] px-2.5 font-mono text-[11px] font-bold tracking-wide text-white"
+      aria-label={`Red zone: ${z.playerName}${zones.length > 1 ? ` and ${zones.length - 1} more` : ""}`}
+    >
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#ff3b5c]" />
+      RED ZONE · {lastName(z.playerName)}
+      {z.proTeam ? ` (${z.proTeam})` : ""}
+      {zones.length > 1 ? ` +${zones.length - 1}` : ""}
+    </span>
+  );
+}
+
+const MODES: { mode: MomentsMode; label: string }[] = [
+  { mode: "all", label: "All" },
+  { mode: "mine", label: "Mine only" },
+  { mode: "big", label: "Big only" },
+];
+
+export function MomentsMenu({
+  history,
+  accent,
+  onClose,
+  mode,
+  onMode,
+}: {
+  history: RoomMoment[];
+  accent: string;
+  onClose: () => void;
+  mode?: MomentsMode;
+  onMode?: (m: MomentsMode) => void;
+}) {
   return (
     <div className="absolute top-full right-0 z-40 mt-2 flex max-h-[60vh] w-[340px] flex-col gap-2 overflow-y-auto rounded-xl border border-white/10 bg-[#0f1420] p-3 text-[13px] shadow-2xl">
       <div className="flex items-center justify-between">
@@ -570,11 +806,27 @@ export function MomentsMenu({ history, accent, onClose }: { history: RoomMoment[
           ✕
         </button>
       </div>
+      {mode && onMode && (
+        <div role="radiogroup" aria-label="Which moments to show" className="grid grid-cols-3 gap-1.5">
+          {MODES.map((m) => (
+            <button
+              key={m.mode}
+              role="radio"
+              aria-checked={mode === m.mode}
+              onClick={() => onMode(m.mode)}
+              className="h-8 rounded-lg border text-xs font-semibold"
+              style={mode === m.mode ? { borderColor: accent, color: accent, background: `${accent}22` } : { borderColor: "#2a313b", color: "#c9d2e0" }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
       {history.length === 0 && <p className="text-[#9aa3b2]">Big plays, fantasy swings and league moments show up here as they happen.</p>}
       {history.map((m) => (
         <div key={m.id} className="flex items-center gap-2.5 rounded-lg bg-[#161a24] p-2.5">
           <span className="font-display w-16 shrink-0 text-[11px] font-bold tracking-wide" style={{ color: m.tier === 1 ? accent : m.kind === "chug" ? "#facc15" : "#9aa3b2" }}>
-            {m.kind === "chug" ? "CHUG" : m.kind === "bet" ? "BET" : m.kind === "rivalry" ? "RIVAL" : m.tier === 1 ? m.title.toUpperCase() : "PLAY"}
+            {m.kind === "chug" ? "CHUG" : m.kind === "bet" ? "BET" : m.kind === "rivalry" ? "RIVAL" : m.kind === "elsewhere" ? "ELSEWHERE" : m.tier === 1 ? m.title.toUpperCase() : "PLAY"}
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
             <b className="truncate">{m.tier === 1 ? m.detail : m.title}</b>

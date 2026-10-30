@@ -22,7 +22,7 @@ import type { Bet } from "@/lib/betsApi";
 import { getPlayFantasy, type GamecastPlay, type GamecastPlayFantasyPlayer, type LiveGame } from "@/lib/gamecastApi";
 import { toggleGameShare } from "@/lib/livekitMedia";
 import { LoungeSweatPanel } from "@/components/lounge/LoungeSweatPanel";
-import { ChugAlertCard, MomentsMenu, MomentStrip, NeonTakeover, MomentToasts, SwingStrip, useRoomMoments } from "@/components/lounge/RoomMoments";
+import { ChugAlertCard, MomentsMenu, MomentStrip, NeonTakeover, RedZoneChip, TvTouchdownStrip, MomentToasts, SwingStrip, useRoomMoments } from "@/components/lounge/RoomMoments";
 import { getMyLeagues } from "@/lib/leaguesApi";
 import {
   clockLabel,
@@ -45,6 +45,8 @@ import { gameGain, useApplyLoungeVolume, useLoungeVolume } from "@/lib/loungeVol
 import { canSplitGameAudio, setGameOutput, useApplyGameOutput, useGameOutput } from "@/lib/loungeGameOutput";
 import { useScoringHighlights, type ScoringHit } from "@/lib/scoringHighlights";
 import { useRosterMoments, type RosterMoment } from "@/lib/rosterMoments";
+import { setMomentsMode, useMomentsMode } from "@/lib/momentsMode";
+import type { LeagueBet } from "@/lib/betsApi";
 import { isHexColor, MULTI, MULTI_COLORS } from "@/components/settings/ColorChoices";
 
 // The League Lounge on the web (mockups 5 and 6): watch the game
@@ -66,6 +68,7 @@ type ReactionKey = "letsgo" | "robbed" | "chug" | "flag";
 // Stable empties, so the moments engine's effects don't rerun every render.
 const EMPTY_LEAGUE: WeekMatchupContextItem[] = [];
 const EMPTY_BETS: Bet[] = [];
+const EMPTY_LEAGUE_BETS: LeagueBet[] = [];
 const TILE_COLORS = ["#3b1d10", "#2a1650", "#152a5c", "#073d2d", "#4a1029", "#27272a"];
 const NAME_COLORS = ["#fcd34d", "#f9a8d4", "#93c5fd", "#86efac", "#fca5a5", "#c4b5fd"];
 const hash = (s: string, n: number) => {
@@ -179,12 +182,19 @@ export function WebLoungeRoom({
   // No game on the TV: your own starters' touchdowns and 5+ point plays
   // from every game instead.
   const rosterMoments = useRosterMoments(matchupId, mySide ? myStarters : null, !tv.gameId);
-  const latestRosterMoment = rosterMoments[rosterMoments.length - 1] ?? null;
 
   // The room's pop-ups (components/lounge/RoomMoments.tsx): big moments,
   // fantasy plays and league moments, all on the room's delay.
   const myLeagues = usePolled("leagues", getMyLeagues, 300_000);
   const activeLeague = myLeagues?.leagues.find((l) => l.id === myLeagues.activeLeagueId) ?? null;
+  const momentsMode = useMomentsMode();
+  // The TV game's teams (its play-by-play covers their plays); kept up to
+  // date below, once the game loads.
+  const tvTeams = useRef<string[]>([]);
+  const tvKey = game ? `${game.away_team.abbr},${game.home_team.abbr}` : "";
+  useEffect(() => {
+    tvTeams.current = tvKey ? tvKey.split(",") : [];
+  }, [tvKey]);
   const rm = useRoomMoments({
     winPct,
     league: leagueContext?.matchups ?? EMPTY_LEAGUE,
@@ -193,20 +203,15 @@ export function WebLoungeRoom({
     roomOwnerIds: participants.map((p) => personOf(p.identity)),
     chugEnabled: !!activeLeague?.chug_enabled,
     chugRuleName: activeLeague?.chug_rule_name ?? null,
+    leagueBets: leagueBets?.enabled ? leagueBets.bets : EMPTY_LEAGUE_BETS,
+    mode: momentsMode,
+    tvTeams,
   });
   useEffect(() => {
     rmRef.current = rm.onPlay;
   }, [rm.onPlay]);
-  // Your own player's big play from any game (no game on the TV): a
-  // fantasy-play notification, once each.
-  const rosterShown = useRef<string | null>(null);
-  useEffect(() => {
-    if (!latestRosterMoment || latestRosterMoment.id === rosterShown.current) return;
-    rosterShown.current = latestRosterMoment.id;
-    const m = latestRosterMoment;
-    rm.onRosterPlay(m.id, m.playerName, m.touchdown, m.points, m.proTeam ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latestRosterMoment?.id]);
+  // Your players' plays in other games come through the room's league
+  // moments now (lib/leagueMoments.ts), TV or no TV.
 
   const unread = tab === "chat" ? 0 : Math.max(0, messages.length - seenMessages);
   function pickTab(next: "chat" | "sweat" | "plays") {
@@ -258,7 +263,14 @@ export function WebLoungeRoom({
       game={game}
       catchingUp={delayed.catchingUp}
       accent={accent}
-      overlay={rm.big?.tier === 1 && rm.big.kind !== "chug" ? <NeonTakeover moment={rm.big} onDismiss={rm.dismissBig} /> : null}
+      overlay={
+        rm.big?.tier === 1 && rm.big.kind !== "chug" ? (
+          <NeonTakeover moment={rm.big} onDismiss={rm.dismissBig} />
+        ) : rm.tvTd ? (
+          <TvTouchdownStrip key={rm.tvTd.id} td={rm.tvTd} />
+        ) : null
+      }
+      redZone={!rm.big && !rm.tvTd ? <RedZoneChip zones={rm.redZone} /> : null}
     />
   );
 
@@ -299,7 +311,7 @@ export function WebLoungeRoom({
             >
               Moments{rm.history.length ? ` · ${rm.history.length}` : ""}
             </button>
-            {momentsOpen && <MomentsMenu history={rm.history} accent={accent} onClose={() => setMomentsOpen(false)} />}
+            {momentsOpen && <MomentsMenu history={rm.history} accent={accent} onClose={() => setMomentsOpen(false)} mode={momentsMode} onMode={setMomentsMode} />}
           </div>
           <button
             onClick={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
@@ -513,6 +525,7 @@ function Tv({
   catchingUp,
   accent,
   overlay,
+  redZone,
 }: {
   share: TrackReference | undefined;
   game: LiveGame | null;
@@ -520,6 +533,8 @@ function Tv({
   accent: string;
   // A big moment's ribbon across the bottom (RoomMoments.tsx).
   overlay: React.ReactNode;
+  // Who's in the red zone in another game, by the score bug.
+  redZone?: React.ReactNode;
 }) {
   const sharer = share?.participant;
   // Like the app's TV: LIVE, who's sharing and the sound control fade
@@ -599,6 +614,7 @@ function Tv({
               </div>
             </div>
           )}
+          {redZone}
           {overlay}
         </>
       )}

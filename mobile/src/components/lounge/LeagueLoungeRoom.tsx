@@ -27,7 +27,7 @@ import { SweatCard, SweatSheet } from '@/components/lounge/LoungeSweat';
 import { LoungeTickers } from '@/components/lounge/LoungeTickers';
 import { LoungeTv } from '@/components/lounge/LoungeTv';
 import { NeonTakeover } from '@/components/lounge/NeonTakeover';
-import { ChugAlertCard, MomentsSheet, MomentStrip, MomentToasts, SwingStrip, useRoomMoments } from '@/components/lounge/RoomMoments';
+import { ChugAlertCard, MomentsSheet, MomentStrip, RedZoneChip, TvTouchdownStrip, MomentToasts, SwingStrip, useRoomMoments } from '@/components/lounge/RoomMoments';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
 import { cleanChat } from '@/lib/chatFilter';
@@ -40,8 +40,8 @@ import { useDelayedGame } from '@/lib/loungeLive';
 import { personOf, useOwnDevices, useRoomPeople } from '@/lib/loungePeople';
 import { PERSON_LEVELS, setPersonLevel, useApplyLoungeVolume, useLoungeVolume } from '@/lib/loungeVolume';
 import { useLoungeSweat } from '@/lib/loungeSweat';
+import { setMomentsMode, useMomentsMode } from '@/lib/momentsMode';
 import { useActiveLeague, useChatMembers, useChatMessages, useMe } from '@/lib/queries';
-import { useRosterMoments } from '@/lib/rosterMoments';
 import { teamGlow, useScoringHighlights, type ScoringHit } from '@/lib/scoringHighlights';
 import type { GamecastPlay, LiveGame } from '@/lib/types';
 
@@ -175,12 +175,18 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
   const activeLeague = useActiveLeague().data;
   // The room's pop-ups: big moments, fantasy plays and league moments
   // (components/lounge/RoomMoments.tsx).
+  const momentsMode = useMomentsMode();
+  // The TV game's teams: its own play-by-play covers their plays, so the
+  // league's moments skip them. Set once the game loads (below).
+  const tvTeams = useRef<string[]>([]);
   const rm = useRoomMoments({
     sweat,
     myOwnerId: me?.owner_id ?? null,
     roomOwnerIds: participants.map((p) => personOf(p.identity)),
     chugEnabled: !!activeLeague?.chug_enabled,
     chugRuleName: activeLeague?.chug_rule_name ?? null,
+    mode: momentsMode,
+    tvTeams: tvTeams,
   });
 
   async function onPlay(play: GamecastPlay, game: LiveGame) {
@@ -194,6 +200,10 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
   }
 
   const delayed = useDelayedGame(tvGameId, delaySeconds, (p, g) => void onPlay(p, g));
+  const tvKey = delayed.game ? `${delayed.game.away_team.abbr},${delayed.game.home_team.abbr}` : '';
+  useEffect(() => {
+    tvTeams.current = tvKey ? tvKey.split(',') : [];
+  }, [tvKey]);
 
   // Reactions ride LiveKit's data channel — instant, and nothing stored.
   const myName = me?.display_name ?? 'You';
@@ -224,19 +234,8 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
     void sendData(new TextEncoder().encode(JSON.stringify({ key })), { reliable: true });
   }
 
-  // No game on the TV: your own starters' touchdowns and 5+ point plays
-  // from every game instead (lib/rosterMoments.ts).
-  const rosterMoments = useRosterMoments(sweat.matchupId, sweat.ready ? sweat.myStarters : null, !tvGameId);
-  const latestRosterMoment = rosterMoments[rosterMoments.length - 1] ?? null;
-  // Each one pops up once, as a fantasy-play notification.
-  const rosterShown = useRef<string | null>(null);
-  useEffect(() => {
-    if (!latestRosterMoment || latestRosterMoment.id === rosterShown.current) return;
-    rosterShown.current = latestRosterMoment.id;
-    const m = latestRosterMoment;
-    rm.onRosterPlay(m.id, m.playerName, m.touchdown, m.points, m.proTeam ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latestRosterMoment?.id]);
+  // Your starters in other games come through the room's league moments
+  // now (lib/leagueMoments.ts), TV or no TV.
   // The chat is people talking (2026-10-29: every fantasy play landing
   // in it buried the conversation). Plays live in the Moments strip
   // above it and the Moments sheet.
@@ -290,6 +289,8 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
           catchingUp={delayed.catchingUp}
           fullScreenRail={<CameraRail participants={participants} accent={accent} hits={hits} chugOwner={rm.chugOwner} />}
         />
+        {rm.tvTd && !(rm.big?.tier === 1) && <TvTouchdownStrip key={rm.tvTd.id} td={rm.tvTd} />}
+        {!rm.tvTd && !rm.big && <RedZoneChip zones={rm.redZone} />}
         {rm.big?.tier === 1 && rm.big.kind !== 'chug' && <NeonTakeover key={rm.big.id} moment={rm.big} onDismiss={rm.dismissBig} />}
         {burst && (
           <View style={styles.burst} pointerEvents="none">
@@ -376,7 +377,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
 
       <SweatSheet visible={sweatOpen} onClose={() => setSweatOpen(false)} sweat={sweat} game={game} share={share} catchingUp={delayed.catchingUp} />
       <VolumeSheet visible={volumeOpen} onClose={() => setVolumeOpen(false)} />
-      <MomentsSheet visible={momentsOpen} onClose={() => setMomentsOpen(false)} history={rm.history} accent={accent} />
+      <MomentsSheet visible={momentsOpen} onClose={() => setMomentsOpen(false)} history={rm.history} accent={accent} mode={momentsMode} onMode={setMomentsMode} />
     </KeyboardAvoidingView>
   );
 }
