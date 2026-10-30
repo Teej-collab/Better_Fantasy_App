@@ -272,7 +272,7 @@ function AddRuleSheet({ visible, stats, onAdd, onClose }: { visible: boolean; st
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <Pressable style={styles.backdrop} onPress={close}>
-        <Pressable style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.md }]} onPress={() => {}}>
+        <Pressable style={[styles.sheet, !requesting && styles.sheetTall, { paddingBottom: insets.bottom + Spacing.md }]} onPress={() => {}}>
           <View style={styles.grab} />
           {requesting ? (
             <RequestRuleForm initial={query.trim()} onBack={() => setRequesting(false)} onClose={close} />
@@ -449,7 +449,11 @@ const styles = StyleSheet.create({
   sheetTitle: { flex: 1, color: Colors.text, fontSize: 17, fontWeight: '700' },
   done: { color: Colors.accent, fontSize: 15, fontWeight: '600' },
   search: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: Colors.accent, backgroundColor: Colors.tile, color: Colors.text, paddingHorizontal: 12, fontSize: 15 },
-  sheetList: { flexGrow: 0, flexShrink: 1 },
+  // A fixed height with the list filling it: under only a maxHeight the
+  // list never shrank to fit, ran off the bottom and couldn't scroll
+  // (so the request option at its end was unreachable, 2026-10-30).
+  sheetTall: { height: '85%' },
+  sheetList: { flex: 1 },
   result: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: 12, borderRadius: 12, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, marginBottom: 8 },
   addChip: { borderWidth: 1, borderColor: 'rgba(57,255,20,0.5)', borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 5 },
   addChipText: { color: Colors.accent, fontWeight: '700', fontSize: 12.5 },
