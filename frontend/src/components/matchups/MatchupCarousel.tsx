@@ -23,10 +23,12 @@ export function MatchupCarousel({
   matchups,
   initialMatchupId,
   onActiveMatchupChange,
+  myOwnerId = null,
 }: {
   matchups: WeekMatchupContextItem[];
   initialMatchupId: number;
   onActiveMatchupChange?: (matchup: WeekMatchupContextItem) => void;
+  myOwnerId?: number | null;
 }) {
   const initialIndex = Math.max(
     0,
@@ -144,7 +146,7 @@ export function MatchupCarousel({
             }}
             className="w-full shrink-0 snap-start px-4"
           >
-            <MatchupDetailPanel matchup={m} />
+            <MatchupDetailPanel matchup={m} myOwnerId={myOwnerId} />
           </div>
         ))}
       </div>

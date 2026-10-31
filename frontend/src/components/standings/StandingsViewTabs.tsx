@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { SEG_OFF, SEG_ON, SEG_WRAP } from "@/components/elite/Elite";
 
 const TABS = ["Scoreboard", "Standings", "Playoffs"] as const;
 type Tab = (typeof TABS)[number];
@@ -29,19 +30,9 @@ export function StandingsViewTabs({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-1 rounded-full bg-black/[0.04] p-1 dark:bg-white/[0.06]">
+      <div className={SEG_WRAP} role="tablist">
         {tabs.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setActive(tab)}
-            className={
-              "flex-1 rounded-full px-3 py-1.5 text-sm font-medium transition-colors " +
-              (active === tab
-                ? "bg-white text-black shadow-sm dark:bg-white/15 dark:text-white"
-                : "text-black/50 hover:text-black dark:text-white/50 dark:hover:text-white")
-            }
-          >
+          <button key={tab} type="button" role="tab" aria-selected={active === tab} onClick={() => setActive(tab)} className={active === tab ? SEG_ON : SEG_OFF}>
             {tab}
           </button>
         ))}

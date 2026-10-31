@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { awardsHrefFor, getActiveLeagueName, getChugFeed, getChugLeaderboard, getChugLedger, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
+import { awardsHrefFor, getActiveLeagueName, getChugDeadline, getChugFeed, getChugLeaderboard, getChugLedger, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
 import { ChugBreakdown } from "@/components/ChugBreakdown";
 import { ChugUpload } from "@/components/ChugUpload";
-import { ChugFeed } from "@/components/ChugFeed";
 import { ChugFineButton } from "@/components/ChugFineButton";
 import { ChugCommishActions } from "@/components/ChugCommishActions";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
@@ -12,8 +11,13 @@ import { SignInCard } from "@/components/SignInCard";
 
 export const metadata: Metadata = { title: "Chug — The Weekend" };
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
-import { SeasonTabs } from "@/components/nav/SeasonTabs";
-import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+import { ELITE, EliteCard, EliteLabel, EliteSeasonChips, EliteTitle, HEX_CLIP } from "@/components/elite/Elite";
+import { ChugOwe, EliteChugFeed } from "@/components/elite/EliteChug";
+
+// Elite pass (2026-10-31): the Chug Board — what you owe as a lit cell
+// with the doubling countdown, Submit, The Tab (owed chugs as cells) and
+// each chug's score in a hex with its quote and hype grade.
+const PIPS_SHOWN = 8;
 
 export default async function ChugLeaderboardPage({
   searchParams,
@@ -37,7 +41,7 @@ export default async function ChugLeaderboardPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, { leaderboard }, { chugs }, { seasons: allSeasons }, activeLeagueName, ledger] = await Promise.all([
+  const [{ seasons }, { leaderboard }, { chugs }, { seasons: allSeasons }, activeLeagueName, ledger, deadline] = await Promise.all([
     getChugSeasons(),
     getChugLeaderboard(sessionCookie, season),
     getChugFeed(sessionCookie, season),
@@ -45,6 +49,7 @@ export default async function ChugLeaderboardPage({
     getActiveLeagueName(sessionCookie),
     // Each row's "Why?" history — this season's when no season is picked.
     getChugLedger(sessionCookie, season).catch(() => ({ season: season ?? 0, owners: {} as Record<string, never[]> })),
+    getChugDeadline(sessionCookie).catch(() => null),
   ]);
   const latestSeason = safeLatestSeason(allSeasons);
   // Chug balance tools (Paid, Correction, Remove doubling): commissioner or site admin.
@@ -53,7 +58,10 @@ export default async function ChugLeaderboardPage({
   return (
     <div className="flex flex-col gap-4">
       <LeagueSubNav active="history" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
+      <EliteTitle kicker="The" title="Chug Board" />
+      {deadline?.mine && <ChugOwe deadline={deadline.deadline} isPast={deadline.is_past} mine={deadline.mine} />}
       <ChugUpload
+        variant="elite"
         creditableOwners={
           me.is_commissioner
             ? leaderboard.map((r) => ({ owner_id: r.owner_id, owner_name: r.owner_name }))
@@ -61,80 +69,105 @@ export default async function ChugLeaderboardPage({
         }
       />
 
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-        <h1 className="text-2xl font-semibold">🍺 Chug Leaderboard</h1>
-        <SeasonTabs
-          seasons={seasons}
-          activeSeason={season ?? null}
-          hrefFor={(s) => `/chug?season=${s}`}
-          extraTab={{ label: "All-Time", href: "/chug", active: season === undefined }}
-        />
-      </div>
+      <EliteSeasonChips
+        seasons={seasons}
+        activeSeason={season ?? null}
+        hrefFor={(s) => `/chug?season=${s}`}
+        extraTab={{ label: "All-Time", href: "/chug", active: season === undefined }}
+      />
 
-      <p className="text-sm text-black/50 dark:text-white/50">
-        The rule: any active roster spot (not bench, not IR) that scores 0 or fewer points owes its owner one chug.
-        Not paid down by Monday Night Football kickoff? The remaining balance doubles — up to 3 weeks running,
-        after which it converts to a $10/chug fine only a commissioner can clear.
-      </p>
-
-      <ChugFeed chugs={chugs} />
-
-      <div className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold">Leaderboard</h2>
+      <section className="flex flex-col gap-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <EliteLabel>The Tab</EliteLabel>
+        </div>
+        <details className="group text-sm">
+          <summary className="cursor-pointer list-none text-[13px] font-semibold text-[#39ff14] hover:underline">
+            <span className="group-open:hidden">House rules</span>
+            <span className="hidden group-open:inline">Hide house rules</span>
+          </summary>
+          <p className="mt-2 text-xs text-black/50 dark:text-white/55">
+            The rule: any active roster spot (not bench, not IR) that scores 0 or fewer points owes its owner one chug. Not paid down by Monday
+            Night Football kickoff? The remaining balance doubles — up to 3 weeks running, after which it converts to a $10/chug fine only a
+            commissioner can clear.
+          </p>
+        </details>
         {leaderboard.length === 0 ? (
           <p className="text-sm text-black/50 dark:text-white/50">No chug data yet.</p>
         ) : (
-          <ol
-            className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
-            style={panelGlowStyle(SECTION_COLORS.chug)}
-          >
-            {leaderboard.map((row, i) => (
-              <li key={row.owner_id} className="flex flex-col gap-1.5 px-4 py-3 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="w-5 shrink-0 text-black/50 tabular-nums dark:text-white/50">{i + 1}</span>
-                    <Link href={`/owners/${row.owner_id}`} className="min-w-0 wrap-break-word font-medium hover:underline">
-                      {row.owner_name}
-                    </Link>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-4 tabular-nums text-black/70 dark:text-white/70">
-                    <span>
-                      {row.completed}/{row.owed} done
-                    </span>
-                    {row.avg_grade !== null && (
-                      <span className="text-xs text-black/50 dark:text-white/50">avg {row.avg_grade}/10</span>
-                    )}
-                  </span>
-                </div>
+          <EliteCard className="overflow-hidden">
+            <ol className="flex flex-col divide-y divide-white/[0.06]">
+              {leaderboard.map((row) => {
+                const owed = row.outstanding_owed;
+                return (
+                  <li key={row.owner_id} className="flex flex-col gap-1.5 px-3.5 py-3 text-sm">
+                    <div className="flex items-center gap-2.5">
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/owners/${row.owner_id}`} className="min-w-0 wrap-break-word font-bold hover:underline">
+                          {row.owner_name}
+                        </Link>
+                        <p className="text-xs tabular-nums" style={{ color: ELITE.soft }}>
+                          {[
+                            `${row.completed}/${row.owed} done`,
+                            row.avg_grade !== null ? `avg ${row.avg_grade}` : null,
+                            `lifetime ${row.lifetime_completed}`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                      {owed > 0 ? (
+                        <span className="flex items-center gap-[3px]" aria-label={`${owed} owed right now`}>
+                          {Array.from({ length: Math.min(owed, PIPS_SHOWN) }, (_, i) => (
+                            <i key={i} className="h-3.5 w-3" style={{ clipPath: HEX_CLIP, background: ELITE.orange }} />
+                          ))}
+                          {owed > PIPS_SHOWN && (
+                            <span className="ml-0.5 text-xs font-extrabold" style={{ color: ELITE.peach }}>
+                              +{owed - PIPS_SHOWN}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        row.fined_owed === 0 && (
+                          <span className="text-xs font-bold" style={{ color: ELITE.green }}>
+                            Paid up
+                          </span>
+                        )
+                      )}
+                      {owed > 0 && (row.doubled_weeks ?? []).length > 0 && (
+                        <span className="rounded-md px-1.5 py-0.5 text-[11px] font-extrabold text-[#1a0b00]" style={{ background: ELITE.peach }}>
+                          ×2
+                        </span>
+                      )}
+                    </div>
 
-                <div className="ml-8 flex flex-wrap items-center gap-2 text-xs">
-                  {row.outstanding_owed > 0 && (
-                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-700 dark:text-amber-400">
-                      {row.outstanding_owed} owed right now
-                    </span>
-                  )}
-                  {row.fined_owed > 0 && (
-                    <span className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-2 py-0.5 font-medium text-red-600 dark:text-red-400">
-                      ${row.fine_amount} fine ({row.fined_owed} chugs)
-                      {canManage && <ChugFineButton ownerId={row.owner_id} fineAmount={row.fine_amount} />}
-                    </span>
-                  )}
-                  {canManage && (
-                    <ChugCommishActions
-                      ownerId={row.owner_id}
-                      ownerName={row.owner_name}
-                      outstandingOwed={row.outstanding_owed}
-                      doubledWeeks={row.doubled_weeks ?? []}
-                    />
-                  )}
-                  <span className="text-black/50 dark:text-white/50">Lifetime: {row.lifetime_completed}</span>
-                </div>
-                <ChugBreakdown events={ledger.owners[String(row.owner_id)] ?? []} />
-              </li>
-            ))}
-          </ol>
+                    {(row.fined_owed > 0 || canManage) && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        {row.fined_owed > 0 && (
+                          <span className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-2 py-0.5 font-medium text-red-400">
+                            ${row.fine_amount} fine ({row.fined_owed} chugs)
+                            {canManage && <ChugFineButton ownerId={row.owner_id} fineAmount={row.fine_amount} />}
+                          </span>
+                        )}
+                        {canManage && (
+                          <ChugCommishActions
+                            ownerId={row.owner_id}
+                            ownerName={row.owner_name}
+                            outstandingOwed={row.outstanding_owed}
+                            doubledWeeks={row.doubled_weeks ?? []}
+                          />
+                        )}
+                      </div>
+                    )}
+                    <ChugBreakdown events={ledger.owners[String(row.owner_id)] ?? []} />
+                  </li>
+                );
+              })}
+            </ol>
+          </EliteCard>
         )}
-      </div>
+      </section>
+
+      <EliteChugFeed chugs={chugs} />
     </div>
   );
 }

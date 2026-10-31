@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { NeonPanel } from '@/components/NeonPanel';
+import { Elite, EliteCard, eliteText, SATISFY } from '@/components/elite/Elite';
 import { ShareableCard } from '@/components/ShareableCard';
 import { Text } from '@/components/Text';
-import { Colors, Radius, SectionColors, Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { trackTap } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 
@@ -13,9 +13,7 @@ import { haptics } from '@/lib/haptics';
 // once the week is final, none mid-game) and `preview` is the pre-game
 // one, kept for good. Each is a slim card like Home's "Missed the
 // recap?" that opens in place, and opening one is counted (Admin > Taps).
-
-const PREVIEW = SectionColors.matchups;
-const RECAP = SectionColors.awards;
+// Elite pass (2026-10-31): a script title, like the booth's.
 
 export function MatchupWriteUps({ narrative, preview, week }: { narrative: string | null; preview: string | null; week: number }) {
   const previewIsCurrent = !!narrative && narrative === preview;
@@ -25,26 +23,25 @@ export function MatchupWriteUps({ narrative, preview, week }: { narrative: strin
     <>
       {pregame ? (
         <WriteUpCard
-          color={PREVIEW}
-          kicker="🎙️ Pre-game write-up"
+          title="The Preview"
           sub={previewIsCurrent ? 'The hype before kickoff' : 'How it looked before kickoff'}
           text={pregame}
           target="matchup.pregame_open"
         />
       ) : null}
-      {recap ? <WriteUpCard color={RECAP} kicker={`📰 Week ${week} recap`} sub="How it went down" text={recap} target="matchup.recap_open" /> : null}
+      {recap ? <WriteUpCard title={`The Week ${week} Recap`} sub="How it went down" text={recap} target="matchup.recap_open" /> : null}
     </>
   );
 }
 
-function WriteUpCard({ color, kicker, sub, text, target }: { color: string; kicker: string; sub: string; text: string; target: string }) {
+function WriteUpCard({ title, sub, text, target }: { title: string; sub: string; text: string; target: string }) {
   const [open, setOpen] = useState(false);
   const panel = (
-    <NeonPanel color={color} contentStyle={styles.card}>
+    <EliteCard style={styles.card}>
       <View style={styles.row}>
         <View style={styles.rowText}>
-          <Text style={[styles.kicker, { color }]}>{kicker}</Text>
-          <Text style={styles.sub} numberOfLines={1}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={eliteText.small} numberOfLines={1}>
             {sub}
           </Text>
         </View>
@@ -56,26 +53,25 @@ function WriteUpCard({ color, kicker, sub, text, target }: { color: string; kick
           }}
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
-          accessibilityLabel={open ? `Hide the ${kicker.slice(3)}` : `Read the ${kicker.slice(3)}`}
-          style={({ pressed }) => [styles.pill, { backgroundColor: `${color}2e` }, pressed && styles.pressed]}>
+          accessibilityLabel={open ? `Hide ${title.toLowerCase()}` : `Read ${title.toLowerCase()}`}
+          style={({ pressed }) => [styles.pill, pressed && styles.pressed]}>
           <Text style={styles.pillText}>{open ? 'Hide ↑' : 'Read it →'}</Text>
         </Pressable>
       </View>
       {open ? <Text style={styles.text}>{text.trim()}</Text> : null}
-    </NeonPanel>
+    </EliteCard>
   );
   // Opened, it can go to the group chat as an image (2026-10-24).
-  return open ? <ShareableCard title={`${kicker.replace(/^\W+/, '').trim()} · ${sub}`}>{panel}</ShareableCard> : panel;
+  return open ? <ShareableCard title={`${title} · ${sub}`}>{panel}</ShareableCard> : panel;
 }
 
 const styles = StyleSheet.create({
-  card: { gap: Spacing.sm },
-  kicker: { fontSize: 12, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
-  text: { color: 'rgba(255,255,255,0.82)', fontSize: 15, lineHeight: 22 },
+  card: { padding: 16, gap: Spacing.sm },
+  title: { fontFamily: SATISFY, fontSize: 22, lineHeight: 28, color: Elite.peach },
+  text: { color: 'rgba(245,244,236,0.85)', fontSize: 15, lineHeight: 22 },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  rowText: { flex: 1, minWidth: 0, gap: 2 },
-  sub: { color: Colors.textSecondary, fontSize: 13 },
-  pill: { borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 6 },
-  pillText: { color: Colors.text, fontSize: 14, fontWeight: '600' },
+  rowText: { flex: 1, minWidth: 0 },
+  pill: { minHeight: 36, justifyContent: 'center', borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(57,255,20,0.45)', backgroundColor: 'rgba(57,255,20,0.08)', paddingHorizontal: 12 },
+  pillText: { color: Elite.green, fontSize: 14, fontWeight: '700' },
   pressed: { opacity: 0.7 },
 });

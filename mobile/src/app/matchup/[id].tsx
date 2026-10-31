@@ -12,11 +12,12 @@ import {
 } from 'react-native';
 
 import { AppRefreshControl } from '@/components/AppRefreshControl';
+import { Elite } from '@/components/elite/Elite';
+import { WeekPlate } from '@/components/league/Sections';
 import { MatchupDetail } from '@/components/matchup/MatchupDetail';
 import { Text } from '@/components/Text';
-import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
-import { useAppearance } from '@/lib/appearance';
+import { LoadingState, MessageState } from '@/components/ui';
+import { Spacing } from '@/constants/theme';
 import { orientMatchupForViewer } from '@/lib/matchups';
 import { useMatchup, useMatchupContext, useMe, useSeasonWeek } from '@/lib/queries';
 import type { WeekMatchupContextItem } from '@/lib/types';
@@ -29,7 +30,6 @@ const MAX_WEEK = 17;
 export default function MatchupScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
-  const appearance = useAppearance();
   const me = useMe().data;
   const start = useMatchup(Number(id));
   const currentWeek = useSeasonWeek().data?.week ?? null;
@@ -91,48 +91,18 @@ export default function MatchupScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <View style={styles.stepper}>
-          <Pressable
-            onPress={() => goTo(shownWeek - 1)}
-            disabled={shownWeek <= 1}
-            accessibilityRole="button"
-            accessibilityLabel="Previous week"
-            accessibilityState={{ disabled: shownWeek <= 1 }}
-            style={[styles.stepButton, shownWeek <= 1 && styles.disabled]}
-            hitSlop={6}>
-            <Text style={styles.stepArrow}>‹</Text>
+        <WeekPlate
+          week={shownWeek}
+          label={`${season ?? ''} · WEEK ${shownWeek}`}
+          status={currentWeek === null ? '' : shownWeek === currentWeek ? '● CURRENT WEEK' : shownWeek < currentWeek ? 'PAST WEEK' : 'UPCOMING WEEK'}
+          live={shownWeek === currentWeek}
+          onStep={goTo}
+        />
+        {currentWeek !== null && shownWeek !== currentWeek && (
+          <Pressable onPress={() => goTo(currentWeek)} hitSlop={6} accessibilityRole="button">
+            <Text style={styles.back}>Back to Week {currentWeek} →</Text>
           </Pressable>
-          <View style={styles.weekLabel}>
-            <Text style={styles.season}>{season}</Text>
-            <Text style={styles.week}>Week {shownWeek}</Text>
-          </View>
-          <Pressable
-            onPress={() => goTo(shownWeek + 1)}
-            disabled={shownWeek >= MAX_WEEK}
-            accessibilityRole="button"
-            accessibilityLabel="Next week"
-            accessibilityState={{ disabled: shownWeek >= MAX_WEEK }}
-            style={[styles.stepButton, shownWeek >= MAX_WEEK && styles.disabled]}
-            hitSlop={6}>
-            <Text style={styles.stepArrow}>›</Text>
-          </Pressable>
-        </View>
-        {currentWeek !== null &&
-          (shownWeek === currentWeek ? (
-            <View style={[styles.statusPill, { backgroundColor: `${appearance.accent}24` }]}>
-              <View style={[styles.statusDot, { backgroundColor: appearance.accent }]} />
-              <Text style={[styles.statusText, { color: appearance.accent }]}>Current week</Text>
-            </View>
-          ) : (
-            <View style={styles.statusCol}>
-              <View style={styles.statusPillMuted}>
-                <Text style={styles.statusTextMuted}>{shownWeek < currentWeek ? 'Past week' : 'Upcoming week'}</Text>
-              </View>
-              <Pressable onPress={() => goTo(currentWeek)} hitSlop={6}>
-                <Text style={[styles.back, { color: appearance.accent }]}>Back to Week {currentWeek} →</Text>
-              </Pressable>
-            </View>
-          ))}
+        )}
       </View>
 
       {context.isPending ? (
@@ -148,12 +118,21 @@ export default function MatchupScreen() {
               {matchups.map((m, i) => {
                 const active = i === activeIndex;
                 return (
-                  <Pressable key={m.matchup_id} onPress={() => select(i)} style={[styles.chip, active && styles.chipActive]}>
-                    <TeamAvatar name={m.home.owner_name} logoUrl={m.home.logo_url} size={32} />
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                      {active ? 'vs' : `${(m.home.score ?? 0).toFixed(0)}-${(m.away.score ?? 0).toFixed(0)}`}
-                    </Text>
-                    <TeamAvatar name={m.away.owner_name} logoUrl={m.away.logo_url} size={32} />
+                  <Pressable
+                    key={m.matchup_id}
+                    onPress={() => select(i)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`${m.home.team_name} ${(m.home.score ?? 0).toFixed(1)}, ${m.away.team_name} ${(m.away.score ?? 0).toFixed(1)}`}
+                    style={[styles.mini, active && styles.miniActive]}>
+                    {[m.home, m.away].map((side) => (
+                      <View key={side.team_id} style={styles.miniLine}>
+                        <Text style={styles.miniName} numberOfLines={1}>
+                          {side.team_name}
+                        </Text>
+                        <Text style={styles.miniScore}>{(side.score ?? 0).toFixed(1)}</Text>
+                      </View>
+                    ))}
                   </Pressable>
                 );
               })}
@@ -185,59 +164,13 @@ export default function MatchupScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
-  },
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    padding: 4,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  stepButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  disabled: { opacity: 0.25 },
-  stepArrow: { color: Colors.text, fontSize: 22, lineHeight: 24 },
-  weekLabel: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.sm, paddingHorizontal: Spacing.md },
-  season: { fontFamily: Fonts.display, color: 'rgba(255,255,255,0.5)', fontSize: 12, textTransform: 'uppercase' },
-  week: { fontFamily: Fonts.display, color: Colors.text, fontSize: 18, textTransform: 'uppercase', letterSpacing: 0.5 },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 2 },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
-  statusCol: { alignItems: 'flex-end', gap: 4 },
-  statusPillMuted: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 2 },
-  statusTextMuted: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
-  back: { fontSize: 12, fontWeight: '600' },
-  chips: { gap: Spacing.sm, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    backgroundColor: Colors.tileRaised,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: 10,
-  },
-  chipActive: { borderColor: 'rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.1)' },
-  chipText: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  chipTextActive: { color: 'rgba(255,255,255,0.4)' },
+  header: { alignItems: 'center', gap: 6, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
+  back: { color: Elite.green, fontSize: 12, fontWeight: '600' },
+  chips: { gap: 8, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
+  mini: { width: 128, gap: 2, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', backgroundColor: Elite.card },
+  miniActive: { borderColor: Elite.orange, shadowColor: Elite.orange, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+  miniLine: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  miniName: { flex: 1, color: Elite.cream, fontSize: 11.5, fontWeight: '700' },
+  miniScore: { color: Elite.cream, fontSize: 11.5, fontWeight: '700', fontVariant: ['tabular-nums'] },
   page: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
 });

@@ -20,13 +20,12 @@ import {
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { BracketExperience } from "@/components/bracket/BracketExperience";
-import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
 import { StandingsViewTabs } from "@/components/standings/StandingsViewTabs";
 import { WeekScoreboardBrowser } from "@/components/standings/WeekScoreboardBrowser";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
 import { MovementBadge } from "@/components/MovementBadge";
-import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+import { ANTON, CutLine, ELITE, EliteCard, EliteSeasonChips, EliteTitle, Hex, StatTile } from "@/components/elite/Elite";
 
 export const metadata: Metadata = { title: "Standings — The Weekend" };
 
@@ -110,6 +109,7 @@ export default async function StandingsPage({
   const betaLayout = Boolean(myPreferences?.beta_layout);
   const powerRankByTeam = new Map(powerRankings.map((r) => [r.team_id, r.power_rank]));
   const movementByTeam = new Map(powerRankings.map((r) => [r.team_id, r.movement]));
+  const myTeamId = powerRankings.find((r) => r.owner_id === me.owner_id)?.team_id ?? null;
 
   // Already ordered by final_rank (ESPN's real final-season rank, full
   // playoff bracket) when the season's complete, falling back to
@@ -132,44 +132,28 @@ export default async function StandingsPage({
   return (
     <div className="flex flex-col gap-4">
       <LeagueSubNav active="standings" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-        <h1 className="text-2xl font-semibold">Standings</h1>
-        <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => `/standings?season=${s}`} />
-      </div>
+      <EliteTitle kicker={season !== null ? `The ${season}` : "The"} title="Standings" />
+      <EliteSeasonChips seasons={seasons} activeSeason={season} hrefFor={(s) => `/standings?season=${s}`} />
 
       <StandingsViewTabs
         standings={
           <div className="flex flex-col gap-4">
-            <p className="text-xs text-black/50 dark:text-white/50">
-              {isFinal ? "Final standings." : "Season in progress."}
-              {(me.league_format?.matchup_type === "points" || me.league_format?.league_type === "guillotine") &&
-                " Ranked by total points."}
-              {showPlayoffLine && ` Top ${playoffTeamCount} make the playoffs.`}
-              {showToiletBowlLine && ` The bottom ${toiletBowlCount} risk the Toilet Bowl.`}
-              {playoffOdds && " Playoff % comes from 10,000 simulated seasons."}
-            </p>
-
-            <div
-              className={
-                betaLayout
-                  ? "wl-card flex flex-col rounded-lg px-4"
-                  : "neon-panel flex flex-col rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]"
-              }
-              style={betaLayout ? undefined : panelGlowStyle(SECTION_COLORS.standings)}
-            >
-              {/* Column headers only from sm up — on mobile each row labels itself */}
-              <div className="hidden border-b border-black/10 px-1 pb-2 text-xs text-black/50 sm:flex dark:border-white/10 dark:text-white/50">
-                <span className="w-6 shrink-0" />
-                <span className="flex-1">Team</span>
-                {betaLayout && <span className="w-14 shrink-0 text-right">Trend</span>}
-                <span className="w-20 shrink-0 text-right">W-L-T</span>
-                <span className="w-16 shrink-0 text-right">PPG</span>
-                <span className="w-16 shrink-0 text-right">PF</span>
-                <span className="w-16 shrink-0 text-right">PA</span>
-                {playoffOdds && <span className="w-20 shrink-0 text-right">Playoff %</span>}
+            {(showPlayoffLine || showToiletBowlLine || playoffOdds) && (
+              <div className="flex gap-2">
+                {showPlayoffLine && <StatTile value={`TOP ${playoffTeamCount}`} caption="make the playoffs" color={ELITE.green} />}
+                {showToiletBowlLine && <StatTile value={`BOTTOM ${toiletBowlCount}`} caption="risk the Toilet Bowl" color={ELITE.peach} />}
+                {playoffOdds && <StatTile value="10K" caption="simulated seasons" />}
               </div>
+            )}
+            {(isFinal || me.league_format?.matchup_type === "points" || me.league_format?.league_type === "guillotine") && (
+              <p className="text-xs text-black/50 dark:text-white/50">
+                {isFinal && "Final standings."}
+                {(me.league_format?.matchup_type === "points" || me.league_format?.league_type === "guillotine") && " Ranked by total points."}
+              </p>
+            )}
 
-              <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+            <EliteCard className="overflow-hidden">
+              <ul className="flex flex-col">
                 {standings.map((row, i) => (
                   <Fragment key={row.team_id}>
                     <StandingsListRow
@@ -179,20 +163,28 @@ export default async function StandingsPage({
                       powerRank={powerRankByTeam.get(row.team_id)}
                       movement={betaLayout ? movementByTeam.get(row.team_id) : undefined}
                       playoffPct={playoffOdds ? playoffPctByTeam.get(row.team_id) : undefined}
+                      mine={row.team_id === myTeamId}
+                      zone={
+                        showPlayoffLine && i + 1 <= playoffTeamCount!
+                          ? "playoffs"
+                          : showToiletBowlLine && i + 1 > standings.length - toiletBowlCount
+                            ? "toilet"
+                            : null
+                      }
                     />
-                    {showPlayoffLine && i + 1 === playoffTeamCount && <PlayoffLine count={playoffTeamCount!} />}
+                    {showPlayoffLine && i + 1 === playoffTeamCount && <CutLine label="PLAYOFF LINE" color={ELITE.green} />}
                     {showToiletBowlLine && i + 1 === standings.length - toiletBowlCount && (
-                      <ToiletBowlLine count={toiletBowlCount} />
+                      <CutLine label="TOILET BOWL ZONE" color={ELITE.orange} dashed />
                     )}
                   </Fragment>
                 ))}
               </ul>
-            </div>
+            </EliteCard>
           </div>
         }
         scoreboard={
           season !== null && currentWeek !== null ? (
-            <WeekScoreboardBrowser season={season} initialWeek={currentWeek} initialMatchups={currentWeekMatchups} />
+            <WeekScoreboardBrowser season={season} initialWeek={currentWeek} initialMatchups={currentWeekMatchups} myOwnerId={me.owner_id} />
           ) : (
             <p className="text-sm text-black/50 dark:text-white/50">No schedule yet.</p>
           )
@@ -207,44 +199,11 @@ export default async function StandingsPage({
   );
 }
 
-// A projected playoff cutoff line, not a guaranteed clinch — this app
-// has no real tiebreaker-aware "magic number" clinch calculator (that
-// needs each team's remaining schedule and a real combinatorial
-// scenario check, a much bigger feature than a standings-page divider
-// — see get_playoff_team_count's own docstring for why this uses last
-// season's real bracket size instead). Still real, honest signal: "no
-// visible playoff-picture indicator at all" was the actual gap named
-// in the 2026-08-31 audit, and a line grounded in this league's own
-// real history beats either nothing or an invented number.
-function PlayoffLine({ count }: { count: number }) {
-  return (
-    <li aria-hidden className="relative py-0">
-      <div className="absolute inset-x-0 top-1/2 border-t-2 border-dashed" style={{ borderColor: "var(--user-accent, var(--wl-accent))" }} />
-      <span
-        className="relative mx-auto block w-fit -translate-y-1/2 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase"
-        style={{
-          background: "var(--user-accent, var(--wl-accent))",
-          color: "#06110a",
-        }}
-      >
-        Playoff line — top {count}
-      </span>
-    </li>
-  );
-}
-
-// Mirror of PlayoffLine for the other end of the table — the bottom
-// four's toilet bowl. Rendered right after the fifth-from-last row.
-function ToiletBowlLine({ count }: { count: number }) {
-  return (
-    <li aria-hidden className="relative py-0">
-      <div className="absolute inset-x-0 top-1/2 border-t-2 border-dashed border-amber-700 dark:border-amber-600" />
-      <span className="relative mx-auto block w-fit -translate-y-1/2 rounded-full bg-amber-700 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase dark:bg-amber-600">
-        🚽 Toilet bowl — bottom {count}
-      </span>
-    </li>
-  );
-}
+// The playoff line is a projected cutoff, not a guaranteed clinch — this
+// app has no tiebreaker-aware "magic number" calculator; see
+// get_playoff_team_count for why it uses last season's real bracket
+// size. Drawn by CutLine (components/elite/Elite.tsx), elite pass
+// 2026-10-31: glowing green, and the toilet-bowl cut dashed orange.
 
 function StandingsListRow({
   row,
@@ -253,6 +212,8 @@ function StandingsListRow({
   powerRank,
   movement,
   playoffPct,
+  mine,
+  zone,
 }: {
   row: StandingsRow;
   rank: number;
@@ -264,6 +225,8 @@ function StandingsListRow({
   movement?: number | null;
   // Simulated playoff chance (undefined when there are no odds to show).
   playoffPct?: number;
+  mine: boolean;
+  zone: "playoffs" | "toilet" | null;
 }) {
   const games = row.wins + row.losses + row.ties;
   const ppg = games ? Number(row.points_for) / games : null;
@@ -272,103 +235,89 @@ function StandingsListRow({
   // actually final (final_rank populated for every row), same as
   // isChampion; last place in ESPN's own complete final ranking.
   const isLastPlace = row.final_rank !== null && row.final_rank === teamCount;
+  const seedColor = mine
+    ? ELITE.orange
+    : isChampion
+      ? "#fcd34d"
+      : zone === "playoffs"
+        ? ELITE.green
+        : zone === "toilet"
+          ? "rgba(255,122,26,.7)"
+          : ELITE.grey;
+  const pctColor = playoffPct === undefined ? ELITE.cream : playoffPct >= 75 ? ELITE.green : playoffPct <= 10 ? ELITE.peach : ELITE.cream;
+  const meterColor = zone === "playoffs" ? ELITE.green : zone === "toilet" ? ELITE.orange : "rgba(245,244,236,.6)";
   return (
     <li
-      className={
-        "flex flex-col gap-1.5 py-3 sm:flex-row sm:items-center sm:gap-0" +
-        (isChampion ? " bg-amber-50 dark:bg-amber-400/10" : isLastPlace ? " bg-[#f2e8dc] dark:bg-[#8b5a2b]/10" : "")
-      }
+      className="flex items-center gap-3 border-t border-white/[0.06] px-3 py-3 first:border-t-0"
+      style={{
+        background: mine
+          ? "rgba(255,122,26,.10)"
+          : isChampion
+            ? "rgba(251,191,36,.1)"
+            : isLastPlace
+              ? "rgba(139,90,43,.12)"
+              : zone === "toilet"
+                ? "rgba(255,122,26,.05)"
+                : undefined,
+      }}
     >
-      <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        <span className="flex w-6 shrink-0 flex-col items-start tabular-nums text-black/50 dark:text-white/50">
-          {rank}
-          {movement !== undefined && (
-            <span className="text-[10px] sm:hidden">
-              <MovementBadge movement={movement} />
-            </span>
-          )}
-        </span>
-        <div className="min-w-0">
-          <Link href={`/teams/${row.team_id}`} className="font-medium hover:underline">
-            {row.team_name}
-          </Link>
-          <TeamRankBadge rank={powerRank} />
-          {row.eliminated_week != null && (
-            <span className="ml-2 inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
-              🪓 Cut Wk {row.eliminated_week}
-            </span>
-          )}
-          {isChampion && (
-            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-400/20 dark:text-amber-300">
-              🏆 Champion
-            </span>
-          )}
-          {isLastPlace && (
-            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[#d9b98a] px-2 py-0.5 text-xs font-medium text-[#5c3a1e] dark:bg-[#8b5a2b]/30 dark:text-[#d9b98a]">
-              💩 League Loser
-            </span>
-          )}
-          <div className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{row.owner_name}</div>
-        </div>
-      </div>
-      {/* Phones: one row of labelled cells (2026-10 — the old inline
-          numbers wrapped into an unlabelled jumble). sm+: the table's
-          columns, labelled by the header row. */}
-      <div
-        className={`grid gap-1 pl-8 text-sm sm:flex sm:gap-0 sm:pl-0 ${playoffPct !== undefined ? "grid-cols-5" : "grid-cols-4"}`}
-      >
+      <span className="flex shrink-0 flex-col items-center gap-0.5">
+        <Hex size={38} color={seedColor} rim={2}>
+          <span className={`${ANTON} text-lg`} style={{ color: mine || zone === "playoffs" ? seedColor : ELITE.cream }}>
+            {rank}
+          </span>
+        </Hex>
         {movement !== undefined && (
-          <span className="hidden text-xs tabular-nums sm:block sm:w-14 sm:shrink-0 sm:text-right">
+          <span className="text-[10px]">
             <MovementBadge movement={movement} />
           </span>
         )}
-        <StatCell label="W-L-T" className="font-medium sm:w-20">
-          {row.wins}-{row.losses}-{row.ties}
-        </StatCell>
-        <StatCell label="PPG" className="text-black/60 sm:w-16 dark:text-white/60">
-          {ppg !== null ? ppg.toFixed(1) : "—"}
-        </StatCell>
-        <StatCell label="PF" className="text-black/60 sm:w-16 dark:text-white/60">
-          {Number(row.points_for).toFixed(1)}
-        </StatCell>
-        <StatCell label="PA" className="text-black/60 sm:w-16 dark:text-white/60">
-          {Number(row.points_against).toFixed(1)}
-        </StatCell>
-        {playoffPct !== undefined && (
-          <StatCell
-            label="PLAYOFFS"
-            className="font-semibold sm:w-20"
-            style={{ color: playoffPct >= 75 ? "#16a34a" : playoffPct <= 10 ? "#b45309" : undefined }}
-            title="Chance of making the playoffs, from simulating the rest of the season"
-          >
-            {playoffPct < 1 && playoffPct > 0 ? "<1" : Math.round(playoffPct)}%
-          </StatCell>
+      </span>
+      <div className="min-w-0 flex-1">
+        <Link href={`/teams/${row.team_id}`} className="font-bold hover:underline">
+          {row.team_name}
+        </Link>
+        <TeamRankBadge rank={powerRank} />
+        {row.eliminated_week != null && (
+          <span className="ml-2 inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400">
+            🪓 Cut Wk {row.eliminated_week}
+          </span>
         )}
+        {isChampion && (
+          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-medium text-amber-300">
+            🏆 Champion
+          </span>
+        )}
+        {isLastPlace && (
+          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[#8b5a2b]/30 px-2 py-0.5 text-xs font-medium text-[#d9b98a]">
+            💩 League Loser
+          </span>
+        )}
+        <div className="min-w-0 wrap-break-word text-xs tabular-nums" style={{ color: ELITE.soft }}>
+          {row.owner_name} · {ppg !== null ? ppg.toFixed(1) : "—"} PPG · PF {Number(row.points_for).toFixed(1)} · PA {Number(row.points_against).toFixed(1)}
+        </div>
       </div>
+      <span className={`${ANTON} shrink-0 text-xl tabular-nums`}>
+        {row.wins}-{row.losses}
+        {row.ties > 0 ? `-${row.ties}` : ""}
+      </span>
+      {playoffPct !== undefined && (
+        <span
+          className="flex w-16 shrink-0 flex-col items-end gap-1"
+          title="Chance of making the playoffs, from simulating the rest of the season"
+          aria-label={`${Math.round(playoffPct)} percent playoff chance`}
+        >
+          <b className="text-xs font-extrabold" style={{ color: pctColor }}>
+            {playoffPct < 1 && playoffPct > 0 ? "<1" : Math.round(playoffPct)}%
+          </b>
+          <span className="h-[5px] w-16 overflow-hidden rounded-full bg-white/[0.12]">
+            <span
+              className="block h-full rounded-full"
+              style={{ width: `${Math.max(2, Math.min(100, playoffPct))}%`, background: meterColor, boxShadow: zone === "playoffs" ? `0 0 6px ${ELITE.green}` : undefined }}
+            />
+          </span>
+        </span>
+      )}
     </li>
   );
 }
-
-/** One standings number: labelled on phones, a plain right-aligned
- *  table cell from sm up (the header row labels it there). */
-function StatCell({
-  label,
-  className,
-  style,
-  title,
-  children,
-}: {
-  label: string;
-  className?: string;
-  style?: React.CSSProperties;
-  title?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <span className={`flex min-w-0 flex-col tabular-nums sm:block sm:shrink-0 sm:text-right ${className ?? ""}`} style={style} title={title}>
-      <span className="text-[10px] font-normal tracking-wide text-black/45 sm:hidden dark:text-white/45">{label}</span>
-      <span className="whitespace-nowrap">{children}</span>
-    </span>
-  );
-}
-

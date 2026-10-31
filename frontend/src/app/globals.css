@@ -2702,3 +2702,9 @@ svg.wx-wind{position:absolute;inset:0;width:100%;height:100%;border:0;background
 .pw-word{opacity:0;animation:pw-word .35s ease-out both}
 @keyframes pw-word{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.pw-confetti{display:none}.pw-verdict,.pw-word{animation:none;opacity:1}}
+
+/* Elite pages (2026-10-31): the matchup Jumbotron's marquee bulbs
+   (components/matchups/MatchupDetailPanel.tsx). */
+.elite-bulbs{border-color:rgba(255,178,122,.55);animation:elite-chase 1.2s linear infinite}
+@keyframes elite-chase{50%{border-color:rgba(255,122,26,.95)}}
+@media (prefers-reduced-motion:reduce){.elite-bulbs{animation:none}}

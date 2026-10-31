@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { API_BASE_URL, getChugUploadTicket } from "@/lib/api";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+import { ANTON, ELITE, EliteCard } from "@/components/elite/Elite";
 
 type UploadResult =
   | { can_to_mouth: false; message: string }
@@ -53,7 +54,8 @@ export function ChugUpload({
   variant = "panel",
   creditableOwners,
 }: {
-  variant?: "panel" | "bare";
+  // "elite": the Chug Board's Submit card (2026-10-31 elite pass).
+  variant?: "panel" | "bare" | "elite";
   // Commissioner-only: owners a chug can be credited to instead of the
   // uploader (e.g. a video someone sent over because their own upload
   // failed). The backend re-checks commissioner status.
@@ -64,6 +66,9 @@ export function ChugUpload({
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // The elite card's Record button: the same upload, but a phone browser
+  // opens the camera straight away (`capture`).
+  const recordRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(file: File) {
     setStatus("uploading");
@@ -99,6 +104,7 @@ export function ChugUpload({
       setStatus("error");
     } finally {
       if (inputRef.current) inputRef.current.value = "";
+      if (recordRef.current) recordRef.current.value = "";
     }
   }
 
@@ -172,6 +178,129 @@ export function ChugUpload({
       )}
     </>
   );
+
+  if (variant === "elite") {
+    const uploading = status === "uploading";
+    return (
+      <EliteCard tone="green" className="flex flex-col gap-3 p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <span className={`${ANTON} text-[22px] tracking-wide`}>SUBMIT A CHUG</span>
+          {creditableOwners && creditableOwners.length > 0 && (
+            <label className="flex items-center gap-1.5 text-[13px]" style={{ color: ELITE.soft }}>
+              Credit to
+              <select
+                value={creditTo}
+                onChange={(e) => setCreditTo(e.target.value)}
+                disabled={uploading}
+                className="rounded-md border border-white/15 bg-[#10151c] px-2 py-1 text-[13px] font-bold"
+                style={{ color: ELITE.green }}
+              >
+                <option value="">Me</option>
+                {creditableOwners.map((o) => (
+                  <option key={o.owner_id} value={o.owner_id}>
+                    {o.owner_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          {[
+            ["TIME", "Can to mouth", ELITE.green],
+            ["SMOOTH", "Glass handling", ELITE.green],
+            ["HYPE", "Roast yourself", ELITE.peach],
+          ].map(([title, caption, color]) => (
+            <div key={title} className="rounded-[14px] bg-[#0f141b] px-1 py-2.5">
+              <div className={`${ANTON} text-lg`} style={{ color }}>
+                {title}
+              </div>
+              <div className="text-[11px]" style={{ color: ELITE.soft }}>
+                {caption}
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs" style={{ color: ELITE.soft }}>
+          Record or upload a video (.mp4, .mov, .m4v) and it&apos;s graded automatically. Hype is what you say and do, not how loud the room is:
+          roast yourself for the player who put you here.
+        </p>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".mp4,.mov,.m4v,video/mp4,video/quicktime"
+          className="hidden"
+          tabIndex={-1}
+          aria-hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFile(file);
+          }}
+        />
+        <input
+          ref={recordRef}
+          type="file"
+          accept="video/*"
+          capture="user"
+          className="hidden"
+          tabIndex={-1}
+          aria-hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFile(file);
+          }}
+        />
+        <div className="flex gap-2.5">
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => recordRef.current?.click()}
+            className="flex min-h-[52px] flex-[1.3] items-center justify-center gap-2 rounded-2xl text-base font-extrabold text-[#1a0b00] shadow-[0_0_20px_rgba(255,122,26,.5)] disabled:opacity-50"
+            style={{ background: ELITE.orange }}
+          >
+            <span className="size-3.5 rounded-full bg-[#1a0b00]" aria-hidden />
+            Record
+          </button>
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+            className="flex min-h-[52px] flex-1 items-center justify-center rounded-2xl border border-white/20 text-[15px] font-bold disabled:opacity-50"
+          >
+            Choose video
+          </button>
+        </div>
+        {uploading && (
+          <p className="flex items-center gap-2 text-sm" style={{ color: ELITE.soft }}>
+            <span className="live-dot" aria-hidden />
+            Analyzing your chug…
+          </p>
+        )}
+        {status === "error" && error && <p className="text-sm text-red-400">{error}</p>}
+        {status === "done" && result && !result.can_to_mouth && (
+          <p className="text-sm" style={{ color: ELITE.soft }}>
+            {result.message}
+          </p>
+        )}
+        {status === "done" && result && result.can_to_mouth && (
+          <div className="flex flex-col gap-1.5 rounded-2xl border border-[rgba(57,255,20,.35)] bg-[#0f141b] p-3.5">
+            <span className={`${ANTON} text-2xl`} style={{ color: ELITE.green }}>
+              GRADED {result.final_score}/10
+            </span>
+            <span className="text-xs" style={{ color: ELITE.soft }}>
+              {result.duration_seconds}s · smoothness {result.smoothness_score}/10 · hype {result.hype_score}/10
+            </span>
+            <span className="text-xs font-semibold" style={{ color: ELITE.peach }}>
+              {result.chugs_owed_before > 0
+                ? `Paid down a chug — ${result.chugs_owed_after} still owed.`
+                : "Nothing owed — logged as a bonus chug for the lifetime count."}
+            </span>
+            {result.roast && <p className="mt-1 text-sm leading-snug text-[#f5f4ec]/85">{result.roast}</p>}
+          </div>
+        )}
+      </EliteCard>
+    );
+  }
 
   if (variant === "bare") {
     return <div className="flex flex-col gap-2">{content}</div>;

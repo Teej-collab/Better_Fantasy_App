@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { getWeekMatchupContextClient, type WeekMatchupContextItem } from "@/lib/api";
+import { WeekPlate } from "@/components/elite/Elite";
 import { MatchupCarousel } from "@/components/matchups/MatchupCarousel";
 import { orientMatchupForViewer } from "@/components/matchups/orientMatchup";
 import { useOnAppRefresh } from "@/lib/usePullToRefresh";
@@ -87,73 +88,23 @@ export function MatchupWeekBrowser({
 
   return (
     <div className="flex flex-col gap-2.5">
-      {/* One pill-shaped week stepper instead of a big heading with faint
-          arrows off to the side — the arrows sit inside the pill as real
-          buttons so it reads at a glance as "tap to change weeks." */}
-      <div className="flex items-center justify-between gap-3">
-        <div
-          className="flex w-fit min-w-0 items-center gap-1 rounded-full p-1"
-          style={{ background: "var(--wl-surface)", border: "1px solid var(--wl-border)" }}
-        >
-          <button
-            type="button"
-            onClick={() => goTo(week - 1)}
-            disabled={week <= 1 || isPending}
-            aria-label={`Previous week (Week ${week - 1})`}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-xl leading-none transition-colors hover:bg-black/10 active:scale-95 disabled:pointer-events-none disabled:opacity-25 dark:bg-white/10 dark:hover:bg-white/20"
-          >
-            ‹
+      {/* The elite pass's LED week plate (2026-10-31), with the way back
+          to this week under it when you've paged away. */}
+      <div className="flex flex-col items-center gap-1.5">
+        <WeekPlate
+          label={`${season} · WEEK ${week}`}
+          status={week === currentWeek ? "● CURRENT WEEK" : week < currentWeek ? "PAST WEEK" : "UPCOMING WEEK"}
+          live={week === currentWeek}
+          onPrev={() => goTo(week - 1)}
+          onNext={() => goTo(week + 1)}
+          prevDisabled={week <= 1 || isPending}
+          nextDisabled={week >= MAX_WEEK || isPending}
+        />
+        {week !== currentWeek && (
+          <button type="button" onClick={() => goTo(currentWeek)} disabled={isPending} className="text-xs font-semibold text-[#39ff14] disabled:opacity-50">
+            Back to Week {currentWeek} →
           </button>
-          <h1 className="flex min-w-0 items-baseline gap-2 px-3 font-display tracking-wide uppercase">
-            <span className="text-xs font-semibold text-black/50 dark:text-white/50">{season}</span>
-            <span className="text-lg font-semibold whitespace-nowrap">Week {week}</span>
-          </h1>
-          <button
-            type="button"
-            onClick={() => goTo(week + 1)}
-            disabled={week >= MAX_WEEK || isPending}
-            aria-label={`Next week (Week ${week + 1})`}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-xl leading-none transition-colors hover:bg-black/10 active:scale-95 disabled:pointer-events-none disabled:opacity-25 dark:bg-white/10 dark:hover:bg-white/20"
-          >
-            ›
-          </button>
-        </div>
-        {/* Right side of the same row as the week stepper. Off the current
-            week, the "back" link stacks under the status pill so the row
-            stays one line even on a phone. */}
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          {week === currentWeek ? (
-            <span
-              className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide uppercase"
-              style={{
-                color: "var(--user-accent, var(--wl-accent))",
-                background: "color-mix(in srgb, var(--user-accent, var(--wl-accent)) 14%, transparent)",
-              }}
-            >
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ background: "var(--user-accent, var(--wl-accent))" }}
-                aria-hidden
-              />
-              Current week
-            </span>
-          ) : (
-            <>
-              <span className="rounded-full bg-black/5 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-black/50 uppercase dark:bg-white/10 dark:text-white/60">
-                {week < currentWeek ? "Past week" : "Upcoming week"}
-              </span>
-              <button
-                type="button"
-                onClick={() => goTo(currentWeek)}
-                disabled={isPending}
-                className="text-xs font-semibold disabled:opacity-50"
-                style={{ color: "var(--user-accent, var(--wl-accent))" }}
-              >
-                Back to Week {currentWeek} →
-              </button>
-            </>
-          )}
-        </div>
+        )}
       </div>
 
       <div className={isPending ? "opacity-50 transition-opacity" : "transition-opacity"}>
@@ -179,6 +130,7 @@ export function MatchupWeekBrowser({
             key={week}
             matchups={ordered}
             initialMatchupId={targetMatchupId}
+            myOwnerId={myOwnerId}
             onActiveMatchupChange={(m) => {
               focusOwnerIdRef.current = m.home.owner_id;
             }}

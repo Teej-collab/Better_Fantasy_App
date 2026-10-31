@@ -1318,6 +1318,9 @@ export type ChugFeedEntry = {
   // Short AI trash-talk take on this chug (backend app/domain/
   // chug_roast.py) — null for older chugs or if generation failed.
   roast: string | null;
+  // The content-based hype grade's breakdown (backend app/domain/
+  // chug_hype.py); null on older chugs and any that couldn't be graded.
+  hype_detail?: { self_roast: number; comedy: number; commitment: number; verdict: string | null; quote: string | null } | null;
 };
 
 // Individual graded chugs, newest first — distinct from

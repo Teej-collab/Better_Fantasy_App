@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getActiveLeagueName, getAwardLeaderboards, getMe, getMyPreferences, getRecordBook, listSeasons } from "@/lib/api";
-import { AwardLeaderboards } from "@/components/AwardLeaderboards";
+import { getActiveLeagueName, getAwardLeaderboards, getMe, getRecordBook, listSeasons, type RecordEntry } from "@/lib/api";
+import { AWARD_DESCRIPTIONS } from "@/lib/awardDescriptions";
+import { ELITE, EliteLabel, EliteSeasonChips, EliteTitle, PodiumBoard } from "@/components/elite/Elite";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
-import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
-import { RecordBook } from "@/components/RecordBook";
 import { BackButton } from "@/components/BackButton";
 
 export const metadata: Metadata = { title: "All-Time Records — The Weekend" };
@@ -39,32 +38,76 @@ export default async function AllTimeRecordsPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, { categories }, { categories: awardCategories }, myPreferences, activeLeagueName] =
-    await Promise.all([
-      listSeasons(sessionCookie),
-      getRecordBook(sessionCookie),
-      getAwardLeaderboards(sessionCookie),
-      getMyPreferences(sessionCookie),
-      getActiveLeagueName(sessionCookie),
-    ]);
-  const betaLayout = Boolean(myPreferences?.beta_layout);
+  const [{ seasons }, { categories }, { categories: awardCategories }, activeLeagueName] = await Promise.all([
+    listSeasons(sessionCookie),
+    getRecordBook(sessionCookie),
+    getAwardLeaderboards(sessionCookie),
+    getActiveLeagueName(sessionCookie),
+  ]);
+  const records = categories.filter((c) => c.entries.length > 0);
 
   return (
     <div className="flex flex-col gap-4">
       <BackButton fallbackHref={`/seasons/${season}/awards`} label="Awards" />
       <LeagueSubNav active="history" awardsHref={`/seasons/${season}/awards`} activeLeagueName={activeLeagueName} />
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-        <h1 className="text-2xl font-semibold">Awards</h1>
-        <SeasonTabs
-          seasons={seasons}
-          activeSeason={null}
-          hrefFor={(s) => `/seasons/${s}/awards`}
-          extraTab={{ label: "All-Time Records", href: `/seasons/${season}/awards/all-time`, active: true }}
-        />
-      </div>
+      <EliteTitle kicker="The All-Time" title="Trophy Wall" />
+      <EliteSeasonChips
+        seasons={seasons}
+        activeSeason={null}
+        hrefFor={(s) => `/seasons/${s}/awards`}
+        extraTab={{ label: "All-Time Records", href: `/seasons/${season}/awards/all-time`, active: true }}
+      />
 
-      <RecordBook categories={categories} beta={betaLayout} />
-      <AwardLeaderboards categories={awardCategories} beta={betaLayout} />
+      {records.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <EliteLabel color={ELITE.green}>All-Time Records</EliteLabel>
+            <p className="text-xs text-black/50 dark:text-white/50">The league&apos;s history, updated the moment a record is broken.</p>
+          </div>
+          {records.map((c) => (
+            <PodiumBoard
+              key={c.key}
+              title={c.label}
+              description={AWARD_DESCRIPTIONS[c.key]}
+              entries={c.entries.map((e) => ({
+                key: `${e.owner_id}-${e.season}-${e.week ?? "season"}`,
+                name: e.owner_name,
+                value: `${e.value.toFixed(1)} ${c.unit}`,
+                context: `${e.team_name} · ${recordContext(e)}`,
+                href: `/owners/${e.owner_id}`,
+              }))}
+            />
+          ))}
+        </section>
+      )}
+      {awardCategories.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <EliteLabel color={ELITE.green}>All-Time Awards</EliteLabel>
+            <p className="text-xs text-black/50 dark:text-white/50">Every yearly award the league hands out, and who&apos;s won it the most.</p>
+          </div>
+          {awardCategories.map((c) => (
+            <PodiumBoard
+              key={c.key}
+              title={c.label}
+              description={AWARD_DESCRIPTIONS[c.key]}
+              emptyMessage="Not yet awarded."
+              entries={c.winners.map((w) => ({ key: String(w.owner_id), name: w.owner_name, value: `${w.wins}x`, href: `/owners/${w.owner_id}` }))}
+            />
+          ))}
+        </section>
+      )}
     </div>
   );
+}
+
+function recordContext(entry: RecordEntry): string {
+  if (entry.opponent_team_name) {
+    // Biggest Blowout — own_score is only ever present on this category.
+    const ownScore = entry.own_score !== undefined ? entry.own_score.toFixed(1) : null;
+    return ownScore
+      ? `${ownScore} – ${entry.opponent_score?.toFixed(1)} vs ${entry.opponent_team_name} · Season ${entry.season}${entry.week ? `, Wk ${entry.week}` : ""}`
+      : `vs ${entry.opponent_team_name} · Season ${entry.season}`;
+  }
+  return entry.week ? `Season ${entry.season}, Week ${entry.week}` : `Season ${entry.season}`;
 }

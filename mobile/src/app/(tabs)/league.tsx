@@ -4,6 +4,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 
 import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { LeagueHub } from '@/components/league/LeagueHub';
+import { EliteChips, EliteTitle } from '@/components/elite/Elite';
 import { SeasonTabs } from '@/components/league/LeagueUI';
 import { SwipeBack } from '@/components/league/SwipeBack';
 import { RulesSection } from '@/components/league/RulesSection';
@@ -42,6 +43,28 @@ type LeagueSectionKey = (typeof LEAGUE_SECTIONS)[number]['key'] | 'hub';
 
 // Sections whose content changes by season get season tabs.
 const SEASONAL: LeagueSectionKey[] = ['league', 'standings', 'powerRankings'];
+
+// Sections with the elite look (2026-10-31), which draw their own neon
+// title and use the elite season chips.
+const ELITE: LeagueSectionKey[] = ['league', 'standings', 'powerRankings', 'rivalries', 'activity'];
+
+function eliteHeading(section: LeagueSectionKey, season: number | null): { kicker: string; title: string } | null {
+  const year = season !== null ? `The ${season}` : 'The';
+  switch (section) {
+    case 'league':
+      return { kicker: 'The', title: 'Hive' };
+    case 'standings':
+      return { kicker: year, title: 'Standings' };
+    case 'powerRankings':
+      return { kicker: year, title: 'Power Rankings' };
+    case 'rivalries':
+      return { kicker: 'The', title: 'Fight Card' };
+    case 'activity':
+      return { kicker: 'Off the', title: 'Wire' };
+    default:
+      return null;
+  }
+}
 
 function LeagueScreenContent() {
   // ?view=playoffs (+ a shared what-if's w) opens Standings → Playoffs.
@@ -103,13 +126,22 @@ function LeagueScreenContent() {
               }}>
               <Text style={[styles.back, { color: accent }]}>‹ League</Text>
             </Pressable>
-            <Text style={styles.sectionTitle}>{LEAGUE_SECTIONS.find((s) => s.key === section)?.label}</Text>
+            {!ELITE.includes(section) && <Text style={styles.sectionTitle}>{LEAGUE_SECTIONS.find((s) => s.key === section)?.label}</Text>}
           </View>
         )}
 
-        {SEASONAL.includes(section) && seasons.length > 1 && (
-          <SeasonTabs seasons={seasons} active={shownSeason} onSelect={setSeason} />
-        )}
+        {(() => {
+          const heading = eliteHeading(section, shownSeason);
+          return heading && <EliteTitle kicker={heading.kicker} title={heading.title} />;
+        })()}
+
+        {SEASONAL.includes(section) &&
+          seasons.length > 1 &&
+          (ELITE.includes(section) ? (
+            <EliteChips seasons={seasons} active={shownSeason} onSelect={setSeason} />
+          ) : (
+            <SeasonTabs seasons={seasons} active={shownSeason} onSelect={setSeason} />
+          ))}
 
         <View>
           {section === 'hub' && (

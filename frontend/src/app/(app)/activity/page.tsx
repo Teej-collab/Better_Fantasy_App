@@ -7,9 +7,11 @@ import {
   getLeagueActivity,
   getMe,
   listSeasons,
+  listTeamsServer,
   safeLatestSeason,
 } from "@/lib/api";
-import { LeagueActivityFeed } from "@/components/LeagueActivityFeed";
+import { EliteTitle } from "@/components/elite/Elite";
+import { EliteWire } from "@/components/elite/EliteWire";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
@@ -34,26 +36,29 @@ export default async function ActivityPage() {
   const { seasons } = await listSeasons(sessionCookie);
   const latestSeason = safeLatestSeason(seasons);
 
-  const [{ items }, activeLeagueName] = await Promise.all([
+  const [{ items }, activeLeagueName, { teams }] = await Promise.all([
     latestSeason !== null
       ? getLeagueActivity(latestSeason, sessionCookie, 50)
       : Promise.resolve({ items: [] }),
     getActiveLeagueName(sessionCookie),
+    // Who owns each team, to split a trade into who gets what.
+    latestSeason !== null ? listTeamsServer(sessionCookie, latestSeason).catch(() => ({ teams: [] })) : Promise.resolve({ teams: [] }),
   ]);
+  const ownerByTeam = Object.fromEntries(teams.map((t) => [t.team_id, t.owner_id]));
 
   return (
     <div className="flex flex-col gap-4">
       <LeagueSubNav active="activity" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
-      <h1 className="text-2xl font-semibold">League Activity</h1>
-      <p className="text-xs text-black/50 dark:text-white/50">
-        Trades, waiver pickups, and free-agent adds/drops — starts from whenever this feature shipped, not the
-        beginning of the season.
-      </p>
+      <EliteTitle
+        kicker="Off the"
+        title="Wire"
+        subtitle="Trades, waiver claims, adds and drops — from whenever this feature shipped, not the beginning of the season."
+      />
 
       {items.length === 0 ? (
         <p className="text-sm text-black/50 dark:text-white/50">No activity yet.</p>
       ) : (
-        <LeagueActivityFeed items={items} />
+        <EliteWire items={items} myOwnerId={me.owner_id} ownerByTeam={ownerByTeam} />
       )}
       <CommishChanges />
     </div>

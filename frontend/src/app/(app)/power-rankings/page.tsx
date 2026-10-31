@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { cookies } from "next/headers";
 import {
   awardsHrefFor,
@@ -7,21 +6,17 @@ import {
   getAllTimePowerRankings,
   getLatestPowerRankingsWeek,
   getMe,
-  getMyPreferences,
   getSeasonPowerRankingsTrend,
   getWeekPowerRankings,
   listSeasons,
   safeLatestSeason,
-  type PowerRankTrendTeam,
-  type WeekPowerRanking,
+    type WeekPowerRanking,
 } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
-import { MovementBadge } from "@/components/MovementBadge";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
-import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
-import { PowerRankingsAllTime } from "@/components/PowerRankingsAllTime";
-import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+import { ANTON, ELITE, EliteCard, EliteSeasonChips, EliteSegLinks, EliteTitle, Hex, PodiumBoard, StatTile } from "@/components/elite/Elite";
+import { EliteClimb } from "@/components/elite/EliteClimb";
 
 export const metadata: Metadata = { title: "Power Rankings — The Weekend" };
 
@@ -48,10 +43,9 @@ export default async function PowerRankingsPage({
   const sessionCookie = cookieStore.get("session")?.value;
   // listSeasons is public, so it runs alongside the auth check instead
   // of after it — each await here is a real backend round trip.
-  const [me, myPreferences, activeLeagueName, { seasons }, { view: rawView, season: rawSeason, week: rawWeek }] =
+  const [me, activeLeagueName, { seasons }, { view: rawView, season: rawSeason, week: rawWeek }] =
     await Promise.all([
       getMe(sessionCookie),
-      getMyPreferences(sessionCookie),
       getActiveLeagueName(sessionCookie),
       listSeasons(sessionCookie),
       searchParams,
@@ -66,7 +60,6 @@ export default async function PowerRankingsPage({
   if (me.active_league_id === null) {
     return <NeedsLeagueCard />;
   }
-  const betaLayout = Boolean(myPreferences?.beta_layout);
 
   const view: View = rawView === "trend" || rawView === "all-time" ? rawView : "week";
   const latestSeason = safeLatestSeason(seasons);
@@ -75,60 +68,79 @@ export default async function PowerRankingsPage({
   return (
     <div className="flex flex-col gap-4">
       <LeagueSubNav active="powerRankings" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
-      <div>
-        <h1 className="text-2xl font-semibold">Power Rankings</h1>
-        <p className="text-sm text-black/60 dark:text-white/60">
-          Who&apos;s actually good: record, all-play record (how you&apos;d do against every team, every week),
-          scoring, recent form and scoring margin. Luck is wins above what your scores earned. SoS ranks how hard
-          your schedule has been and how hard what&apos;s left is (1st = hardest).
-        </p>
-      </div>
+      <EliteTitle kicker={view === "all-time" ? "The All-Time" : season !== null ? `The ${season}` : "The"} title="Power Rankings" />
 
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
-        {VIEW_TABS.map((tab) => (
-          <Link
-            key={tab.key}
-            href={hrefFor(tab.key, season ?? undefined)}
-            className={view === tab.key ? "font-semibold underline" : "text-black/60 hover:underline dark:text-white/60"}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </div>
+      <EliteSegLinks tabs={VIEW_TABS.map((t) => ({ ...t, href: hrefFor(t.key, season ?? undefined) }))} active={view} />
 
       {view !== "all-time" && season !== null && (
-        <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => hrefFor(view, s)} />
+        <EliteSeasonChips seasons={seasons} activeSeason={season} hrefFor={(s) => hrefFor(view, s)} />
       )}
 
-      {view === "all-time" && <AllTimeView sessionCookie={sessionCookie} beta={betaLayout} />}
+      {view === "all-time" && <AllTimeView sessionCookie={sessionCookie} />}
       {view === "week" && season !== null && (
-        <WeekView season={season} requestedWeek={rawWeek} sessionCookie={sessionCookie} beta={betaLayout} />
+        <WeekView season={season} requestedWeek={rawWeek} sessionCookie={sessionCookie} myOwnerId={me.owner_id} />
       )}
-      {view === "trend" && season !== null && (
-        <TrendView season={season} sessionCookie={sessionCookie} beta={betaLayout} />
-      )}
+      {view === "trend" && season !== null && <TrendView season={season} sessionCookie={sessionCookie} myOwnerId={me.owner_id} />}
       {season === null && view !== "all-time" && (
         <p className="text-sm text-black/50 dark:text-white/50">No seasons found yet.</p>
       )}
+
+      <p className="text-xs text-black/55 dark:text-white/55">
+        Who&apos;s actually good: record, all-play record (how you&apos;d do against every team, every week), scoring, recent form and scoring
+        margin. Luck is wins above what your scores earned. SoS ranks how hard your schedule has been and how hard what&apos;s left is (1st =
+        hardest).
+      </p>
     </div>
   );
 }
 
-async function AllTimeView({ sessionCookie, beta }: { sessionCookie: string | undefined; beta: boolean }) {
+async function AllTimeView({ sessionCookie }: { sessionCookie: string | undefined }) {
   const { categories } = await getAllTimePowerRankings(sessionCookie);
-  return <PowerRankingsAllTime categories={categories} beta={beta} />;
+  const shown = categories.filter((c) => c.entries.length > 0);
+  if (shown.length === 0) return <p className="text-sm text-black/50 dark:text-white/50">Not enough history yet.</p>;
+  return (
+    <div className="flex flex-col gap-4">
+      {shown.map((c) => (
+        <PodiumBoard
+          key={c.key}
+          title={c.label}
+          entries={c.entries.map((e) => ({
+            key: String(e.owner_id),
+            name: e.owner_name,
+            value: `${e.value.toFixed(e.value % 1 === 0 ? 0 : 1)} ${c.unit}`,
+            href: `/owners/${e.owner_id}`,
+          }))}
+        />
+      ))}
+    </div>
+  );
+}
+
+function luckLabel(luck: number | undefined): string {
+  return luck !== undefined ? `${luck > 0 ? "+" : ""}${luck.toFixed(1)}` : "—";
+}
+
+function Movement({ movement }: { movement: number | null }) {
+  if (movement === null || movement === 0) return <span className="w-9 text-right text-xs text-white/30">—</span>;
+  const up = movement > 0;
+  return (
+    <span className="w-9 text-right text-[13px] font-extrabold tabular-nums" style={{ color: up ? ELITE.green : "#ff9a4a" }} aria-label={`${up ? "up" : "down"} ${Math.abs(movement)}`}>
+      {up ? "▲" : "▼"}
+      {Math.abs(movement)}
+    </span>
+  );
 }
 
 async function WeekView({
   season,
   requestedWeek,
   sessionCookie,
-  beta,
+  myOwnerId,
 }: {
   season: number;
   requestedWeek?: string;
   sessionCookie: string | undefined;
-  beta: boolean;
+  myOwnerId: number | null;
 }) {
   // Only look up the latest week when the URL didn't already name one —
   // it's a whole extra backend round trip before the rankings fetch.
@@ -146,172 +158,95 @@ async function WeekView({
   }
 
   const { rankings } = await getWeekPowerRankings(season, week, sessionCookie);
+  if (rankings.length === 0) return <p className="text-sm text-black/50 dark:text-white/50">No data for week {week}.</p>;
+  // Elite pass (2026-10-31): #1 on a throne card, the rest as hex-ranked
+  // rows with what's behind each rank underneath.
+  const [top, ...rest] = rankings;
 
   return (
-    <section
-      className={beta ? "wl-card flex flex-col rounded-lg" : "neon-panel flex flex-col rounded-lg"}
-      style={beta ? undefined : panelGlowStyle(SECTION_COLORS.powerRankings)}
-    >
-      {/* overflow-x-auto, matching TrendView's table below — belt-and-
-          suspenders for whatever doesn't fit the tightened widths at
-          extreme accessibility text sizes or very long names, so it's
-          reachable via horizontal swipe instead of being silently
-          clipped by globals.css's page-level overflow-x: hidden.
-          divide-y moved down here (was on the <section> itself) so row
-          dividers still render now that the header/rows are one level
-          deeper, inside this scroll wrapper. */}
-      <div className="overflow-x-auto">
-        <div className="flex min-w-full flex-col divide-y divide-black/5 dark:divide-white/5">
-          <div className="flex items-center justify-between gap-2 px-4 py-2 text-xs font-semibold text-black/50 uppercase dark:text-white/50">
-            <span>Week {week}</span>
-            <span className="flex shrink-0 gap-2">
-              <span className="w-10 text-right">Luck</span>
-              <span className="w-10 text-right">SoS</span>
-              <span className="w-10 text-right" title="Remaining schedule">Ahead</span>
-              <span className="w-10 text-right">Trend</span>
-            </span>
+    <div className="flex flex-col gap-4">
+      <span className="text-center text-[11px] font-extrabold tracking-[2px] text-black/55 dark:text-white/60">WEEK {week}</span>
+      <EliteCard tone="orange" className="flex flex-col gap-3.5 p-4">
+        <div className="flex items-center gap-4">
+          <Hex size={80} color={ELITE.peach} fill={ELITE.orange} glow>
+            <span className={`${ANTON} text-5xl text-[#2a1102]`}>1</span>
+          </Hex>
+          <div className="min-w-0 flex-1">
+            <p className={`${ANTON} text-[28px] leading-tight uppercase`}>{top.team_name}</p>
+            <p className="text-[13px]" style={{ color: ELITE.soft }}>
+              {top.owner_name}
+              {top.record && ` · ${top.record}`}
+              {top.points_per_game !== undefined && ` · ${top.points_per_game.toFixed(1)} ppg`}
+              {top.movement === 0 || top.movement === null ? " · held #1" : top.movement > 0 ? ` · up ${top.movement}` : ""}
+              {top.owner_id === myOwnerId ? " · you" : ""}
+            </p>
+            {top.note && (
+              <p className="mt-1 text-[13px]" style={{ color: ELITE.peach }}>
+                {top.note}
+              </p>
+            )}
           </div>
-          {rankings.map((r: WeekPowerRanking) => (
-            <div key={r.team_id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="w-6 shrink-0 text-center font-bold tabular-nums">{r.power_rank}</span>
-                <div className="min-w-0">
-                  <p className="min-w-0 wrap-break-word font-medium">{r.team_name}</p>
-                  <p className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">
+        </div>
+        <div className="flex gap-2">
+          <StatTile value={luckLabel(top.luck_wins)} caption="Luck" />
+          <StatTile value={top.sos_rank ? ordinal(top.sos_rank) : "—"} caption="SoS so far" />
+          <StatTile value={top.sos_remaining_rank ? ordinal(top.sos_remaining_rank) : "—"} caption="SoS ahead" />
+        </div>
+      </EliteCard>
+      {rest.length > 0 && (
+        <EliteCard className="overflow-hidden">
+          {rest.map((r: WeekPowerRanking) => {
+            const mine = r.owner_id === myOwnerId;
+            const color = mine ? ELITE.orange : r.power_rank <= 4 ? ELITE.green : ELITE.grey;
+            return (
+              <div key={r.team_id} className="flex items-center gap-3 border-t border-white/[0.06] px-3.5 py-3 first:border-t-0" style={mine ? { background: "rgba(255,122,26,.10)" } : undefined}>
+                <Hex size={42} color={color} rim={2}>
+                  <span className={`${ANTON} text-xl`} style={{ color: color === ELITE.grey ? ELITE.cream : color }}>
+                    {r.power_rank}
+                  </span>
+                </Hex>
+                <div className="min-w-0 flex-1">
+                  <p className="min-w-0 wrap-break-word font-bold">{r.team_name}</p>
+                  <p className="min-w-0 wrap-break-word text-xs" style={{ color: ELITE.soft }}>
                     {r.owner_name}
                     {r.record && ` · ${r.record}`}
                     {r.points_per_game !== undefined && ` · ${r.points_per_game.toFixed(1)} ppg`}
                   </p>
-                  {r.note && <p className="min-w-0 wrap-break-word text-xs text-amber-600 dark:text-amber-400">{r.note}</p>}
+                  {r.note && (
+                    <p className="min-w-0 wrap-break-word text-xs" style={{ color: ELITE.peach }}>
+                      {r.note}
+                    </p>
+                  )}
+                  <p className="mt-1 text-[11px]" style={{ color: ELITE.faint }}>
+                    <span title="Wins above (or below) what their scores earned this season">
+                      Luck <b className="text-[#f5f4ec]">{luckLabel(r.luck_wins)}</b>
+                    </span>{" "}
+                    ·{" "}
+                    <span title="Schedule so far (1st = hardest)">
+                      SoS <b className="text-[#f5f4ec]">{r.sos_rank ? ordinal(r.sos_rank) : "—"}</b>
+                    </span>{" "}
+                    ·{" "}
+                    <span title="Remaining schedule (1st = hardest)">
+                      Ahead <b className="text-[#f5f4ec]">{r.sos_remaining_rank ? ordinal(r.sos_remaining_rank) : "—"}</b>
+                    </span>
+                  </p>
                 </div>
+                <Movement movement={r.movement} />
               </div>
-              <div className="flex shrink-0 items-center gap-2 tabular-nums">
-                <span
-                  className="w-10 text-right text-xs text-black/60 dark:text-white/60"
-                  title="Wins above (or below) what their scores earned this season"
-                >
-                  {r.luck_wins !== undefined ? `${r.luck_wins > 0 ? "+" : ""}${r.luck_wins.toFixed(1)}` : "—"}
-                </span>
-                <span className="w-10 text-right text-xs text-black/60 dark:text-white/60" title="Schedule so far (1st = hardest)">
-                  {r.sos_rank ? ordinal(r.sos_rank) : "—"}
-                </span>
-                <span className="w-10 text-right text-xs text-black/60 dark:text-white/60" title="Remaining schedule (1st = hardest)">
-                  {r.sos_remaining_rank ? ordinal(r.sos_remaining_rank) : "—"}
-                </span>
-                <span className="w-10 text-right text-xs">
-                  <MovementBadge movement={r.movement} />
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      {rankings.length === 0 && (
-        <p className="px-4 py-3 text-sm text-black/50 dark:text-white/50">No data for week {week}.</p>
+            );
+          })}
+        </EliteCard>
       )}
-    </section>
+    </div>
   );
 }
 
-async function TrendView({
-  season,
-  sessionCookie,
-  beta,
-}: {
-  season: number;
-  sessionCookie: string | undefined;
-  beta: boolean;
-}) {
+async function TrendView({ season, sessionCookie, myOwnerId }: { season: number; sessionCookie: string | undefined; myOwnerId: number | null }) {
   const { teams } = await getSeasonPowerRankingsTrend(season, sessionCookie);
-  const allWeeks = Array.from(new Set(teams.flatMap((t) => t.weeks.map((w) => w.week)))).sort((a, b) => a - b);
-
   if (teams.length === 0) {
     return <p className="text-sm text-black/50 dark:text-white/50">No power rankings computed for {season} yet.</p>;
   }
-
-  // Settings > Labs > "Try the new look" — Documentation/UX/
-  // 01_Design_System.md section 13's "no <table> on mobile" rule. The
-  // week-per-column table below genuinely horizontal-scrolls on a
-  // phone for anything past ~week 6-7 (00_UX_Audit.md finding); this
-  // is a per-team row with a compact inline sparkline instead — no
-  // dependency on how many weeks exist, since the SVG scales to a
-  // fixed width regardless of point count.
-  if (beta) {
-    const teamCount = teams.length;
-    return (
-      <div className="wl-card flex flex-col divide-y divide-black/5 rounded-lg dark:divide-white/5">
-        {teams.map((t: PowerRankTrendTeam) => {
-          const points = allWeeks
-            .map((w) => t.weeks.find((wk) => wk.week === w)?.power_rank ?? null)
-            .filter((r): r is number => r !== null);
-          const latest = points[points.length - 1] ?? null;
-          const coords = points
-            .map((rank, i) => {
-              const x = points.length > 1 ? (i / (points.length - 1)) * 100 : 50;
-              // Rank 1 (best) plots high, rank teamCount (worst) plots low.
-              const y = teamCount > 1 ? ((rank - 1) / (teamCount - 1)) * 24 + 3 : 15;
-              return `${x},${y}`;
-            })
-            .join(" ");
-          return (
-            <div key={t.team_id} className="flex items-center gap-3 px-4 py-3 text-sm">
-              <div className="min-w-0 flex-1">
-                <p className="min-w-0 wrap-break-word font-medium">{t.team_name}</p>
-                <p className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{t.owner_name}</p>
-              </div>
-              {points.length > 1 && (
-                <svg viewBox="0 0 100 30" className="h-6 w-20 shrink-0" preserveAspectRatio="none" aria-hidden>
-                  <polyline
-                    points={coords}
-                    fill="none"
-                    stroke="var(--user-accent, var(--wl-accent))"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </svg>
-              )}
-              <span className="w-8 shrink-0 text-right font-semibold tabular-nums">{latest ?? "—"}</span>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[480px] text-sm">
-        <thead>
-          <tr className="text-xs text-black/50 uppercase dark:text-white/50">
-            <th className="px-2 py-2 text-left">Team</th>
-            {allWeeks.map((w) => (
-              <th key={w} className="px-2 py-2 text-center">
-                Wk {w}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-black/5 dark:divide-white/5">
-          {teams.map((t: PowerRankTrendTeam) => {
-            const rankByWeek = new Map(t.weeks.map((w) => [w.week, w.power_rank]));
-            return (
-              <tr key={t.team_id}>
-                <td className="px-2 py-2 font-medium">
-                  <p className="min-w-0 wrap-break-word">{t.team_name}</p>
-                  <p className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{t.owner_name}</p>
-                </td>
-                {allWeeks.map((w) => (
-                  <td key={w} className="px-2 py-2 text-center tabular-nums">
-                    {rankByWeek.get(w) ?? "—"}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+  return <EliteClimb teams={teams} myOwnerId={myOwnerId} />;
 }
 
 function ordinal(n: number): string {

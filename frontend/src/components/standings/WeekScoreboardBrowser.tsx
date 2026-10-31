@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { getWeekMatchupContextClient, type WeekMatchupContextItem } from "@/lib/api";
 import { WeekScoreboardList } from "@/components/matchups/WeekScoreboardList";
+import { WeekPlate } from "@/components/elite/Elite";
 import { useOnAppRefresh } from "@/lib/usePullToRefresh";
 
 // Real ESPN League > Scoreboard tab (reference video, 2026-09-15): a
@@ -18,10 +19,12 @@ export function WeekScoreboardBrowser({
   season,
   initialWeek,
   initialMatchups,
+  myOwnerId,
 }: {
   season: number;
   initialWeek: number;
   initialMatchups: WeekMatchupContextItem[];
+  myOwnerId: number | null;
 }) {
   const [week, setWeek] = useState(initialWeek);
   const [matchups, setMatchups] = useState(initialMatchups);
@@ -68,27 +71,15 @@ export function WeekScoreboardBrowser({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-center gap-4">
-        <button
-          type="button"
-          onClick={() => goTo(week - 1)}
-          disabled={week <= 1}
-          aria-label="Previous week"
-          className="rounded-full px-2 py-1 text-lg text-black/50 transition-colors hover:bg-black/5 hover:text-black disabled:pointer-events-none disabled:opacity-20 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white"
-        >
-          ‹
-        </button>
-        <span className="w-20 text-center text-sm font-semibold tracking-wide uppercase">Week {week}</span>
-        <button
-          type="button"
-          onClick={() => goTo(week + 1)}
-          disabled={week >= MAX_WEEK}
-          aria-label="Next week"
-          className="rounded-full px-2 py-1 text-lg text-black/50 transition-colors hover:bg-black/5 hover:text-black disabled:pointer-events-none disabled:opacity-20 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white"
-        >
-          ›
-        </button>
-      </div>
+      <WeekPlate
+        label={`WEEK ${week}`}
+        status={week === initialWeek ? "● CURRENT WEEK" : week < initialWeek ? "FINAL" : "UPCOMING"}
+        live={week === initialWeek}
+        onPrev={() => goTo(week - 1)}
+        onNext={() => goTo(week + 1)}
+        prevDisabled={week <= 1}
+        nextDisabled={week >= MAX_WEEK}
+      />
 
       <div className={isPending ? "opacity-50 transition-opacity" : "transition-opacity"}>
         {loadError ? (
@@ -107,7 +98,7 @@ export function WeekScoreboardBrowser({
         ) : matchups.length === 0 ? (
           <p className="py-4 text-center text-sm text-black/50 dark:text-white/50">No matchups for this week.</p>
         ) : (
-          <WeekScoreboardList matchups={matchups} />
+          <WeekScoreboardList matchups={matchups} myOwnerId={myOwnerId} />
         )}
       </div>
     </div>

@@ -1,23 +1,26 @@
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { Stack } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActionSheetIOS, Alert, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
-import { ChugFeedCard } from '@/components/home/FeedCards';
 import { ChugBreakdown } from '@/components/ChugBreakdown';
-import { NeonPanel } from '@/components/NeonPanel';
+import { ANTON, Elite, EliteCard, EliteChips, EliteLabel, eliteText, EliteTitle, Hex, SATISFY } from '@/components/elite/Elite';
+import { ChugVideo } from '@/components/home/FeedCards';
 import { ShareableCard } from '@/components/ShareableCard';
-import { Display, Text } from '@/components/Text';
+import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
-import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api, uploadChugVideo } from '@/lib/api';
-import { queryClient, useChugFeed, useChugLeaderboard, useChugLedger, useChugSeasons, useMe } from '@/lib/queries';
-import type { ChugLeaderboardRow, ChugUploadResult, ChugLedgerEvent } from '@/lib/types';
+import { haptics } from '@/lib/haptics';
+import { queryClient, useChugDeadline, useChugFeed, useChugLeaderboard, useChugLedger, useChugSeasons, useMe } from '@/lib/queries';
+import type { ChugFeedEntry, ChugLeaderboardRow, ChugUploadResult, ChugLedgerEvent } from '@/lib/types';
 
 // Port of the web's /chug page (frontend/src/app/(app)/chug/page.tsx):
 // submit a chug, the rule, recent chugs, and the leaderboard, per
-// season or all-time.
+// season or all-time. Elite pass (2026-10-31): the Chug Board — what you
+// owe as a lit orange cell with the doubling countdown, The Tab with
+// owed chugs as cells, and each chug's score in a hex with its quote.
 export default function ChugScreen() {
   const me = useMe().data;
   const seasons = useChugSeasons().data ?? [];
@@ -26,11 +29,13 @@ export default function ChugScreen() {
   const feed = useChugFeed(season);
   // Each row's "Why?" history — this season's when All-Time is picked.
   const ledger = useChugLedger(season);
+  const deadline = useChugDeadline(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showRule, setShowRule] = useState(false);
 
   async function onRefresh() {
     setRefreshing(true);
-    await Promise.all([leaderboard.refetch(), feed.refetch(), ledger.refetch()]);
+    await Promise.all([leaderboard.refetch(), feed.refetch(), ledger.refetch(), deadline.refetch()]);
     setRefreshing(false);
   }
 
@@ -43,60 +48,106 @@ export default function ChugScreen() {
       style={styles.screen}
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Elite.green} />}>
       <Stack.Screen options={{ title: 'Chug' }} />
+      <EliteTitle kicker="The" title="Chug Board" />
+      {deadline.data?.mine && <YouOwe deadline={deadline.data.deadline} isPast={deadline.data.is_past} mine={deadline.data.mine} />}
       <ChugUpload creditable={isCommissioner ? rows.map((r) => ({ id: r.owner_id, name: r.owner_name })) : undefined} />
 
-      <View style={styles.titleRow}>
-        <Display style={styles.title}>🍺 Chug Leaderboard</Display>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-        {[...seasons].sort((a, b) => b - a).map((s) => (
-          <Tab key={s} label={String(s)} active={season === s} onPress={() => setSeason(s)} />
-        ))}
-        <Tab label="All-Time" active={season === undefined} onPress={() => setSeason(undefined)} />
-      </ScrollView>
-
-      <Text style={styles.rule}>
-        The rule: any active roster spot (not bench, not IR) that scores 0 or fewer points owes its owner one chug. Not
-        paid down by Monday Night Football kickoff? The remaining balance doubles — up to 3 weeks running, after which it
-        converts to a $10/chug fine only a commissioner can clear.
-      </Text>
-
-      {(feed.data?.length ?? 0) > 0 && <ChugFeedCard chugs={feed.data!} />}
+      <EliteChips
+        seasons={[...seasons].sort((a, b) => b - a)}
+        active={season ?? null}
+        onSelect={setSeason}
+        extra={{ label: 'All-Time', active: season === undefined, onPress: () => setSeason(undefined) }}
+      />
 
       <View style={styles.section}>
-        <Display style={styles.sectionTitle}>Leaderboard</Display>
+        <View style={styles.spread}>
+          <EliteLabel>THE TAB</EliteLabel>
+          <Pressable onPress={() => setShowRule(!showRule)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: showRule }}>
+            <Text style={eliteText.link}>{showRule ? 'Hide house rules' : 'House rules'}</Text>
+          </Pressable>
+        </View>
+        {showRule && (
+          <Text style={eliteText.small}>
+            The rule: any active roster spot (not bench, not IR) that scores 0 or fewer points owes its owner one chug. Not paid down by Monday Night
+            Football kickoff? The remaining balance doubles — up to 3 weeks running, after which it converts to a $10/chug fine only a commissioner can
+            clear.
+          </Text>
+        )}
         {leaderboard.isPending ? (
           <LoadingState />
         ) : rows.length === 0 ? (
           <Text style={styles.muted}>No chug data yet.</Text>
         ) : (
           <ShareableCard title={`${season ?? 'All-time'} Chug leaderboard`}>
-          <NeonPanel color={SectionColors.chug} radius={Radius.md} contentStyle={styles.list}>
-            {rows.map((row, i) => (
-              <LeaderboardRow
-                key={row.owner_id}
-                row={row}
-                rank={i + 1}
-                divided={i > 0}
-                isCommissioner={isCommissioner}
-                history={ledger.data?.owners[String(row.owner_id)] ?? []}
-              />
-            ))}
-          </NeonPanel>
+            <EliteCard>
+              {rows.map((row, i) => (
+                <LeaderboardRow
+                  key={row.owner_id}
+                  row={row}
+                  divided={i > 0}
+                  isCommissioner={isCommissioner}
+                  history={ledger.data?.owners[String(row.owner_id)] ?? []}
+                />
+              ))}
+            </EliteCard>
           </ShareableCard>
         )}
       </View>
+
+      {(feed.data?.length ?? 0) > 0 && <RecentChugs chugs={feed.data!} />}
     </ScrollView>
   );
 }
 
-function Tab({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+// What you owe right now, as a lit cell, with a countdown to Monday
+// Night kickoff when the balance doubles.
+function YouOwe({ deadline, isPast, mine }: { deadline: string | null; isPast: boolean; mine: { outstanding_owed: number; fined_owed: number; fine_amount: number } }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const owes = mine.outstanding_owed > 0;
+  if (!owes && mine.fined_owed === 0) {
+    return (
+      <EliteCard tone="green" style={styles.owe}>
+        <Hex width={56} color={Elite.green} glow>
+          <Text style={[styles.oweCount, { color: Elite.green, fontSize: 24 }]}>0</Text>
+        </Hex>
+        <View style={styles.flex}>
+          <Text style={[eliteText.kickerCaps, { color: Elite.green }]}>PAID UP</Text>
+          <Text style={eliteText.small}>Nothing owed right now. Keep it that way.</Text>
+        </View>
+      </EliteCard>
+    );
+  }
+  const left = deadline && !isPast ? Math.max(0, new Date(deadline).getTime() - now) : null;
+  const dd = left !== null ? Math.floor(left / 86_400_000) : 0;
+  const hh = left !== null ? Math.floor((left % 86_400_000) / 3_600_000) : 0;
+  const mm = left !== null ? Math.floor((left % 3_600_000) / 60_000) : 0;
+  const pad = (n: number) => String(n).padStart(2, '0');
   return (
-    <Pressable onPress={onPress} style={[styles.tab, active && styles.tabActive]}>
-      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-    </Pressable>
+    <EliteCard tone="deep" style={styles.owe}>
+      <Hex width={70} color={Elite.peach} fill={Elite.orange} glow>
+        <Text style={styles.oweCount}>{mine.outstanding_owed}</Text>
+        <Text style={styles.oweLabel}>YOU OWE</Text>
+      </Hex>
+      <View style={styles.flex}>
+        <Text style={eliteText.kickerCaps}>{owes ? (left !== null ? 'DOUBLES AT MNF KICKOFF' : 'DUE BY MNF KICKOFF') : 'FINE OWED'}</Text>
+        {owes && left !== null && (
+          <Text style={styles.led} accessibilityLabel={`${dd} days ${hh} hours ${mm} minutes until it doubles`}>
+            {pad(dd)} : {pad(hh)} : {pad(mm)}
+          </Text>
+        )}
+        {mine.fined_owed > 0 && (
+          <Text style={styles.fineLine}>
+            ${mine.fine_amount} fine · {mine.fined_owed} chug{mine.fined_owed === 1 ? '' : 's'}
+          </Text>
+        )}
+      </View>
+    </EliteCard>
   );
 }
 
@@ -162,64 +213,121 @@ function ChugUpload({ creditable }: { creditable?: { id: number; name: string }[
 
   const uploading = status === 'uploading';
   return (
-    <NeonPanel color={SectionColors.chug} contentStyle={styles.upload}>
-      <Text style={styles.kicker}>Submit a Chug</Text>
-      <Text style={styles.soft}>Record or upload a video and it&apos;ll be graded automatically — time, smoothness, and hype. Hype is what you say and do, not how loud the room is: roast yourself for the player who put you here.</Text>
-      {creditable && creditable.length > 0 && (
-        <Pressable onPress={chooseCredit} disabled={uploading} hitSlop={6}>
-          <Text style={styles.soft}>
-            Credit to <Text style={styles.link}>{creditTo?.name ?? 'Me'} ▾</Text>
-          </Text>
-        </Pressable>
-      )}
+    <EliteCard tone="green" style={styles.upload}>
+      <View style={styles.spread}>
+        <Text style={styles.uploadTitle}>SUBMIT A CHUG</Text>
+        {creditable && creditable.length > 0 && (
+          <Pressable onPress={chooseCredit} disabled={uploading} hitSlop={6} accessibilityRole="button">
+            <Text style={eliteText.small}>
+              Credit to <Text style={eliteText.link}>{creditTo?.name ?? 'Me'} ▾</Text>
+            </Text>
+          </Pressable>
+        )}
+      </View>
+      <View style={styles.grades}>
+        <GradeTile title="TIME" caption="Can to mouth" color={Elite.green} />
+        <GradeTile title="SMOOTH" caption="Glass handling" color={Elite.green} />
+        <GradeTile title="HYPE" caption="Roast yourself" color={Elite.peach} />
+      </View>
+      <Text style={eliteText.small}>
+        Record or upload a video and it&apos;s graded automatically. Hype is what you say and do, not how loud the room is: roast yourself for the
+        player who put you here.
+      </Text>
       <View style={styles.uploadButtons}>
-        <Pressable disabled={uploading} onPress={() => pick('camera')} style={({ pressed }) => [styles.uploadButton, (pressed || uploading) && styles.pressed]}>
-          <Text style={styles.uploadButtonText}>Record</Text>
+        <Pressable
+          disabled={uploading}
+          onPress={() => pick('camera')}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.recordButton, (pressed || uploading) && styles.pressed]}>
+          <View style={styles.recordDot} />
+          <Text style={styles.recordText}>Record</Text>
         </Pressable>
-        <Pressable disabled={uploading} onPress={() => pick('library')} style={({ pressed }) => [styles.uploadButton, styles.uploadSecondary, (pressed || uploading) && styles.pressed]}>
-          <Text style={styles.uploadButtonText}>Choose video</Text>
+        <Pressable
+          disabled={uploading}
+          onPress={() => pick('library')}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.chooseButton, (pressed || uploading) && styles.pressed]}>
+          <Text style={styles.chooseText}>Choose video</Text>
         </Pressable>
       </View>
       {uploading && (
         <View style={styles.analyzing}>
           <View style={styles.liveDot} />
-          <Text style={styles.soft}>Analyzing your chug…</Text>
+          <Text style={eliteText.small}>Analyzing your chug…</Text>
         </View>
       )}
       {status === 'error' && error && <Text style={styles.error}>{error}</Text>}
-      {status === 'done' && result && !result.can_to_mouth && <Text style={styles.soft}>{result.message}</Text>}
+      {status === 'done' && result && !result.can_to_mouth && <Text style={eliteText.small}>{result.message}</Text>}
       {status === 'done' && result && result.can_to_mouth && (
         // The grade and the roast, for the group chat (2026-10-24).
         <ShareableCard title={`Chug graded ${result.final_score}/10`}>
-        <View style={styles.grade}>
-          <Text style={styles.gradeTitle}>🍺 Grade: {result.final_score}/10</Text>
-          <Text style={styles.small}>
-            {result.duration_seconds}s · smoothness {result.smoothness_score}/10 · hype {result.hype_score}/10
-          </Text>
-          <Text style={styles.gradeNote}>
-            {result.chugs_owed_before > 0
-              ? `Paid down a chug — ${result.chugs_owed_after} still owed.`
-              : 'Nothing owed — logged as a bonus chug for the lifetime count.'}
-          </Text>
-          {result.hype_detail && (
-            <View style={styles.hype}>
-              <Text style={styles.small}>
-                Hype: self-roast {result.hype_detail.self_roast}/4 · comedy {result.hype_detail.comedy}/3 · bit{' '}
-                {result.hype_detail.commitment}/3
-              </Text>
-              {result.hype_detail.quote && <Text style={styles.quote}>“{result.hype_detail.quote}”</Text>}
-              {result.hype_detail.verdict && <Text style={styles.verdict}>{result.hype_detail.verdict}</Text>}
+          <View style={styles.grade}>
+            <View style={styles.gradeTop}>
+              <Hex width={58} color={Elite.green} glow>
+                <Text style={styles.scoreText}>{result.final_score}</Text>
+              </Hex>
+              <View style={styles.flex}>
+                <Text style={eliteText.name}>Graded {result.final_score}/10</Text>
+                <Text style={eliteText.small}>
+                  {result.duration_seconds}s · smoothness {result.smoothness_score}/10 · hype {result.hype_score}/10
+                </Text>
+              </View>
             </View>
-          )}
-          {result.roast && <Text style={styles.roast}>{result.roast}</Text>}
-        </View>
+            <Text style={styles.gradeNote}>
+              {result.chugs_owed_before > 0
+                ? `Paid down a chug — ${result.chugs_owed_after} still owed.`
+                : 'Nothing owed — logged as a bonus chug for the lifetime count.'}
+            </Text>
+            {result.hype_detail && (
+              <>
+                <HypeBars detail={result.hype_detail} />
+                {result.hype_detail.quote && <Text style={styles.quote}>“{result.hype_detail.quote}”</Text>}
+                {result.hype_detail.verdict && <Text style={eliteText.small}>{result.hype_detail.verdict}</Text>}
+              </>
+            )}
+            {result.roast && <Text style={eliteText.body}>{result.roast}</Text>}
+          </View>
         </ShareableCard>
       )}
-    </NeonPanel>
+    </EliteCard>
   );
 }
 
-function LeaderboardRow(props: { row: ChugLeaderboardRow; rank: number; divided: boolean; isCommissioner: boolean; history: ChugLedgerEvent[] }) {
+function GradeTile({ title, caption, color }: { title: string; caption: string; color: string }) {
+  return (
+    <View style={styles.gradeTile}>
+      <Text style={[styles.gradeTileTitle, { color }]}>{title}</Text>
+      <Text style={styles.gradeTileCaption}>{caption}</Text>
+    </View>
+  );
+}
+
+// The hype grade's parts (self-roast out of 4, comedy and the bit out of 3).
+function HypeBars({ detail }: { detail: { self_roast: number; comedy: number; commitment: number } }) {
+  const bars = [
+    { label: 'Self-roast', value: detail.self_roast, max: 4 },
+    { label: 'Comedy', value: detail.comedy, max: 3 },
+    { label: 'Commitment', value: detail.commitment, max: 3 },
+  ];
+  return (
+    <View style={styles.hypeBars}>
+      {bars.map((b) => (
+        <View key={b.label} style={styles.flex} accessible accessibilityLabel={`${b.label} ${b.value} of ${b.max}`}>
+          <Text style={styles.hypeLabel}>
+            {b.label} {b.value}/{b.max}
+          </Text>
+          <View style={styles.bar}>
+            <View style={[styles.barFill, { width: `${Math.max(0, Math.min(1, b.value / b.max)) * 100}%` }]} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const PIPS_SHOWN = 8;
+
+function LeaderboardRow(props: { row: ChugLeaderboardRow; divided: boolean; isCommissioner: boolean; history: ChugLedgerEvent[] }) {
   const { row } = props;
 
   async function run(action: () => Promise<unknown>) {
@@ -250,43 +358,50 @@ function LeaderboardRow(props: { row: ChugLeaderboardRow; rank: number; divided:
     ]);
   }
 
+  const owed = row.outstanding_owed;
+  const sub = [`${row.completed}/${row.owed} done`, row.avg_grade !== null ? `avg ${row.avg_grade}` : null, `lifetime ${row.lifetime_completed}`]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
-    <Pressable
-      disabled={!props.isCommissioner}
-      onLongPress={commishMenu}
-      style={[styles.row, props.divided && styles.divided]}>
+    <Pressable disabled={!props.isCommissioner} onLongPress={commishMenu} style={[styles.row, props.divided && styles.divided]}>
       <View style={styles.rowTop}>
-        <View style={styles.rowLeft}>
-          <Text style={styles.rank}>{props.rank}</Text>
-          <Text style={styles.name}>{row.owner_name}</Text>
+        <View style={styles.flex}>
+          <Text style={eliteText.name}>{row.owner_name}</Text>
+          <Text style={eliteText.small}>{sub}</Text>
         </View>
-        <View style={styles.rowRight}>
-          <Text style={styles.value}>
-            {row.completed}/{row.owed} done
-          </Text>
-          {row.avg_grade !== null && <Text style={styles.small}>avg {row.avg_grade}/10</Text>}
-        </View>
-      </View>
-      <View style={styles.badges}>
-        {row.outstanding_owed > 0 && (
-          <View style={[styles.badge, styles.owedBadge]}>
-            <Text style={styles.owedText}>{row.outstanding_owed} owed right now</Text>
+        {owed > 0 ? (
+          <View style={styles.pips} accessible accessibilityLabel={`${owed} owed right now`}>
+            {Array.from({ length: Math.min(owed, PIPS_SHOWN) }, (_, i) => (
+              <Hex key={i} width={12} color={Elite.orange} fill={Elite.orange} strokeWidth={1} />
+            ))}
+            {owed > PIPS_SHOWN && <Text style={styles.morePips}>+{owed - PIPS_SHOWN}</Text>}
+          </View>
+        ) : row.fined_owed === 0 ? (
+          <Text style={styles.paidUp}>Paid up</Text>
+        ) : null}
+        {row.doubled_weeks.length > 0 && owed > 0 && (
+          <View style={styles.doubled}>
+            <Text style={styles.doubledText}>×2</Text>
           </View>
         )}
-        {row.fined_owed > 0 && (
-          <View style={[styles.badge, styles.fineBadge]}>
-            <Text style={styles.fineText}>
-              ${row.fine_amount} fine ({row.fined_owed} chugs)
-            </Text>
-          </View>
-        )}
-        <Text style={styles.small}>Lifetime: {row.lifetime_completed}</Text>
-        {props.isCommissioner && (
-          <Pressable onPress={commishMenu} hitSlop={6}>
-            <Text style={styles.link}>Manage</Text>
-          </Pressable>
-        )}
       </View>
+      {(row.fined_owed > 0 || props.isCommissioner) && (
+        <View style={styles.badges}>
+          {row.fined_owed > 0 && (
+            <View style={styles.fineBadge}>
+              <Text style={styles.fineText}>
+                ${row.fine_amount} fine ({row.fined_owed} chugs)
+              </Text>
+            </View>
+          )}
+          {props.isCommissioner && (
+            <Pressable onPress={commishMenu} hitSlop={6} accessibilityRole="button">
+              <Text style={eliteText.link}>Manage</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
       <ChugBreakdown events={props.history} />
       {correcting && (
         <CorrectionSheet
@@ -300,6 +415,110 @@ function LeaderboardRow(props: { row: ChugLeaderboardRow; rank: number; divided:
         />
       )}
     </Pressable>
+  );
+}
+
+// The newest few show; the rest wait behind "Show more", like the web's
+// ChugFeed.
+const CHUGS_SHOWN = 4;
+
+function RecentChugs({ chugs }: { chugs: ChugFeedEntry[] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? chugs : chugs.slice(0, CHUGS_SHOWN);
+  const best = Math.max(...chugs.map((c) => c.final_score));
+  return (
+    <View style={styles.section}>
+      <EliteLabel>RECENT CHUGS</EliteLabel>
+      {shown.map((c) => (
+        <ChugCard key={c.id} chug={c} lit={c.final_score === best} />
+      ))}
+      {chugs.length > CHUGS_SHOWN && (
+        <Pressable
+          onPress={() => {
+            haptics.tap();
+            setAll(!all);
+          }}
+          style={({ pressed }) => [styles.moreBtn, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: all }}>
+          <Text style={styles.moreText}>{all ? 'Show fewer' : `Show ${chugs.length - CHUGS_SHOWN} more`}</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+// One graded chug: its score in a cell, the quote, the hype grade and the
+// roast. Play opens the video (a short-lived signed URL from GET
+// /chug/{id}/video).
+function ChugCard({ chug, lit }: { chug: ChugFeedEntry; lit: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [readAll, setReadAll] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+
+  async function toggle() {
+    if (!chug.has_video) return;
+    const next = !open;
+    setOpen(next);
+    if (next && !url && status !== 'loading') {
+      setStatus('loading');
+      try {
+        setUrl((await api.chugVideoUrl(chug.id)).url);
+        setStatus('idle');
+      } catch {
+        setStatus('error');
+      }
+    }
+  }
+
+  const color = lit ? Elite.green : 'rgba(245,244,236,0.4)';
+  return (
+    <EliteCard tone={lit ? 'green' : 'plain'} style={styles.chug}>
+      <View style={styles.chugTop}>
+        <Hex width={56} color={color} fill={lit ? '#0f1a12' : Elite.cell} glow={lit}>
+          <Text style={[styles.scoreText, { color: lit ? Elite.green : Elite.cream }]}>{chug.final_score}</Text>
+        </Hex>
+        <View style={styles.flex}>
+          <Text style={eliteText.name}>{chug.owner_name}</Text>
+          <Text style={eliteText.small}>{[chug.week !== null ? `Week ${chug.week}` : null, chug.has_video ? null : 'no video'].filter(Boolean).join(' · ')}</Text>
+        </View>
+        {chug.has_video && (
+          <Pressable
+            onPress={toggle}
+            accessibilityRole="button"
+            accessibilityLabel={`${open ? 'Hide' : 'Play'} ${chug.owner_name}'s chug`}
+            style={({ pressed }) => [styles.play, lit && { borderColor: 'rgba(57,255,20,0.5)' }, pressed && styles.pressed]}>
+            <Text style={[styles.playText, { color: lit ? Elite.green : Elite.cream }]}>{open ? '■' : '▶'}</Text>
+          </Pressable>
+        )}
+      </View>
+      {open && (
+        <View style={styles.videoWrap}>
+          {url ? (
+            <ChugVideo url={url} />
+          ) : status === 'error' ? (
+            <Text style={styles.error}>Couldn&apos;t load the video — try again.</Text>
+          ) : (
+            <Text style={eliteText.small}>Loading…</Text>
+          )}
+        </View>
+      )}
+      {chug.hype_detail?.quote && <Text style={styles.quote}>“{chug.hype_detail.quote}”</Text>}
+      {chug.hype_detail && <HypeBars detail={chug.hype_detail} />}
+      {chug.roast && (
+        <>
+          <Text style={eliteText.body} numberOfLines={readAll ? undefined : 3}>
+            {chug.roast}
+          </Text>
+          {chug.roast.length > 160 && (
+            <Pressable onPress={() => setReadAll(!readAll)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: readAll }}>
+              <Text style={eliteText.link}>{readAll ? 'Show less' : 'Read the whole roast'}</Text>
+            </Pressable>
+          )}
+        </>
+      )}
+    </EliteCard>
   );
 }
 
@@ -370,59 +589,64 @@ const styles = StyleSheet.create({
   sheetSave: { backgroundColor: '#fbbf24', borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, paddingVertical: 10 },
   sheetSaveText: { color: '#1a1205', fontSize: 15, fontWeight: '700' },
   dimmed: { opacity: 0.5 },
+  small: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.lg },
-  titleRow: { flexDirection: 'row', alignItems: 'center' },
-  title: { fontSize: 24, textTransform: 'none', letterSpacing: 0 },
-  tabs: { gap: Spacing.sm },
-  tab: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 6 },
-  tabActive: { backgroundColor: SectionColors.chug, borderColor: SectionColors.chug },
-  tabText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
-  tabTextActive: { color: '#000' },
-  rule: { color: Colors.textSecondary, fontSize: 14, lineHeight: 20 },
-  section: { gap: Spacing.sm },
-  sectionTitle: { fontSize: 18, textTransform: 'none', letterSpacing: 0 },
-  muted: { color: Colors.textSecondary, fontSize: 14 },
-  list: { padding: 0, backgroundColor: withAlpha(Colors.surface, 0.92) },
-  upload: { gap: Spacing.sm },
-  kicker: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
-  soft: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
-  link: { color: Colors.accent, fontWeight: '600' },
-  uploadButtons: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.xs },
-  uploadButton: { backgroundColor: '#d97706', borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
-  uploadSecondary: { backgroundColor: 'rgba(217,119,6,0.35)' },
-  uploadButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  flex: { flex: 1 },
+  spread: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
+  section: { gap: Spacing.md },
+  muted: { color: Elite.soft, fontSize: 14 },
   pressed: { opacity: 0.6 },
+  // You owe
+  owe: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16 },
+  oweCount: { fontFamily: ANTON, fontSize: 30, lineHeight: 34, color: '#2a1102' },
+  oweLabel: { fontSize: 8, fontWeight: '800', letterSpacing: 0.5, color: '#2a1102' },
+  led: { fontFamily: ANTON, fontSize: 28, lineHeight: 34, letterSpacing: 2, color: Elite.peach, textShadowColor: 'rgba(255,122,26,0.8)', textShadowRadius: 10 },
+  fineLine: { color: '#f87171', fontSize: 13, fontWeight: '700' },
+  // Submit
+  upload: { padding: 16, gap: 12 },
+  uploadTitle: { fontFamily: ANTON, fontSize: 22, lineHeight: 28, color: Elite.cream },
+  grades: { flexDirection: 'row', gap: 8 },
+  gradeTile: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 14, backgroundColor: '#0f141b' },
+  gradeTileTitle: { fontFamily: ANTON, fontSize: 17, lineHeight: 22 },
+  gradeTileCaption: { color: Elite.soft, fontSize: 11 },
+  uploadButtons: { flexDirection: 'row', gap: 10 },
+  recordButton: { flex: 1.3, minHeight: 52, borderRadius: 16, backgroundColor: Elite.orange, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, shadowColor: Elite.orange, shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
+  recordDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#1a0b00' },
+  recordText: { color: '#1a0b00', fontSize: 16, fontWeight: '800' },
+  chooseButton: { flex: 1, minHeight: 52, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  chooseText: { color: Elite.cream, fontSize: 15, fontWeight: '700' },
   analyzing: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.live },
   error: { color: Colors.loss, fontSize: 14 },
-  grade: {
-    gap: 4,
-    padding: Spacing.md,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
-    backgroundColor: 'rgba(245,158,11,0.06)',
-  },
-  gradeTitle: { color: Colors.text, fontSize: 18, fontWeight: '600' },
-  gradeNote: { color: '#fbbf24', fontSize: 12, fontWeight: '500' },
-  roast: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 19, marginTop: 4 },
-  hype: { gap: 3, marginTop: 2 },
-  quote: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontStyle: 'italic' },
-  verdict: { color: 'rgba(255,255,255,0.7)', fontSize: 13, lineHeight: 18 },
-  small: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
-  row: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: 6 },
-  divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.05)' },
-  rowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flex: 1 },
-  rowRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  rank: { width: 20, color: 'rgba(255,255,255,0.5)', fontSize: 14, fontVariant: ['tabular-nums'] },
-  name: { color: Colors.text, fontSize: 14, fontWeight: '500', flexShrink: 1 },
-  value: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontVariant: ['tabular-nums'] },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.sm, marginLeft: 32 },
-  badge: { borderRadius: Radius.pill, paddingHorizontal: 8, paddingVertical: 2 },
-  owedBadge: { backgroundColor: 'rgba(245,158,11,0.15)' },
-  owedText: { color: '#fbbf24', fontSize: 12, fontWeight: '500' },
-  fineBadge: { backgroundColor: 'rgba(239,68,68,0.15)' },
+  grade: { gap: 8, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(57,255,20,0.35)', backgroundColor: '#0f141b' },
+  gradeTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  gradeNote: { color: Elite.peach, fontSize: 12, fontWeight: '600' },
+  // Hype
+  hypeBars: { flexDirection: 'row', gap: 10 },
+  hypeLabel: { color: Elite.soft, fontSize: 11, marginBottom: 4 },
+  bar: { height: 6, borderRadius: 3, backgroundColor: 'rgba(245,244,236,0.12)', overflow: 'hidden' },
+  barFill: { height: 6, borderRadius: 3, backgroundColor: Elite.orange },
+  quote: { fontFamily: SATISFY, fontSize: 19, lineHeight: 25, color: '#ffd0a0' },
+  // The Tab
+  row: { paddingHorizontal: 14, paddingVertical: 12, gap: 6 },
+  divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.08)' },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  pips: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  morePips: { color: Elite.peach, fontSize: 12, fontWeight: '800', marginLeft: 2 },
+  paidUp: { color: Elite.green, fontSize: 12, fontWeight: '700' },
+  doubled: { borderRadius: 6, backgroundColor: Elite.peach, paddingHorizontal: 6, paddingVertical: 2 },
+  doubledText: { color: '#1a0b00', fontSize: 11, fontWeight: '800' },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.sm },
+  fineBadge: { borderRadius: Radius.pill, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: 'rgba(239,68,68,0.15)' },
   fineText: { color: '#f87171', fontSize: 12, fontWeight: '500' },
+  // Recent chugs
+  chug: { padding: 16, gap: 12 },
+  chugTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  scoreText: { fontFamily: ANTON, fontSize: 19, lineHeight: 24, color: Elite.green },
+  play: { width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', backgroundColor: '#0f141b', alignItems: 'center', justifyContent: 'center' },
+  playText: { fontSize: 15 },
+  videoWrap: { borderRadius: 14, overflow: 'hidden' },
+  moreBtn: { alignSelf: 'center', minHeight: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', justifyContent: 'center' },
+  moreText: { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '600' },
 });

@@ -12,6 +12,7 @@ import { nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, slotDisplayLabel, starterSortIndex } from "@/lib/rosterSlots";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
 import { formatPositionRank, rankColorVar } from "@/lib/positionRank";
+import { ANTON, ELITE, Hex } from "@/components/elite/Elite";
 
 // "Jason Myers" -> "J. Myers" — the reference layout (real ESPN
 // matchup screen, 2026-09) always shows first-initial + last name, not
@@ -232,11 +233,14 @@ function PlayerCell({
   mounted,
   onOpen,
   onOpenBreakdown,
+  winning = false,
 }: {
   player: RosterPlayer | null;
   mounted: boolean;
   onOpen: (sleeperPlayerId: string) => void;
   onOpenBreakdown: (player: RosterPlayer) => void;
+  // Elite pass (2026-10-31): this side is winning the slot.
+  winning?: boolean;
 }) {
   if (!player) return <div className="min-w-0 flex-1" />;
   const clickable = typeof player.player_id === "string";
@@ -264,7 +268,13 @@ function PlayerCell({
 
   const nameSpan = (
     <>
+      {isLive && <span className="mr-1 mb-px inline-block size-[7px] rounded-full bg-[#39ff14] shadow-[0_0_6px_#39ff14]" aria-label="Playing now" />}
       <span className={isLive ? undefined : "text-black/50 dark:text-white/50"}>{displayName(player)}</span>
+      {player.is_redzone && (
+        <span className="ml-1.5 rounded px-1 text-[9px] font-extrabold tracking-wider text-[#1a0b00]" style={{ background: ELITE.orange }}>
+          RZ
+        </span>
+      )}
       {logo && (
         // eslint-disable-next-line @next/next/no-img-element -- ESPN's CDN, not a static asset next/image can optimize.
         <img src={logo} alt="" className="mb-1.5 ml-1 inline-block h-3 w-3 shrink-0 self-end object-contain" />
@@ -290,11 +300,8 @@ function PlayerCell({
   const scoreSpan = (
     <span className="flex shrink-0 flex-col items-end leading-tight">
       <span
-        className={
-          scored != null
-            ? "text-sm font-semibold tabular-nums"
-            : "text-sm tabular-nums text-black/50 dark:text-white/50"
-        }
+        className={`${ANTON} text-lg leading-tight tabular-nums ${scored != null ? "" : "text-black/50 dark:text-white/50"}`}
+        style={scored != null && winning ? { color: ELITE.green } : undefined}
       >
         {scored != null
           ? scored.toFixed(1)
@@ -331,7 +338,7 @@ function PlayerCell({
   // entire row amber while their team has the ball. Red zone wins over
   // plain "on offense" since it's the more specific, more urgent state.
   const highlightClass = player.is_redzone
-    ? "bg-red-500/10 ring-1 ring-red-500/30"
+    ? "bg-[#ff7a1a]/10 ring-1 ring-[#ff7a1a]/35"
     : player.on_offense
       ? "bg-amber-400/10 ring-1 ring-amber-400/30"
       : "";
@@ -431,28 +438,52 @@ function buildComparisonRows(
   return rows;
 }
 
+// Who's winning a slot: orange for the left (home) side, green for the
+// right, grey until one side is ahead.
+function slotColor(row: ComparisonRow): string {
+  const a = row.home?.points_scored ?? null;
+  const b = row.away?.points_scored ?? null;
+  if (a === null && b === null) return "rgba(245,244,236,.25)";
+  if ((a ?? 0) > (b ?? 0)) return ELITE.orange;
+  if ((b ?? 0) > (a ?? 0)) return ELITE.green;
+  return "rgba(245,244,236,.25)";
+}
+
 function ComparisonRows({
   rows,
   mounted,
   onOpen,
   onOpenBreakdown,
+  bench = false,
 }: {
   rows: ComparisonRow[];
   mounted: boolean;
   onOpen: (sleeperPlayerId: string) => void;
   onOpenBreakdown: (player: RosterPlayer) => void;
+  bench?: boolean;
 }) {
   return (
-    <div className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-      {rows.map((row, i) => (
-        <div key={i} className="grid grid-cols-[1fr_2.5rem_1fr] items-center gap-2 py-4">
-          <PlayerCell player={row.home} mounted={mounted} onOpen={onOpen} onOpenBreakdown={onOpenBreakdown} />
-          <span className="text-center text-[11px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-            {row.slot}
-          </span>
-          <PlayerCell player={row.away} mounted={mounted} onOpen={onOpen} onOpenBreakdown={onOpenBreakdown} />
-        </div>
-      ))}
+    <div className="flex flex-col divide-y divide-white/[0.08]">
+      {rows.map((row, i) => {
+        const color = bench ? "rgba(245,244,236,.18)" : slotColor(row);
+        const lit = color === ELITE.orange || color === ELITE.green;
+        return (
+          <div key={i} className="grid grid-cols-[1fr_2.75rem_1fr] items-center gap-2 py-3.5">
+            <PlayerCell player={row.home} mounted={mounted} onOpen={onOpen} onOpenBreakdown={onOpenBreakdown} winning={lit && color === ELITE.orange} />
+            <span className="flex justify-center">
+              <Hex size={42} color={color} rim={2}>
+                <span
+                  className="max-w-[34px] truncate text-center text-[10px] font-extrabold tracking-wide uppercase"
+                  style={{ color: lit ? (color === ELITE.orange ? ELITE.peach : ELITE.green) : ELITE.cream }}
+                >
+                  {row.slot}
+                </span>
+              </Hex>
+            </span>
+            <PlayerCell player={row.away} mounted={mounted} onOpen={onOpen} onOpenBreakdown={onOpenBreakdown} winning={lit && color === ELITE.green} />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -485,6 +516,7 @@ export function StarterComparisonTable({
   const [mounted, setMounted] = useState(false);
   const [rates, setRates] = useState<Record<string, number>>({});
   const [breakdownPlayer, setBreakdownPlayer] = useState<RosterPlayer | null>(null);
+  const [showBench, setShowBench] = useState(false);
 
   useEffect(() => {
     // setTimeout(0), not a direct setState call in the effect body —
@@ -516,10 +548,17 @@ export function StarterComparisonTable({
       <ComparisonRows rows={starterRows} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
 
       {benchRows.length > 0 && (
-        <div className="mt-3 flex flex-col gap-1 border-t border-black/10 pt-3 dark:border-white/10">
-          <h3 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Bench</h3>
-          <ComparisonRows rows={benchRows} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
-        </div>
+        <>
+          <button
+            type="button"
+            onClick={() => setShowBench(!showBench)}
+            aria-expanded={showBench}
+            className="min-h-11 border-t border-white/[0.08] text-[13px] font-semibold text-white/75 hover:text-white"
+          >
+            {showBench ? "Hide bench" : "Bench ›"}
+          </button>
+          {showBench && <ComparisonRows rows={benchRows} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} bench />}
+        </>
       )}
 
       {breakdownPlayer && (

@@ -29,7 +29,7 @@ export function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function ChugVideo({ url }: { url: string }) {
+export function ChugVideo({ url }: { url: string }) {
   const player = useVideoPlayer(url, (p) => p.play());
   return <VideoView player={player} nativeControls contentFit="contain" style={styles.video} fullscreenOptions={{ enable: true }} />;
 }
