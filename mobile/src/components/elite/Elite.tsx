@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import Svg, { Polygon } from 'react-native-svg';
+import Svg, { ClipPath, Defs, Image as SvgImage, Polygon } from 'react-native-svg';
 
 import { Text } from '@/components/Text';
 import { haptics } from '@/lib/haptics';
@@ -48,13 +48,17 @@ export function hexPoints(w: number, h: number, inset = 0, offset = 0): string {
 export const HEX_RATIO = 1.1547;
 
 /** One honeycomb cell with its content centered: `color` is the rim,
- *  `fill` the glass, `glow` a soft halo of the rim's color. */
+ *  `fill` the glass, `glow` a soft halo of the rim's color. `image` (an
+ *  owner's profile picture) fills the cell instead of its content, and
+ *  `badge` (a rank or seed) sits on its bottom edge. */
 export function Hex({
   width,
   color,
   fill = Elite.cell,
   glow = false,
   strokeWidth = 2,
+  image,
+  badge,
   style,
   children,
 }: {
@@ -63,9 +67,12 @@ export function Hex({
   fill?: string;
   glow?: boolean;
   strokeWidth?: number;
+  image?: string | null;
+  badge?: string | number | null;
   style?: StyleProp<ViewStyle>;
   children?: ReactNode;
 }) {
+  const clipId = `hex${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const h = width * HEX_RATIO;
   const pad = glow ? 9 : 2;
   const points = hexPoints(width, h, strokeWidth / 2 + 0.5, pad);
@@ -79,8 +86,24 @@ export function Hex({
           </>
         )}
         <Polygon points={points} fill={fill} stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+        {image ? (
+          <>
+            <Defs>
+              <ClipPath id={clipId}>
+                <Polygon points={hexPoints(width, h, strokeWidth + 0.5, pad)} />
+              </ClipPath>
+            </Defs>
+            <SvgImage href={{ uri: image }} x={pad} y={pad} width={width} height={h} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clipId})`} />
+            <Polygon points={points} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          </>
+        ) : null}
       </Svg>
-      {children}
+      {image ? null : children}
+      {badge !== undefined && badge !== null && (
+        <View style={[styles.hexBadge, { borderColor: color }]}>
+          <Text style={[styles.hexBadgeText, { color: color === Elite.grey ? Elite.cream : color }]}>{badge}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -313,6 +336,8 @@ export const eliteText = StyleSheet.create({
 
 const styles = StyleSheet.create({
   honeycomb: { alignItems: 'center', paddingVertical: 4 },
+  hexBadge: { position: 'absolute', bottom: -4, minWidth: 22, paddingHorizontal: 5, borderRadius: 8, borderWidth: 1, backgroundColor: Elite.deep, alignItems: 'center' },
+  hexBadgeText: { fontFamily: ANTON, fontSize: 11, lineHeight: 15 },
   honeyRow: { flexDirection: 'row', justifyContent: 'center' },
   titleBlock: { alignItems: 'center', gap: 2 },
   kicker: { fontFamily: SATISFY, fontSize: 24, lineHeight: 30, color: Elite.peach, textShadowColor: 'rgba(255,122,26,0.7)', textShadowRadius: 10 },

@@ -40,6 +40,7 @@ import {
   useLeagueChanges,
   useMatchupContext,
   useMe,
+  useOwners,
   usePlayoffOdds,
   usePolls,
   usePowerRankingsTrend,
@@ -68,12 +69,20 @@ function useMyTeamId(season: number | null): number | null {
   return teams.find((t) => t.owner_id === me.owner_id)?.team_id ?? null;
 }
 
+// Each owner's profile picture (Settings > Team Logo, per league), so
+// the cells show faces instead of initials (2026-10-31).
+function useOwnerPhotos(): Map<number, string> {
+  const owners = useOwners().data ?? [];
+  return new Map(owners.filter((o) => o.logo_url).map((o) => [o.owner_id, o.logo_url!]));
+}
+
 // ---- League (overview): The Hive ----
 
 export function LeagueOverview({ season }: { season: number | null }) {
   const me = useMe().data;
   const teams = useSeasonTeams(season).data ?? [];
   const rankings = useLatestPowerRankings(season).data?.rankings ?? [];
+  const photos = useOwnerPhotos();
   const rankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
   const recordByTeam = new Map(rankings.map((r) => [r.team_id, r.record ?? null]));
   const { width } = useWindowDimensions();
@@ -123,9 +132,14 @@ export function LeagueOverview({ season }: { season: number | null }) {
                 accessibilityRole="button"
                 accessibilityLabel={`${t.team_name}, ${t.owner_name}${rank ? `, power rank ${rank}` : ''}${isMine ? ', your team' : ''}`}
                 style={({ pressed }) => pressed && { opacity: 0.7 }}>
-                <Hex width={cell} color={color} fill={isMine ? '#2a1a0c' : Elite.cell} glow={isMine}>
+                <Hex
+                  width={cell}
+                  color={color}
+                  fill={isMine ? '#2a1a0c' : Elite.cell}
+                  glow={isMine}
+                  image={photos.get(t.owner_id)}
+                  badge={rank !== undefined ? `#${rank}` : null}>
                   <Text style={styles.hiveInitials}>{initials(t.owner_name)}</Text>
-                  {rank !== undefined && <Text style={[styles.hiveRank, { color }]}>#{rank}</Text>}
                 </Hex>
               </Pressable>
             );
@@ -164,7 +178,7 @@ export function LeagueOverview({ season }: { season: number | null }) {
                 href={{ pathname: '/team/[id]', params: { id: String(t.team_id) } }}
                 menu={[{ title: 'Owner Profile', icon: 'person.crop.circle', onPress: () => openOwner(t.owner_id) }]}
                 style={styles.listMain}>
-                <Hex width={36} color={isMine ? Elite.orange : lit ? Elite.green : Elite.grey}>
+                <Hex width={36} color={isMine ? Elite.orange : lit ? Elite.green : Elite.grey} image={photos.get(t.owner_id)}>
                   <Text style={styles.cellInitials}>{initials(t.owner_name)}</Text>
                 </Hex>
                 <View style={styles.flexShrink}>
@@ -277,6 +291,8 @@ function StandingsTable(props: {
 }) {
   const me = useMe().data;
   const myTeamId = useMyTeamId(props.season);
+  const photos = useOwnerPhotos();
+  const ownerByTeam = new Map((useSeasonTeams(props.season).data ?? []).map((t) => [t.team_id, t.owner_id]));
   const rankings = useLatestPowerRankings(props.season).data?.rankings ?? [];
   const rankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
   // Simulated playoff chances, this season only (2026-10).
@@ -328,9 +344,15 @@ function StandingsTable(props: {
                   champion && styles.championRow,
                   loser && styles.loserRow,
                 ]}>
-                <Hex width={36} color={seedColor}>
-                  <Text style={[styles.seedText, { color: isMine || inPlayoffs ? seedColor : Elite.cream }]}>{seed}</Text>
-                </Hex>
+                {(() => {
+                  const ownerId = ownerByTeam.get(row.team_id);
+                  const photo = ownerId !== undefined ? photos.get(ownerId) : undefined;
+                  return (
+                    <Hex width={40} color={seedColor} image={photo} badge={photo ? seed : null}>
+                      <Text style={[styles.seedText, { color: isMine || inPlayoffs ? seedColor : Elite.cream }]}>{seed}</Text>
+                    </Hex>
+                  );
+                })()}
                 <View style={styles.flex}>
                   <PreviewLink href={{ pathname: '/team/[id]', params: { id: String(row.team_id) } }} style={styles.nameWithBadge}>
                     <Text style={eliteText.name}>{row.team_name}</Text>
@@ -559,6 +581,7 @@ function luckLabel(luck: number | undefined): string {
 function PowerWeek({ season }: { season: number | null }) {
   const q = useWeekPowerRankings(season);
   const myTeamId = useMyTeamId(season);
+  const photos = useOwnerPhotos();
   if (q.isPending) return <LoadingState />;
   if (!q.data || q.data.week === null) {
     return <Muted>No power rankings computed for {season} yet — this fills in once a sync has run for at least one completed week.</Muted>;
@@ -570,7 +593,7 @@ function PowerWeek({ season }: { season: number | null }) {
       <Text style={[eliteText.kickerCaps, styles.center]}>WEEK {q.data.week}</Text>
       <EliteCard tone="orange" style={styles.throne}>
         <View style={styles.throneTop}>
-          <Hex width={78} color={Elite.peach} fill={Elite.orange} glow>
+          <Hex width={78} color={Elite.peach} fill={Elite.orange} glow image={photos.get(top.owner_id)} badge={photos.get(top.owner_id) ? '#1' : null}>
             <Text style={styles.throneRank}>1</Text>
           </Hex>
           <View style={styles.flex}>
@@ -597,7 +620,7 @@ function PowerWeek({ season }: { season: number | null }) {
             const color = isMine ? Elite.orange : r.power_rank <= 4 ? Elite.green : Elite.grey;
             return (
               <View key={r.team_id} style={[styles.powerRow, i > 0 && styles.divided, isMine && styles.mineRow]}>
-                <Hex width={40} color={color}>
+                <Hex width={44} color={color} image={photos.get(r.owner_id)} badge={photos.get(r.owner_id) ? r.power_rank : null}>
                   <Text style={[styles.powerRankText, { color: color === Elite.grey ? Elite.cream : color }]}>{r.power_rank}</Text>
                 </Hex>
                 <View style={styles.flex}>
@@ -863,10 +886,11 @@ function RivalryCard({ rivalry: r, main }: { rivalry: Rivalry; main: boolean }) 
 }
 
 function Fighter({ id, name, leads, mine }: { id: number; name: string; leads: boolean; mine: boolean }) {
+  const photo = useOwnerPhotos().get(id);
   const color = mine ? Elite.orange : leads ? Elite.green : Elite.grey;
   return (
     <Pressable onPress={() => openOwner(id)} style={styles.fighter} accessibilityRole="button" accessibilityLabel={`${name}${leads ? ', leads the series' : ''}`}>
-      <Hex width={56} color={color} glow={leads || mine}>
+      <Hex width={60} color={color} glow={leads || mine} image={photo}>
         <Text style={[styles.fighterInitials, { color: leads || mine ? color : Elite.cream }]}>{initials(name)}</Text>
       </Hex>
       <Text style={styles.fighterName} numberOfLines={2}>
@@ -1219,7 +1243,6 @@ const styles = StyleSheet.create({
   inviteButton: { minHeight: 38, justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: Elite.green, backgroundColor: 'rgba(57,255,20,0.08)', paddingHorizontal: 14 },
   inviteText: { color: Elite.green, fontSize: 13, fontWeight: '700' },
   hiveInitials: { fontFamily: ANTON, fontSize: 20, lineHeight: 24, color: Elite.cream },
-  hiveRank: { fontSize: 10, fontWeight: '800' },
   yourTeam: { padding: 16, gap: 10 },
   yourTeamName: { fontFamily: ANTON, fontSize: 28, lineHeight: 34, color: Elite.cream },
   buttonRow: { flexDirection: 'row', gap: 8 },

@@ -8,6 +8,7 @@ import {
   getMe,
   getSeasonPowerRankingsTrend,
   getWeekPowerRankings,
+  listOwners,
   listSeasons,
   safeLatestSeason,
     type WeekPowerRanking,
@@ -157,7 +158,13 @@ async function WeekView({
     );
   }
 
-  const { rankings } = await getWeekPowerRankings(season, week, sessionCookie);
+  const [{ rankings }, { owners }] = await Promise.all([
+    getWeekPowerRankings(season, week, sessionCookie),
+    listOwners(sessionCookie).catch(() => ({ owners: [] })),
+  ]);
+  // Each owner's profile picture (Settings > Team Logo) for the cells.
+  const photoByOwner = new Map(owners.filter((o) => o.logo_url).map((o) => [o.owner_id, o.logo_url!]));
+
   if (rankings.length === 0) return <p className="text-sm text-black/50 dark:text-white/50">No data for week {week}.</p>;
   // Elite pass (2026-10-31): #1 on a throne card, the rest as hex-ranked
   // rows with what's behind each rank underneath.
@@ -168,7 +175,7 @@ async function WeekView({
       <span className="text-center text-[11px] font-extrabold tracking-[2px] text-black/55 dark:text-white/60">WEEK {week}</span>
       <EliteCard tone="orange" className="flex flex-col gap-3.5 p-4">
         <div className="flex items-center gap-4">
-          <Hex size={80} color={ELITE.peach} fill={ELITE.orange} glow>
+          <Hex size={80} color={ELITE.peach} fill={ELITE.orange} glow image={photoByOwner.get(top.owner_id)} badge={photoByOwner.has(top.owner_id) ? "#1" : null}>
             <span className={`${ANTON} text-5xl text-[#2a1102]`}>1</span>
           </Hex>
           <div className="min-w-0 flex-1">
@@ -200,7 +207,7 @@ async function WeekView({
             const color = mine ? ELITE.orange : r.power_rank <= 4 ? ELITE.green : ELITE.grey;
             return (
               <div key={r.team_id} className="flex items-center gap-3 border-t border-white/[0.06] px-3.5 py-3 first:border-t-0" style={mine ? { background: "rgba(255,122,26,.10)" } : undefined}>
-                <Hex size={42} color={color} rim={2}>
+                <Hex size={44} color={color} rim={2} image={photoByOwner.get(r.owner_id)} badge={photoByOwner.has(r.owner_id) ? r.power_rank : null}>
                   <span className={`${ANTON} text-xl`} style={{ color: color === ELITE.grey ? ELITE.cream : color }}>
                     {r.power_rank}
                   </span>

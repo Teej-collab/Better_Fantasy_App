@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { chatColorStyle, readableTextColor } from "@/components/chat/MessageBubble";
 import { ColorChoices } from "@/components/settings/ColorChoices";
+import { CardPhotoSection } from "@/components/settings/CardPhotoSection";
 import { LogoUploadCropper } from "@/components/settings/LogoUploadCropper";
 
 // Chat Bubble Color uses the same choices as every color in Settings
@@ -174,6 +175,8 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
           </p>
         )}
       </section>
+
+      <CardPhotoSection />
 
       {initial.team_name !== null && (
         <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">

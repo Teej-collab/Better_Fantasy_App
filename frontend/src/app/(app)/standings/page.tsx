@@ -12,7 +12,9 @@ import {
   getPlayoffOdds,
   getStandings,
   getWeekMatchupContext,
+  listOwners,
   listSeasons,
+  listTeamsServer,
   resolveWeek,
   safeLatestSeason,
   type StandingsRow,
@@ -66,6 +68,7 @@ export default async function StandingsPage({
     { rankings: powerRankings },
     { currentWeek, currentWeekMatchups },
     playoffOdds,
+    [{ owners }, { teams }],
   ] = await Promise.all([
     Promise.all([
       season !== null ? getStandings(season, sessionCookie) : Promise.resolve({ standings: [], playoff_team_count: null }),
@@ -104,7 +107,16 @@ export default async function StandingsPage({
           .then((r) => r.odds)
           .catch(() => null)
       : Promise.resolve(null),
+    // Profile pictures for the seed cells: owner by team, photo by owner.
+    Promise.all([
+      listOwners(sessionCookie).catch(() => ({ owners: [] })),
+      season !== null ? listTeamsServer(sessionCookie, season).catch(() => ({ teams: [] })) : Promise.resolve({ teams: [] }),
+    ]),
   ]);
+  // Each owner's profile picture (Settings > Team Logo) for the cells.
+  const photoByOwner = new Map(owners.filter((o) => o.logo_url).map((o) => [o.owner_id, o.logo_url!]));
+  const ownerByTeam = new Map(teams.map((t) => [t.team_id, t.owner_id]));
+
   const playoffPctByTeam = new Map((playoffOdds?.teams ?? []).map((t) => [t.team_id, t.playoff_pct]));
   const betaLayout = Boolean(myPreferences?.beta_layout);
   const powerRankByTeam = new Map(powerRankings.map((r) => [r.team_id, r.power_rank]));
@@ -164,6 +176,10 @@ export default async function StandingsPage({
                       movement={betaLayout ? movementByTeam.get(row.team_id) : undefined}
                       playoffPct={playoffOdds ? playoffPctByTeam.get(row.team_id) : undefined}
                       mine={row.team_id === myTeamId}
+                      photo={(() => {
+                        const ownerId = ownerByTeam.get(row.team_id);
+                        return ownerId !== undefined ? photoByOwner.get(ownerId) : undefined;
+                      })()}
                       zone={
                         showPlayoffLine && i + 1 <= playoffTeamCount!
                           ? "playoffs"
@@ -214,6 +230,7 @@ function StandingsListRow({
   playoffPct,
   mine,
   zone,
+  photo,
 }: {
   row: StandingsRow;
   rank: number;
@@ -227,6 +244,7 @@ function StandingsListRow({
   playoffPct?: number;
   mine: boolean;
   zone: "playoffs" | "toilet" | null;
+  photo?: string;
 }) {
   const games = row.wins + row.losses + row.ties;
   const ppg = games ? Number(row.points_for) / games : null;
@@ -262,7 +280,7 @@ function StandingsListRow({
       }}
     >
       <span className="flex shrink-0 flex-col items-center gap-0.5">
-        <Hex size={38} color={seedColor} rim={2}>
+        <Hex size={40} color={seedColor} rim={2} image={photo} badge={photo ? rank : null}>
           <span className={`${ANTON} text-lg`} style={{ color: mine || zone === "playoffs" ? seedColor : ELITE.cream }}>
             {rank}
           </span>

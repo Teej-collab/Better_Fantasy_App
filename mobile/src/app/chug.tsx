@@ -106,7 +106,8 @@ export default function ChugScreen() {
 function YouOwe({ deadline, isPast, mine }: { deadline: string | null; isPast: boolean; mine: { outstanding_owed: number; fined_owed: number; fine_amount: number } }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
+    // Ticks every second, so it reads as a live countdown.
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
   const owes = mine.outstanding_owed > 0;
@@ -127,6 +128,7 @@ function YouOwe({ deadline, isPast, mine }: { deadline: string | null; isPast: b
   const dd = left !== null ? Math.floor(left / 86_400_000) : 0;
   const hh = left !== null ? Math.floor((left % 86_400_000) / 3_600_000) : 0;
   const mm = left !== null ? Math.floor((left % 3_600_000) / 60_000) : 0;
+  const ss = left !== null ? Math.floor((left % 60_000) / 1000) : 0;
   const pad = (n: number) => String(n).padStart(2, '0');
   return (
     <EliteCard tone="deep" style={styles.owe}>
@@ -138,7 +140,8 @@ function YouOwe({ deadline, isPast, mine }: { deadline: string | null; isPast: b
         <Text style={eliteText.kickerCaps}>{owes ? (left !== null ? 'DOUBLES AT MNF KICKOFF' : 'DUE BY MNF KICKOFF') : 'FINE OWED'}</Text>
         {owes && left !== null && (
           <Text style={styles.led} accessibilityLabel={`${dd} days ${hh} hours ${mm} minutes until it doubles`}>
-            {pad(dd)} : {pad(hh)} : {pad(mm)}
+            {dd > 0 ? `${pad(dd)} : ` : ''}
+            {pad(hh)} : {pad(mm)} : {pad(ss)}
           </Text>
         )}
         {mine.fined_owed > 0 && (
@@ -601,7 +604,7 @@ const styles = StyleSheet.create({
   owe: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16 },
   oweCount: { fontFamily: ANTON, fontSize: 30, lineHeight: 34, color: '#2a1102' },
   oweLabel: { fontSize: 8, fontWeight: '800', letterSpacing: 0.5, color: '#2a1102' },
-  led: { fontFamily: ANTON, fontSize: 28, lineHeight: 34, letterSpacing: 2, color: Elite.peach, textShadowColor: 'rgba(255,122,26,0.8)', textShadowRadius: 10 },
+  led: { fontFamily: ANTON, fontSize: 28, lineHeight: 34, letterSpacing: 2, fontVariant: ['tabular-nums'], color: Elite.peach, textShadowColor: 'rgba(255,122,26,0.8)', textShadowRadius: 10 },
   fineLine: { color: '#f87171', fontSize: 13, fontWeight: '700' },
   // Submit
   upload: { padding: 16, gap: 12 },

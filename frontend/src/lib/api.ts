@@ -587,6 +587,8 @@ export type SeasonProfile = {
 export type Owner = {
   owner_id: number;
   display_name: string;
+  // Settings > Team Logo (this league's), shown on the elite pages' cells.
+  logo_url?: string | null;
   // Player-card photo (2026-10): a short-lived signed link to the private
   // bucket, only ever returned to members of this league.
   photo_url?: string | null;
@@ -1593,6 +1595,37 @@ export function updateChatColor(chatColor: string | null): Promise<void> {
 // division of labor as the chat image-attachment flow. null removes it.
 export function updateLogo(logoUrl: string | null): Promise<void> {
   return _settingsRequest("/logo", "PUT", { logo_url: logoUrl });
+}
+
+// Your player-card photo in the active league (Settings > Player Card
+// Photo, 2026-10-31): each league keeps its own, in the backend's
+// private bucket (POST/DELETE /owners/{id}/card-photo, the same calls
+// the app's Cards screen makes). The photo is resized in the browser
+// first, so it fits through the /api/backend proxy.
+export async function getMyCardPhotoClient(): Promise<{ ownerId: number; photoUrl: string | null } | null> {
+  const meRes = await fetch("/api/backend/auth/me", { cache: "no-store" });
+  if (!meRes.ok) return null;
+  const me = (await meRes.json()) as Me;
+  if (me.owner_id == null) return null;
+  const res = await fetch("/api/backend/owners", { cache: "no-store" });
+  if (!res.ok) return { ownerId: me.owner_id, photoUrl: null };
+  const { owners } = (await res.json()) as { owners: Owner[] };
+  return { ownerId: me.owner_id, photoUrl: owners.find((o) => o.owner_id === me.owner_id)?.photo_url ?? null };
+}
+
+export async function uploadCardPhotoClient(ownerId: number, photo: Blob): Promise<void> {
+  const form = new FormData();
+  form.append("photo", photo, "card.jpg");
+  const res = await fetch(`/api/backend/owners/${ownerId}/card-photo`, { method: "POST", body: form });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Upload failed (${res.status})`);
+  }
+}
+
+export async function deleteCardPhotoClient(ownerId: number): Promise<void> {
+  const res = await fetch(`/api/backend/owners/${ownerId}/card-photo`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Couldn't remove the photo (${res.status})`);
 }
 
 // Renames the signed-in owner's team for the current season only —

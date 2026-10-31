@@ -41,13 +41,17 @@ export function initials(name: string): string {
 }
 
 /** One honeycomb cell, content centered: `color` is the rim, `fill` the
- *  glass, `glow` a halo of the rim's color. */
+ *  glass, `glow` a halo of the rim's color. `image` (an owner's profile
+ *  picture) fills the cell instead of its content, and `badge` (a rank
+ *  or seed) sits on its bottom edge. */
 export function Hex({
   size,
   color,
   fill = ELITE.cell,
   glow = false,
   rim = 3,
+  image,
+  badge,
   className = "",
   style,
   children,
@@ -57,6 +61,8 @@ export function Hex({
   fill?: string;
   glow?: boolean;
   rim?: number;
+  image?: string | null;
+  badge?: string | number | null;
   className?: string;
   style?: CSSProperties;
   children?: ReactNode;
@@ -64,17 +70,31 @@ export function Hex({
   const h = size * 1.1547;
   return (
     <span
-      className={`inline-flex shrink-0 ${className}`}
+      className={`relative inline-flex shrink-0 ${className}`}
       style={{ filter: glow ? `drop-shadow(0 0 8px ${color}) drop-shadow(0 0 16px ${color}66)` : undefined, ...style }}
     >
       <span className="flex items-center justify-center" style={{ width: size, height: h, clipPath: HEX_CLIP, background: color }}>
         <span
-          className="flex flex-col items-center justify-center leading-none"
-          style={{ width: size - rim * 2, height: h - rim * 2.3, clipPath: HEX_CLIP, background: fill }}
+          className="flex flex-col items-center justify-center bg-cover bg-center leading-none"
+          style={{
+            width: size - rim * 2,
+            height: h - rim * 2.3,
+            clipPath: HEX_CLIP,
+            backgroundColor: fill,
+            backgroundImage: image ? `url("${image}")` : undefined,
+          }}
         >
-          {children}
+          {image ? null : children}
         </span>
       </span>
+      {badge !== undefined && badge !== null && (
+        <span
+          className={`${ANTON} absolute -bottom-1 left-1/2 min-w-[22px] -translate-x-1/2 rounded-lg border px-1.5 text-center text-[11px] leading-[15px]`}
+          style={{ background: ELITE.deep, borderColor: color, color: color === ELITE.grey ? ELITE.cream : color }}
+        >
+          {badge}
+        </span>
+      )}
     </span>
   );
 }

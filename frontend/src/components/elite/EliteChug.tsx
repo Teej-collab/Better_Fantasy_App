@@ -13,7 +13,8 @@ import { ReadMore } from "@/components/elite/ReadMore";
 export function ChugOwe({ deadline, isPast, mine }: { deadline: string | null; isPast: boolean; mine: { outstanding_owed: number; fined_owed: number; fine_amount: number } }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
+    // Ticks every second, so it reads as a live countdown.
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
   const owes = mine.outstanding_owed > 0;
@@ -41,6 +42,7 @@ export function ChugOwe({ deadline, isPast, mine }: { deadline: string | null; i
   const dd = left !== null ? Math.floor(left / 86_400_000) : 0;
   const hh = left !== null ? Math.floor((left % 86_400_000) / 3_600_000) : 0;
   const mm = left !== null ? Math.floor((left % 3_600_000) / 60_000) : 0;
+  const ss = left !== null ? Math.floor((left % 60_000) / 1000) : 0;
   return (
     <EliteCard tone="deep" className="flex items-center gap-4 p-4">
       <Hex size={74} color={ELITE.peach} fill={ELITE.orange} glow>
@@ -53,11 +55,12 @@ export function ChugOwe({ deadline, isPast, mine }: { deadline: string | null; i
         </span>
         {owes && left !== null && (
           <span
-            className={`${ANTON} text-3xl tracking-[2px]`}
+            className={`${ANTON} text-3xl tracking-[2px] tabular-nums`}
             style={{ color: ELITE.peach, textShadow: "0 0 10px rgba(255,122,26,.8)" }}
             aria-label={`${dd} days ${hh} hours ${mm} minutes until it doubles`}
           >
-            {pad(dd)} : {pad(hh)} : {pad(mm)}
+            {dd > 0 ? `${pad(dd)} : ` : ""}
+            {pad(hh)} : {pad(mm)} : {pad(ss)}
           </span>
         )}
         {mine.fined_owed > 0 && (

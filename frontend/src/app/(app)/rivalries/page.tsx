@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { awardsHrefFor, getActiveLeagueName, getMe, listRivalries, listSeasons, safeLatestSeason } from "@/lib/api";
+import { awardsHrefFor, getActiveLeagueName, getMe, listOwners, listRivalries, listSeasons, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
@@ -26,11 +26,15 @@ export default async function RivalriesPage() {
     return <NeedsLeagueCard />;
   }
 
-  const [{ rivalries }, { seasons }, activeLeagueName] = await Promise.all([
+  const [{ rivalries }, { seasons }, activeLeagueName, { owners }] = await Promise.all([
     listRivalries(sessionCookie),
     listSeasons(sessionCookie),
     getActiveLeagueName(sessionCookie),
+    listOwners(sessionCookie).catch(() => ({ owners: [] })),
   ]);
+  // Each owner's profile picture (Settings > Team Logo) for the cells.
+  const photoByOwner = new Map(owners.filter((o) => o.logo_url).map((o) => [o.owner_id, o.logo_url!]));
+
   const latestSeason = safeLatestSeason(seasons);
 
   return (
@@ -44,7 +48,7 @@ export default async function RivalriesPage() {
         <ul className="flex flex-col gap-4">
           {orderForFightCard(rivalries).map(({ rivalry, main }) => (
             <li key={rivalry.id}>
-              <RivalryCard rivalry={rivalry} main={main} myOwnerId={me.owner_id} />
+              <RivalryCard rivalry={rivalry} main={main} myOwnerId={me.owner_id} photoByOwner={photoByOwner} />
             </li>
           ))}
         </ul>
@@ -71,7 +75,17 @@ function orderForFightCard(rivalries: Rivalry[]): { rivalry: Rivalry; main: bool
   return main ? [{ rivalry: main, main: true }, ...rest] : rest;
 }
 
-function RivalryCard({ rivalry: r, main, myOwnerId }: { rivalry: Rivalry; main: boolean; myOwnerId: number | null }) {
+function RivalryCard({
+  rivalry: r,
+  main,
+  myOwnerId,
+  photoByOwner,
+}: {
+  rivalry: Rivalry;
+  main: boolean;
+  myOwnerId: number | null;
+  photoByOwner: Map<number, string>;
+}) {
   const heat = TIER_HEAT[r.tier ?? ""] ?? 1;
   const name = r.name ?? `${r.owner_a_name} vs ${r.owner_b_name}`;
   return (
@@ -105,7 +119,7 @@ function RivalryCard({ rivalry: r, main, myOwnerId }: { rivalry: Rivalry; main: 
         )}
       </div>
       <div className="flex items-center justify-between gap-2">
-        <Fighter id={r.owner_a_id} name={r.owner_a_name} leads={r.all_time_wins_a > r.all_time_wins_b} mine={r.owner_a_id === myOwnerId} />
+        <Fighter id={r.owner_a_id} name={r.owner_a_name} leads={r.all_time_wins_a > r.all_time_wins_b} mine={r.owner_a_id === myOwnerId} photo={photoByOwner.get(r.owner_a_id)} />
         <div className="flex flex-col items-center">
           <span
             className={`${ANTON} leading-none tracking-wider ${main ? "text-5xl" : "text-4xl"}`}
@@ -117,18 +131,18 @@ function RivalryCard({ rivalry: r, main, myOwnerId }: { rivalry: Rivalry; main: 
             ALL-TIME
           </span>
         </div>
-        <Fighter id={r.owner_b_id} name={r.owner_b_name} leads={r.all_time_wins_b > r.all_time_wins_a} mine={r.owner_b_id === myOwnerId} />
+        <Fighter id={r.owner_b_id} name={r.owner_b_name} leads={r.all_time_wins_b > r.all_time_wins_a} mine={r.owner_b_id === myOwnerId} photo={photoByOwner.get(r.owner_b_id)} />
       </div>
       {r.description && <ReadMore text={r.description} more="Read the whole story" className="text-sm leading-relaxed text-[#f5f4ec]/85" />}
     </EliteCard>
   );
 }
 
-function Fighter({ id, name, leads, mine }: { id: number; name: string; leads: boolean; mine: boolean }) {
+function Fighter({ id, name, leads, mine, photo }: { id: number; name: string; leads: boolean; mine: boolean; photo?: string }) {
   const color = mine ? ELITE.orange : leads ? ELITE.green : ELITE.grey;
   return (
     <Link href={`/owners/${id}`} className="flex w-24 flex-col items-center gap-1.5 text-center hover:underline" aria-label={`${name}${leads ? ", leads the series" : ""}`}>
-      <Hex size={60} color={color} glow={leads || mine}>
+      <Hex size={60} color={color} glow={leads || mine} image={photo}>
         <span className={`${ANTON} text-xl`} style={{ color: leads || mine ? color : ELITE.cream }}>
           {initials(name)}
         </span>

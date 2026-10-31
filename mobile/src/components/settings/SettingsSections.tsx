@@ -14,7 +14,8 @@ import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
 import { Colors, DefaultAccent, HoneycombColor, Radius, SectionColors, Spacing, type ThemeName } from '@/constants/theme';
-import { api, uploadChatImage } from '@/lib/api';
+import { api, uploadCardPhoto, uploadChatImage } from '@/lib/api';
+import { pickCardPhoto } from '@/lib/cardPhoto';
 import {
   canScheduleReminders,
   DEFAULT_REMINDER_SETTINGS,
@@ -34,7 +35,7 @@ import { pickChatPhoto } from '@/lib/chatImage';
 import { getIntroSoundMode, setIntroSoundMode, type IntroSoundMode } from '@/lib/introSound';
 import { canUseLiveActivities, liveActivityEnabled, setLiveActivityEnabled } from '@/lib/liveActivity';
 import { registerForPush } from '@/lib/pushRegistration';
-import { queryClient, useFeedbackList, useHouseRules, useMe, useMySettings, useMyUsername, usePreferences } from '@/lib/queries';
+import { queryClient, useFeedbackList, useHouseRules, useMe, useMySettings, useMyUsername, useOwners, usePreferences } from '@/lib/queries';
 import type { MySettings, OwnerPreferences, SundayMode } from '@/lib/types';
 
 // Ports of the web's components/settings/*Section.tsx.
@@ -359,6 +360,74 @@ export function ProfileSettings() {
   return <ProfileForm key={`${q.data.display_name}|${q.data.team_name}`} settings={q.data} />;
 }
 
+// Your player-card photo for the league you're in (2026-10-31): each
+// league keeps its own, like the Team Logo. The same photo the Cards
+// screen's "Change my photo" sets (POST /owners/{id}/card-photo, a
+// private bucket).
+function CardPhotoPanel() {
+  const accent = useAppearance().accent;
+  const me = useMe().data;
+  const owners = useOwners();
+  const mine = owners.data?.find((o) => o.owner_id === me?.owner_id);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (me?.owner_id == null) return null;
+  const ownerId = me.owner_id;
+
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await queryClient.invalidateQueries({ queryKey: ['owners'] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel title="Player Card Photo" description="The picture on your player card in this league. Each league keeps its own.">
+      {error && <Text style={styles.error}>{error}</Text>}
+      <View style={styles.logoRow}>
+        {mine?.photo_url ? (
+          <Image
+            source={{ uri: mine.photo_url, cacheKey: `card-photo-${ownerId}-${mine.photo_version ?? 0}` }}
+            style={styles.cardPhoto}
+            contentFit="cover"
+            accessibilityLabel="Your player card photo"
+          />
+        ) : (
+          <View style={[styles.cardPhoto, styles.cardPhotoEmpty]}>
+            <Text style={styles.linkSmall}>No photo</Text>
+          </View>
+        )}
+        <View style={styles.gapSm}>
+          <Pressable
+            disabled={busy || owners.isPending}
+            onPress={() =>
+              void run(async () => {
+                const uri = await pickCardPhoto();
+                if (uri) await uploadCardPhoto(ownerId, uri);
+              })
+            }
+            style={[styles.secondary, { borderColor: accent }]}
+            accessibilityRole="button">
+            {busy ? <ActivityIndicator color={accent} /> : <Text style={styles.body}>{mine?.photo_url ? 'Change photo' : 'Choose a photo'}</Text>}
+          </Pressable>
+          {mine?.photo_url && (
+            <Pressable disabled={busy} onPress={() => void run(() => api.deleteCardPhoto(ownerId))} accessibilityRole="button">
+              <Text style={styles.linkSmall}>Remove photo</Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+    </Panel>
+  );
+}
+
 function ProfileForm({ settings }: { settings: MySettings }) {
   const accent = useAppearance().accent;
   const [name, setName] = useState(settings.display_name);
@@ -432,6 +501,8 @@ function ProfileForm({ settings }: { settings: MySettings }) {
           </View>
         </View>
       </Panel>
+
+      <CardPhotoPanel />
 
       {settings.team_name !== null && (
         <Panel
@@ -1448,6 +1519,8 @@ const styles = StyleSheet.create({
   saveText: { color: '#000', fontSize: 14, fontWeight: '500' },
   linkSmall: { color: 'rgba(255,255,255,0.5)', fontSize: 12, textDecorationLine: 'underline' },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg },
+  cardPhoto: { width: 66, height: 88, borderRadius: 10, backgroundColor: Colors.surface },
+  cardPhotoEmpty: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.2)' },
   secondary: { backgroundColor: Colors.surface, alignSelf: 'flex-start', borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
   previewRow: { alignItems: 'flex-end' },
   bubble: { maxWidth: '85%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 },

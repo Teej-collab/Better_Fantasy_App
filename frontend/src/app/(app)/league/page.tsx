@@ -6,6 +6,7 @@ import {
   getActiveLeagueName,
   getLatestPowerRankings,
   getMe,
+  listOwners,
   listSeasons,
   listTeamsServer,
   safeLatestSeason,
@@ -46,11 +47,15 @@ export default async function LeaguePage({
   const latestSeason = safeLatestSeason(seasons);
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const [{ teams }, activeLeagueName, { rankings }] = await Promise.all([
+  const [{ teams }, activeLeagueName, { rankings }, { owners }] = await Promise.all([
     season !== null ? listTeamsServer(sessionCookie, season) : Promise.resolve({ teams: [] }),
     getActiveLeagueName(sessionCookie),
     season !== null ? getLatestPowerRankings(season, sessionCookie) : Promise.resolve({ rankings: [] }),
+    listOwners(sessionCookie).catch(() => ({ owners: [] })),
   ]);
+  // Each owner's profile picture (Settings > Team Logo) for the cells.
+  const photoByOwner = new Map(owners.filter((o) => o.logo_url).map((o) => [o.owner_id, o.logo_url!]));
+
   const powerRankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
   const recordByTeam = new Map(rankings.map((r) => [r.team_id, r.record ?? null]));
   // The Hive (elite pass, 2026-10-31): every team a cell, lit by this
@@ -100,13 +105,15 @@ export default async function LeaguePage({
                     title={`${t.team_name} · ${t.owner_name}`}
                     className="transition-transform hover:scale-105"
                   >
-                    <Hex size={76} color={color} fill={isMine ? "#2a1a0c" : ELITE.cell} glow={isMine}>
+                    <Hex
+                      size={76}
+                      color={color}
+                      fill={isMine ? "#2a1a0c" : ELITE.cell}
+                      glow={isMine}
+                      image={photoByOwner.get(t.owner_id)}
+                      badge={rank !== undefined ? `#${rank}` : null}
+                    >
                       <span className={`${ANTON} text-[22px] text-[#f5f4ec]`}>{initials(t.owner_name)}</span>
-                      {rank !== undefined && (
-                        <span className="mt-1 text-[10px] font-extrabold" style={{ color }}>
-                          #{rank}
-                        </span>
-                      )}
                     </Hex>
                   </Link>
                 );
@@ -145,7 +152,7 @@ export default async function LeaguePage({
             const color = cellColor(team.team_id);
             return (
               <li key={team.team_id} className="flex items-center gap-3 px-3.5 py-2.5">
-                <Hex size={36} color={color} rim={2}>
+                <Hex size={36} color={color} rim={2} image={photoByOwner.get(team.owner_id)}>
                   <span className="text-xs font-extrabold">{initials(team.owner_name)}</span>
                 </Hex>
                 <span className="flex min-w-0 flex-1 flex-col">
