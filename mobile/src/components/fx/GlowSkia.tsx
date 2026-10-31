@@ -4,6 +4,7 @@ import { Image, StyleSheet, View, type LayoutChangeEvent, type StyleProp, type T
 import type { SharedValue } from 'react-native-reanimated';
 
 import { Text } from '@/components/Text';
+import { canvasFits } from '@/lib/skia';
 
 // The real-light versions of the app's glows (build 10 on), behind the
 // plain ones in Glow.tsx: a box's halo, a line drawing's neon, and text
@@ -26,7 +27,7 @@ export function GlowBoxSkia(props: {
   const onLayout = (e: LayoutChangeEvent) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
   return (
     <View style={style} onLayout={onLayout}>
-      {size.w > 0 && (
+      {size.w > 0 && canvasFits(size.w + pad * 2, size.h + pad * 2) && (
         <Canvas pointerEvents="none" style={{ position: 'absolute', left: -pad, top: -pad, width: size.w + pad * 2, height: size.h + pad * 2 }}>
           <Group opacity={opacity ?? 1}>
             <RoundedRect x={pad} y={pad} width={size.w} height={size.h} r={radius} color={color} opacity={intensity}>
@@ -161,7 +162,7 @@ export function GlowTextSkia({ style, children, numberOfLines }: { style?: Style
 
   return (
     <View style={outer} onLayout={(e) => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
-      {box.w > 0 && glyphRuns.length > 0 && (
+      {box.w > 0 && glyphRuns.length > 0 && canvasFits(box.w + pad * 2, box.h + pad * 2) && (
         <Canvas pointerEvents="none" style={{ position: 'absolute', left: -pad, top: -pad, width: box.w + pad * 2, height: box.h + pad * 2 }}>
           {glyphRuns.map((run, i) => (
             <Group key={i}>

@@ -4,6 +4,7 @@ import { StyleSheet, View, type LayoutChangeEvent, type StyleProp, type ViewStyl
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { Colors } from '@/constants/theme';
+import { canvasFits } from '@/lib/skia';
 
 // NeonPanel drawn with Skia (build 10 on): the same sweeping segment of
 // the ring color, but as light, a crisp line on the card's edge with a
@@ -33,6 +34,8 @@ export function NeonPanelSkia({ children, colors, locations, multi, color, rotat
   const [size, setSize] = useState({ w: 0, h: 0 });
   const onLayout = (e: LayoutChangeEvent) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
   const { w, h } = size;
+  // Too big for a GPU texture (a very tall card): no ring light, just the card.
+  const fits = canvasFits(w + PAD * 2, h + PAD * 2);
   const c = vec(PAD + w / 2, PAD + h / 2);
   const edge = { x: PAD + RING_WIDTH / 2, y: PAD + RING_WIDTH / 2, width: w - RING_WIDTH, height: h - RING_WIDTH, r: radius - RING_WIDTH / 2 };
   const outline = useMemo(() => {
@@ -53,7 +56,7 @@ export function NeonPanelSkia({ children, colors, locations, multi, color, rotat
 
   return (
     <View style={style} onLayout={onLayout}>
-      {w > 0 && (
+      {w > 0 && fits && (
         // Still layer: the ring and its soft glow, drawn once.
         <Canvas pointerEvents="none" style={{ position: 'absolute', left: -PAD, top: -PAD, width: w + PAD * 2, height: h + PAD * 2 }}>
           <Path path={outline} style="stroke" strokeWidth={RING_WIDTH} color={Colors.border} />
@@ -64,7 +67,7 @@ export function NeonPanelSkia({ children, colors, locations, multi, color, rotat
           )}
         </Canvas>
       )}
-      {w > 0 && (
+      {w > 0 && fits && (
         // Moving layer: no blur, so each frame is cheap.
         <Canvas pointerEvents="none" style={{ position: 'absolute', left: -PAD, top: -PAD, width: w + PAD * 2, height: h + PAD * 2 }}>
           {multi ? (
