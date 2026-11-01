@@ -41,6 +41,34 @@ async def test_sync_matchups_for_week_targets_one_week_only(pool, espn_config, m
     assert float(row["away_score"]) == 99.0
 
 
+async def test_sync_matchups_for_week_uses_live_totals_for_the_current_week(pool, espn_config, monkeypatch):
+    # ESPN's scoreboard keeps totalPoints at 0 until the week is final;
+    # the box scores carry the live totals (2026-11-01: a mirrored league
+    # showed 0.0 for every matchup all Sunday while its players scored).
+    fake_teams = [
+        make_fake_team(1, "Team One", "test-member-1", "Alice", "Smith"),
+        make_fake_team(2, "Team Two", "test-member-2", "Bob", "Jones"),
+    ]
+    fake_league = FakeLeague(
+        teams=fake_teams,
+        current_week=8,
+        scoreboard_by_week={8: [make_fake_matchup(1, 2, 0.0, 0.0)]},
+        box_scores_by_week={8: [make_fake_box_score(1, 2, [], [], home_score=72.6, away_score=128.12)]},
+    )
+    monkeypatch.setattr("app.providers.espn.adapter.League", lambda **kwargs: fake_league)
+
+    provider = ESPNProvider(espn_config)
+    await provider.sync_teams(pool, TEST_SEASON)
+    assert await provider.sync_matchups_for_week(pool, TEST_SEASON, 8) == 1
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT home_score, away_score FROM matchups WHERE season = $1 AND week = 8", TEST_SEASON
+        )
+    assert float(row["home_score"]) == 72.6
+    assert float(row["away_score"]) == 128.12
+
+
 async def test_sync_rosters_for_week_saves_even_with_zero_points(pool, espn_config, monkeypatch):
     # Unlike the full sync_rosters loop, a live/targeted sync of a known
     # week must NOT skip pre-kickoff lineups just because no points have

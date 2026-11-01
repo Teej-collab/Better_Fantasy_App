@@ -13,6 +13,7 @@ run_live_sync) — fetching one specific week directly instead of looping
 1..17 "does this week exist yet" checks, so they're fast enough to poll
 frequently during live games without re-scanning full history.
 """
+import logging
 from decimal import Decimal
 
 from espn_api.football import League
@@ -22,6 +23,8 @@ from app.config import DEFAULT_LEAGUE_ID
 from app.providers.base import FantasyProvider
 from app.providers.espn.config import ESPNConfig
 from app.queries import team_position_rankings as position_rankings_queries
+
+logger = logging.getLogger(__name__)
 
 MAX_WEEKS_TO_TRY = 17  # covers regular season + playoffs; we stop early if a week has no data
 
@@ -118,7 +121,14 @@ class ESPNProvider(FantasyProvider):
         return len(league.teams)
 
     async def _sync_matchup_week(
-        self, conn, matchups, season: int, week: int, reg_season_weeks: int, league_id: int = DEFAULT_LEAGUE_ID
+        self,
+        conn,
+        matchups,
+        season: int,
+        week: int,
+        reg_season_weeks: int,
+        league_id: int = DEFAULT_LEAGUE_ID,
+        live_scores: dict[tuple[int, int], tuple[float, float]] | None = None,
     ) -> int:
         if not matchups:
             return 0
@@ -198,6 +208,10 @@ class ESPNProvider(FantasyProvider):
                 saved_count += 1
                 continue
 
+            home_score, away_score = m.home_score, m.away_score
+            live = (live_scores or {}).get((m.home_team.team_id, m.away_team.team_id))
+            if live is not None:
+                home_score, away_score = live
             await conn.execute(
                 """
                 INSERT INTO matchups
@@ -209,7 +223,7 @@ class ESPNProvider(FantasyProvider):
                               is_playoff = EXCLUDED.is_playoff
                 """,
                 season, week, home_db_id, away_db_id,
-                Decimal(str(round(m.home_score, 2))), Decimal(str(round(m.away_score, 2))), is_playoff, league_id,
+                Decimal(str(round(home_score, 2))), Decimal(str(round(away_score, 2))), is_playoff, league_id,
             )
             saved_count += 1
 
@@ -241,7 +255,31 @@ class ESPNProvider(FantasyProvider):
         reg_season_weeks = league.settings.reg_season_count
         matchups = league.scoreboard(week)
         async with pool.acquire() as conn:
-            return await self._sync_matchup_week(conn, matchups, season, week, reg_season_weeks, league_id)
+            return await self._sync_matchup_week(
+                conn, matchups, season, week, reg_season_weeks, league_id, self._live_scores(league, week)
+            )
+
+    @staticmethod
+    def _live_scores(league: League, week: int) -> dict[tuple[int, int], tuple[float, float]] | None:
+        """The week in progress's live team totals, by (home, away) ESPN
+        team id. scoreboard() reads ESPN's totalPoints, which stays 0 until
+        the week is final; box_scores() reads totalPointsLive (2026-11-01:
+        a mirrored league, Horak Huddle, showed 0.0 for every matchup all
+        Sunday while its players' points moved). Only for the current
+        week — box_scores() answers a later week with this week's data —
+        and best-effort: without it the scoreboard totals still save."""
+        if week != league.current_week:
+            return None
+        try:
+            box_scores = league.box_scores(week)
+        except Exception:
+            logger.warning("Couldn't read live box scores (week=%s)", week, exc_info=True)
+            return None
+        return {
+            (bs.home_team.team_id, bs.away_team.team_id): (bs.home_score, bs.away_score)
+            for bs in box_scores
+            if bs.home_team and bs.away_team
+        }
 
     async def _save_roster_week(
         self, conn, box_scores, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID

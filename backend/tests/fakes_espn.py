@@ -74,12 +74,16 @@ def make_fake_player_card_player(
     )
 
 
-def make_fake_box_score(home_team_id, away_team_id, home_lineup, away_lineup):
+def make_fake_box_score(home_team_id, away_team_id, home_lineup, away_lineup, home_score=0.0, away_score=0.0):
+    """home_score/away_score are the box score's team totals — espn_api
+    reads ESPN's totalPointsLive into them for a week in progress."""
     return SimpleNamespace(
         home_team=SimpleNamespace(team_id=home_team_id),
         away_team=SimpleNamespace(team_id=away_team_id) if away_team_id != 0 else 0,
         home_lineup=home_lineup,
         away_lineup=away_lineup,
+        home_score=home_score,
+        away_score=away_score,
     )
 
 
