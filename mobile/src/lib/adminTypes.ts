@@ -184,6 +184,14 @@ export type CrashReports = {
   recent: CrashReport[];
 };
 
+export type AdminErrorExplanation = {
+  headline: string;
+  what: string;
+  impact: string;
+  next_step: string;
+  severity: 'low' | 'medium' | 'high';
+};
+
 export type AdminErrorGroup = {
   fingerprint: string;
   source: 'client' | 'server';
@@ -194,6 +202,7 @@ export type AdminErrorGroup = {
   first_seen: string;
   last_seen: string;
   first_ever: string | null;
+  explanation?: AdminErrorExplanation;
 };
 
 export type AdminErrors = {
@@ -207,6 +216,7 @@ export type AdminErrors = {
 
 export type AdminErrorDetail = {
   fingerprint: string;
+  explanation?: AdminErrorExplanation;
   occurrences: {
     created_at: string;
     source: 'client' | 'server';

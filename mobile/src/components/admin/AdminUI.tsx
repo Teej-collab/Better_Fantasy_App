@@ -127,6 +127,18 @@ export function Pill({ children, tone = 'default' }: { children: ReactNode; tone
   );
 }
 
+// How much an error matters, from the backend's plain-English read of it
+// (app/error_explainer.py).
+const SEVERITY: Record<'low' | 'medium' | 'high', { tone: Tone; label: string }> = {
+  low: { tone: 'good', label: 'harmless' },
+  medium: { tone: 'warn', label: 'worth a look' },
+  high: { tone: 'bad', label: 'needs a fix' },
+};
+
+export function SeverityPill({ severity }: { severity: 'low' | 'medium' | 'high' }) {
+  return <Pill tone={SEVERITY[severity].tone}>{SEVERITY[severity].label}</Pill>;
+}
+
 // A badge in the admin accent (Commissioner) or green (Admin).
 export function RoleBadge({ label, green }: { label: string; green?: boolean }) {
   return (

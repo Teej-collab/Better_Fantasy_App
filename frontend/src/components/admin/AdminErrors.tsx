@@ -13,6 +13,7 @@ import {
   BarRow,
   EmptyNote,
   Pill,
+  SeverityPill,
   StatTile,
   WindowPicker,
   dayLabel,
@@ -94,7 +95,7 @@ export function AdminErrors({
         <StatTile label="On the server" value={data.server} tone={data.server ? "bad" : "default"} />
       </div>
 
-      <AdminSection title="Errors" hint="Most recent first. Tap one for every occurrence and its stack trace.">
+      <AdminSection title="Errors" hint="Most recent first. Tap one for who hit it and the technical details.">
         {data.groups.length === 0 ? (
           <EmptyNote>No errors in this window. 🎉</EmptyNote>
         ) : (
@@ -107,11 +108,12 @@ export function AdminErrors({
                 >
                   <span className="flex flex-wrap items-center gap-1.5">
                     <Pill tone={g.source === "server" ? "bad" : "warn"}>{g.source === "server" ? "server" : "app"}</Pill>
+                    {g.explanation && <SeverityPill severity={g.explanation.severity} />}
                     {isNew(g) && <Pill tone="bad">new</Pill>}
-                    <span className="min-w-0 flex-1 font-mono text-xs break-all">{g.message}</span>
+                    <span className="min-w-0 flex-1 text-sm font-medium">{g.explanation?.headline ?? g.message}</span>
                   </span>
+                  {g.explanation && <span className="text-sm text-black/70 dark:text-white/70">{g.explanation.what}</span>}
                   <span className="flex flex-wrap gap-x-3 text-xs text-black/50 dark:text-white/50">
-                    {g.route && <span className="font-mono break-all">{g.route}</span>}
                     <span>
                       {g.occurrences}× · {g.affected} {g.affected === 1 ? "person" : "people"}
                     </span>
@@ -154,8 +156,23 @@ function ErrorDetail({
         <EmptyNote>Loading…</EmptyNote>
       ) : (
         <>
-          <AdminSection title={latest.source === "server" ? "Server error" : "App error"}>
-            <p className="font-mono text-sm break-all">{latest.message}</p>
+          {detail.explanation && (
+            <AdminSection title="What Happened">
+              <div className="flex flex-col gap-1.5">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <SeverityPill severity={detail.explanation.severity} />
+                  <Pill tone={latest.source === "server" ? "bad" : "warn"}>{latest.source === "server" ? "server" : "app"}</Pill>
+                </span>
+                <p className="text-base font-semibold">{detail.explanation.headline}</p>
+                <p className="text-sm">{detail.explanation.what}</p>
+                <p className="text-xs text-black/60 dark:text-white/60">What they saw: {detail.explanation.impact}</p>
+                <p className="text-xs text-black/60 dark:text-white/60">What to do: {detail.explanation.next_step}</p>
+              </div>
+            </AdminSection>
+          )}
+
+          <AdminSection title="The Raw Error" hint="For debugging — what the code actually reported.">
+            <p className="font-mono text-xs break-all">{latest.message}</p>
             <p className="text-xs text-black/50 dark:text-white/50">
               {detail.occurrences.length}
               {detail.occurrences.length === 50 ? "+" : ""} recent occurrences · id {fingerprint}

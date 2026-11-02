@@ -20,6 +20,7 @@ const IGNORED = [
   /Load failed/i,
   /Failed to fetch/i,
   /NetworkError/i,
+  /network error/i,
   /The network connection was lost/i,
   /AbortError/i,
   /The operation was aborted/i,

@@ -3,7 +3,7 @@ import { router, Stack } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { AdminScreen, AdminSection, adminStyles as s, Divided, EmptyNote, Pill, StatTile, TileGrid, timeAgo, WindowPicker } from '@/components/admin/AdminUI';
+import { AdminScreen, AdminSection, adminStyles as s, Divided, EmptyNote, Pill, SeverityPill, StatTile, TileGrid, timeAgo, WindowPicker } from '@/components/admin/AdminUI';
 import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -38,7 +38,7 @@ export default function AdminErrorsScreen() {
             <StatTile label="In the app" value={data.client} hint="users' devices" />
             <StatTile label="On the server" value={data.server} tone={data.server ? 'bad' : 'default'} />
           </TileGrid>
-          <AdminSection title="Errors" hint="Most recent first. Tap one for every occurrence and its stack trace.">
+          <AdminSection title="Errors" hint="Most recent first. Tap one for who hit it and the technical details.">
             {data.groups.length === 0 ? (
               <EmptyNote>No errors in this window. 🎉</EmptyNote>
             ) : (
@@ -47,11 +47,19 @@ export default function AdminErrorsScreen() {
                   <Pressable onPress={() => router.push({ pathname: '/admin/errors/[fp]', params: { fp: g.fingerprint } })} style={{ gap: 4 }}>
                     <View style={[s.row, { flexWrap: 'wrap', gap: 6 }]}>
                       <Pill tone={g.source === 'server' ? 'bad' : 'warn'}>{g.source === 'server' ? 'server' : 'app'}</Pill>
+                      {g.explanation && <SeverityPill severity={g.explanation.severity} />}
                       {isNew(g) && <Pill tone="bad">new</Pill>}
                     </View>
-                    <Text style={s.mono}>{g.message}</Text>
+                    {g.explanation ? (
+                      <>
+                        <Text style={s.medium}>{g.explanation.headline}</Text>
+                        <Text style={s.small}>{g.explanation.what}</Text>
+                      </>
+                    ) : (
+                      <Text style={s.mono}>{g.message}</Text>
+                    )}
                     <Text style={s.small}>
-                      {g.route ? `${g.route} · ` : ''}
+                      
                       {g.occurrences}× · {g.affected} {g.affected === 1 ? 'person' : 'people'} · last {timeAgo(g.last_seen)}
                     </Text>
                   </Pressable>

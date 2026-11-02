@@ -141,6 +141,18 @@ export function Pill({ children, tone = "default" }: { children: ReactNode; tone
   );
 }
 
+// How much an error matters, from the backend's plain-English read of it
+// (app/error_explainer.py).
+const SEVERITY = {
+  low: { tone: "good", label: "harmless" },
+  medium: { tone: "warn", label: "worth a look" },
+  high: { tone: "bad", label: "needs a fix" },
+} as const;
+
+export function SeverityPill({ severity }: { severity: "low" | "medium" | "high" }) {
+  return <Pill tone={SEVERITY[severity].tone}>{SEVERITY[severity].label}</Pill>;
+}
+
 export function timeAgo(iso: string | null): string {
   if (!iso) return "never";
   const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);

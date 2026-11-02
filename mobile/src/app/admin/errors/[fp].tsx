@@ -3,7 +3,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AdminScreen, AdminSection, adminStyles as s, BarRow, dayLabel, Divided, EmptyNote, formatWhen } from '@/components/admin/AdminUI';
+import { AdminScreen, AdminSection, adminStyles as s, BarRow, dayLabel, Divided, EmptyNote, formatWhen, Pill, SeverityPill } from '@/components/admin/AdminUI';
 import { Text } from '@/components/Text';
 import { api } from '@/lib/api';
 
@@ -26,8 +26,21 @@ export default function AdminErrorScreen() {
         <EmptyNote>Loading…</EmptyNote>
       ) : (
         <>
-          <AdminSection title={latest.source === 'server' ? 'Server error' : 'App error'}>
-            <Text style={[s.mono, { fontSize: 13 }]}>{latest.message}</Text>
+          {detail.explanation && (
+            <AdminSection title="What Happened">
+              <View style={[s.row, { flexWrap: 'wrap', gap: 6 }]}>
+                <SeverityPill severity={detail.explanation.severity} />
+                <Pill tone={latest.source === 'server' ? 'bad' : 'warn'}>{latest.source === 'server' ? 'server' : 'app'}</Pill>
+              </View>
+              <Text style={[s.medium, { fontSize: 16 }]}>{detail.explanation.headline}</Text>
+              <Text style={[s.medium, { fontWeight: '400' }]}>{detail.explanation.what}</Text>
+              <Text style={s.small}>What they saw: {detail.explanation.impact}</Text>
+              <Text style={s.small}>What to do: {detail.explanation.next_step}</Text>
+            </AdminSection>
+          )}
+
+          <AdminSection title="The Raw Error" hint="For debugging — what the code actually reported.">
+            <Text style={[s.mono, { fontSize: 12 }]}>{latest.message}</Text>
             <Text style={s.small}>
               {detail.occurrences.length}
               {detail.occurrences.length === 50 ? '+' : ''} recent occurrences · id {fp}

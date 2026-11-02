@@ -15,6 +15,9 @@ formatters from app/notifications/injury_events.py.
 
 _DEFAULT_ICON = "/images/icon-192.png"
 _BODY_PREVIEW_LENGTH = 120
+# Error alerts get room for a full sentence — the point is to say what
+# happened without opening the app.
+_ADMIN_ERROR_BODY_LENGTH = 240
 
 
 def _payload(title: str, body: str, url: str, type_: str, tag: str | None = None) -> dict:
@@ -316,13 +319,23 @@ def admin_crash_alert(name: str, route: str, os: str, screen: str, today: int) -
     )
 
 
-def admin_error_alert(source: str, message: str, route: str | None, *, is_new: bool, fingerprint: str) -> dict:
-    where = "Server" if source == "server" else "App"
-    label = "New error" if is_new else "Error is back"
-    place = f" on {route}" if route else ""
+def admin_error_alert(
+    explanation: dict, source: str, *, who: str | None, os: str | None, is_new: bool, fingerprint: str,
+) -> dict:
+    """explanation is app/error_explainer.py's plain-English read of the
+    error: the push says what happened and who hit it, not the raw
+    message (that's on the error's page)."""
+    harmless = " (harmless)" if explanation["severity"] == "low" else ""
+    title = f"🐞 {explanation['headline']}{harmless}" if is_new else f"🐞 Back again: {explanation['headline']}{harmless}"
+    if source == "server":
+        person = f"{who}: " if who else ""
+    else:
+        person = f"{who or 'A signed-out visitor'}{f' ({os})' if os else ''}: "
+    body = f"{person}{explanation['what']}"
+    if len(body) > _ADMIN_ERROR_BODY_LENGTH:
+        body = body[:_ADMIN_ERROR_BODY_LENGTH].rstrip() + "…"
     return _payload(
-        f"🐞 {label} ({where})", _preview(f"{message}{place}"), f"/admin/errors?fp={fingerprint}", "admin_error",
-        tag=f"admin-error-{fingerprint}",
+        title, body, f"/admin/errors?fp={fingerprint}", "admin_error", tag=f"admin-error-{fingerprint}",
     )
 
 

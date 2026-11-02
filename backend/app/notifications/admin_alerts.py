@@ -22,6 +22,7 @@ Every event is still recorded — the throttle only limits the pings.
 """
 import logging
 
+from app import error_explainer
 from app.config import DEFAULT_LEAGUE_ID
 from app.notifications import dispatcher, formatter
 
@@ -92,19 +93,27 @@ async def maybe_alert_error(conn, fp: str) -> None:
     row = await conn.fetchrow(
         """
         SELECT
-            count(*) FILTER (WHERE created_at > now() - make_interval(hours => $2)) AS recent,
+            count(*) FILTER (WHERE e.created_at > now() - make_interval(hours => $2)) AS recent,
             count(*) AS total,
-            (array_agg(source ORDER BY created_at DESC))[1] AS source,
-            (array_agg(message ORDER BY created_at DESC))[1] AS message,
-            (array_agg(route ORDER BY created_at DESC))[1] AS route
-        FROM app_errors WHERE fingerprint = $1
+            (array_agg(e.source ORDER BY e.created_at DESC))[1] AS source,
+            (array_agg(e.message ORDER BY e.created_at DESC))[1] AS message,
+            (array_agg(e.route ORDER BY e.created_at DESC))[1] AS route,
+            (array_agg(e.stack ORDER BY e.created_at DESC))[1] AS stack,
+            (array_agg(e.method ORDER BY e.created_at DESC))[1] AS method,
+            (array_agg(e.os ORDER BY e.created_at DESC))[1] AS os,
+            (array_agg(coalesce(o.display_name, u.display_name) ORDER BY e.created_at DESC))[1] AS who
+        FROM app_errors e
+        LEFT JOIN owners o ON o.owner_id = e.owner_id
+        LEFT JOIN users u ON u.id = e.user_id
+        WHERE e.fingerprint = $1
         """,
         fp, ERROR_QUIET_HOURS,
     )
     if row is None or row["recent"] != 1:
         return
+    explanation = error_explainer.explain(row["source"], row["message"], row["route"], row["stack"], row["method"])
     await _send(conn, formatter.admin_error_alert(
-        row["source"], row["message"], row["route"], is_new=row["total"] == 1, fingerprint=fp,
+        explanation, row["source"], who=row["who"], os=row["os"], is_new=row["total"] == 1, fingerprint=fp,
     ))
 
 

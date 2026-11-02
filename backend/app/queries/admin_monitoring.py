@@ -4,6 +4,7 @@ Log pages, and the nav's attention badges. The tables are written by
 app/monitoring.py; see migrations/versions/b4d8e2f6a1c3_* for their
 shape.
 """
+from app import error_explainer
 
 
 def _window(days: int) -> str:
@@ -20,6 +21,8 @@ async def get_errors(conn, days: int) -> dict:
                (array_agg(source ORDER BY created_at DESC))[1] AS source,
                (array_agg(message ORDER BY created_at DESC))[1] AS message,
                (array_agg(route ORDER BY created_at DESC))[1] AS route,
+               (array_agg(stack ORDER BY created_at DESC))[1] AS stack,
+               (array_agg(method ORDER BY created_at DESC))[1] AS method,
                count(*) AS occurrences,
                count(DISTINCT coalesce(owner_id::text, user_id::text)) AS affected,
                min(created_at) AS first_seen,
@@ -54,7 +57,14 @@ async def get_errors(conn, days: int) -> dict:
     return {
         "window_days": days,
         **dict(totals),
-        "groups": [{**dict(g), "first_ever": first_ever.get(g["fingerprint"])} for g in groups],
+        "groups": [
+            {
+                **{k: v for k, v in g.items() if k not in ("stack", "method")},
+                "first_ever": first_ever.get(g["fingerprint"]),
+                "explanation": error_explainer.explain(g["source"], g["message"], g["route"], g["stack"], g["method"]),
+            }
+            for g in groups
+        ],
     }
 
 
@@ -85,8 +95,12 @@ async def get_error_detail(conn, fingerprint: str) -> dict | None:
         """,
         fingerprint,
     )
+    latest = rows[0]
     return {
         "fingerprint": fingerprint,
+        "explanation": error_explainer.explain(
+            latest["source"], latest["message"], latest["route"], latest["stack"], latest["method"],
+        ),
         "occurrences": [dict(r) for r in rows],
         "daily": [dict(r) for r in daily],
     }

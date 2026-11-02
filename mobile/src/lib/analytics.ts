@@ -208,7 +208,7 @@ export function useScreenTracking(signedIn: boolean): void {
 // Same filtering as the web's errorReporter: one report per message per
 // launch, at most MAX_PER_LAUNCH, and network drops aren't bugs.
 const MAX_PER_LAUNCH = 10;
-const IGNORED = [/Network request failed/i, /Failed to fetch/i, /The network connection was lost/i, /AbortError/i, /Aborted/i, /timed out/i];
+const IGNORED = [/Network request failed/i, /network error/i, /Failed to fetch/i, /The network connection was lost/i, /AbortError/i, /Aborted/i, /timed out/i];
 const reported = new Set<string>();
 
 function osVersion(): string {

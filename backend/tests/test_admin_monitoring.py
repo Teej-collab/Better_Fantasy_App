@@ -204,7 +204,7 @@ async def test_error_alert_fires_for_a_new_error_and_then_goes_quiet(pool, sent)
                                           route="/admin/things")
             await admin_alerts.maybe_alert_error(conn, fp)
         assert len(sent) == 1
-        assert sent[0]["title"].startswith("🐞 New error (Server)")
+        assert sent[0]["title"].startswith("🐞 Server error")
         assert sent[0]["url"] == f"/admin/errors?fp={fp}"
     finally:
         async with pool.acquire() as conn:
