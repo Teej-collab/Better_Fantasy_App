@@ -34,7 +34,7 @@ export function MatchupSwitcher({
             onClick={() => onSelect(i)}
             aria-current={active}
             aria-label={`${m.home.team_name} ${(m.home.score ?? 0).toFixed(1)}, ${m.away.team_name} ${(m.away.score ?? 0).toFixed(1)}`}
-            className={`flex w-36 shrink-0 flex-col gap-0.5 rounded-xl border bg-[#141a22] px-2.5 py-2 text-left text-[11.5px] font-bold text-[#f5f4ec] tabular-nums transition-colors ${
+            className={`flex max-w-60 min-w-36 shrink-0 flex-col gap-0.5 rounded-xl border bg-[#141a22] px-2.5 py-2 text-left text-[11.5px] font-bold text-[#f5f4ec] tabular-nums transition-colors ${
               active ? "border-[#ff7a1a] shadow-[0_0_12px_rgba(255,122,26,.35)]" : "border-white/[0.08] hover:border-white/20"
             }`}
           >

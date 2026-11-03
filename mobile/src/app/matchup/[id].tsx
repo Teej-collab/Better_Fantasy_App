@@ -114,7 +114,7 @@ export default function MatchupScreen() {
       ) : (
         <>
           {matchups.length > 1 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipStrip} contentContainerStyle={styles.chips}>
               {matchups.map((m, i) => {
                 const active = i === activeIndex;
                 return (
@@ -166,11 +166,16 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { alignItems: 'center', gap: 6, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
   back: { color: Elite.green, fontSize: 12, fontWeight: '600' },
+  // A ScrollView shrinks by default, and the matchup pages below squeezed
+  // the strip until each chip's second team name sat on its bottom border.
+  chipStrip: { flexGrow: 0, flexShrink: 0 },
   chips: { gap: 8, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
-  mini: { width: 128, gap: 2, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', backgroundColor: Elite.card },
+  // Each chip sizes to its longer team name (full names, not "Allen Key…"), capped so one
+  // very long name can't take over the strip.
+  mini: { minWidth: 128, maxWidth: 240, gap: 2, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', backgroundColor: Elite.card },
   miniActive: { borderColor: Elite.orange, shadowColor: Elite.orange, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
-  miniLine: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  miniName: { flex: 1, color: Elite.cream, fontSize: 11.5, fontWeight: '700' },
+  miniLine: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
+  miniName: { flexShrink: 1, color: Elite.cream, fontSize: 11.5, fontWeight: '700' },
   miniScore: { color: Elite.cream, fontSize: 11.5, fontWeight: '700', fontVariant: ['tabular-nums'] },
   page: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
 });
