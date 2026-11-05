@@ -56,6 +56,9 @@ async def sleeper_week(season: int, week: int, kind: str) -> list[dict]:
             "position": position,
             "team": team_code(row.get("team")),
             "opponent": team_code(row.get("opponent")),
+            # Sleeper's live injury designation (None = healthy), fresher
+            # than the once-a-day player sync.
+            "injury_status": player.get("injury_status"),
             "stats": row.get("stats") or {},
         })
     return out

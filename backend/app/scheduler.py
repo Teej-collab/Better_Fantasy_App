@@ -147,8 +147,10 @@ provider and writing to whatever DATABASE_URL happens to be configured:
 - Projection engine (ENABLE_PROJECTION_ENGINE_SCHEDULER, 2026-11-05):
   this app's own projections (app/domain/projections/) — history,
   Vegas lines, the three sources' stat lines and every league's own
-  points — at 6 AM and noon Central daily, plus Sunday 10:45 AM after
-  inactives. Grades the week before on each run.
+  points — at 6 AM and noon Central daily, plus after each inactives
+  window (Sunday 10:45 AM, 2:05 PM and 6 PM; Thursday and Monday 6 PM)
+  with live injury statuses. Teams already playing keep their pregame
+  numbers. Grades the week before on each run.
 - Injury alerts (ENABLE_INJURY_ALERTS_SCHEDULER, 2026-09-27): checks
   ESPN's injuries feed every 2 hours (INJURY_WATCH_EVERY_HOURS) and
   pushes status changes and news for rostered players
@@ -1350,11 +1352,13 @@ def start_scheduler():
             ("projection_engine_morning", {"hour": 6, "minute": 0}),
             ("projection_engine_noon", {"hour": 12, "minute": 0}),
             ("projection_engine_inactives", {"day_of_week": "sun", "hour": 10, "minute": 45}),
+            ("projection_engine_late_inactives", {"day_of_week": "sun", "hour": 14, "minute": 5}),
+            ("projection_engine_night_inactives", {"day_of_week": "sun,mon,thu", "hour": 18, "minute": 0}),
         ):
             _scheduler.add_job(
                 _run_projection_engine_job, "cron", timezone="America/Chicago", id=job_id, **trigger,
             )
-        logger.info("Projection engine scheduler started (6 AM + noon Central, Sunday 10:45 AM)")
+        logger.info("Projection engine scheduler started (6 AM + noon Central, plus each inactives window)")
         started_any = True
 
     if os.getenv("ENABLE_ADP_SNAPSHOT_SCHEDULER", "").lower() in ("1", "true", "yes"):

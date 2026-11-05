@@ -107,7 +107,8 @@ async def test_engine_projects_each_league_in_its_own_scoring(pool, monkeypatch)
 
     async def fake_sleeper_week(season, wk, kind):
         if kind == "projections":
-            return [{"sleeper_player_id": "test-proj-wr", "position": "WR", "team": "AAA", "opponent": "BBB", "stats": sleeper_line}]
+            return [{"sleeper_player_id": "test-proj-wr", "position": "WR", "team": "AAA", "opponent": "BBB",
+                     "injury_status": None, "stats": sleeper_line}]
         return []
 
     async def fake_espn(season, wk, limit=1200):
@@ -188,9 +189,16 @@ def test_ruled_out_players_get_an_explicit_zero_from_every_source():
         "sleeper": {"ir": {"rec": 6.0, "rec_yd": 70.0}, "doubt": {"rec": 4.0, "rec_yd": 40.0}},
         "espn": {"ir": {"rec": 5.0}},
     }
-    engine._apply_availability(sources, universe, rostered={"benched"})
+    engine._apply_availability(sources, universe)
     assert sources["model"]["ir"]["_out"] and "ir" not in sources["sleeper"] and "ir" not in sources["espn"]
-    # Rostered but projected by nobody: still pinned to 0 (no fallback).
+    # Projected by nobody: still pinned to 0 (no screen falls back to an old number).
     assert sources["model"]["benched"]["_out"]
     assert sources["sleeper"]["doubt"] == {"rec": 1.0, "rec_yd": 10.0}
     assert expected_points(sources["model"]["ir"], {}, "WR", PPR) == 0
+
+
+def test_season_ending_vs_this_week_only():
+    assert engine._long_term_out("IR", "Inactive")
+    assert engine._long_term_out("Out", "Inactive")  # off the active roster: season-ending
+    assert not engine._long_term_out("Out", "Active")  # back next week
+    assert not engine._long_term_out("Questionable", "Active")

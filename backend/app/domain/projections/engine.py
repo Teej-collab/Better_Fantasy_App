@@ -44,6 +44,13 @@ IDP_POSITIONS = ("DL", "DE", "DT", "NT", "LB", "ILB", "OLB", "MLB", "DB", "CB", 
 _LONG_TERM_OUT = {"IR", "PUP", "Suspended", "NFI"}
 
 
+def _long_term_out(injury_status: str | None, roster_status: str | None) -> bool:
+    """Out beyond this week: on IR/PUP/suspended, or "Out" while off the
+    active roster (Sleeper's status "Inactive" — e.g. a season-ending
+    injury before the IR move shows up)."""
+    return injury_status in _LONG_TERM_OUT or (injury_status == "Out" and roster_status == "Inactive")
+
+
 def _name_key(name: str | None) -> str:
     name = re.sub(r"[^a-z ]", "", (name or "").lower().replace("-", " "))
     return " ".join(re.sub(r"\b(jr|sr|ii|iii|iv|v)\b", "", name).split())
@@ -120,28 +127,21 @@ async def _any_idp_league(conn, season: int) -> bool:
     ))
 
 
-async def _rostered(conn, season: int) -> set[str]:
-    return {
-        r["sleeper_player_id"]
-        for r in await conn.fetch("SELECT DISTINCT sleeper_player_id FROM current_rosters WHERE season = $1", season)
-    }
-
-
-def _apply_availability(sources: dict[str, dict[str, dict]], universe: dict[str, dict], rostered: set[str]) -> None:
+def _apply_availability(sources: dict[str, dict[str, dict]], universe: dict[str, dict]) -> None:
     """Injury status is the engine's call, not each feed's: Sleeper's and
     ESPN's projections lag on it (an IR'd receiver can still carry a full
-    line). A player ruled out (Out, IR, PUP, suspended…) gets one explicit
-    zero line — every source dropped — so no source, and no screen's old
-    fallback projection, can put points back on him. A doubtful or
+    line). Every player ruled out (Out, IR, PUP, suspended…) gets one
+    explicit zero line — every source dropped — so no source, and no
+    screen's old fallback projection (free agents, rosters), can put
+    points back on him. A doubtful or
     questionable player's outside lines are scaled by the same chance he
     plays that the model already applies to its own."""
     for pid, info in universe.items():
         status = info.get("injury_status")
         if status in _OUT:
-            if pid in rostered or any(pid in by_player for by_player in sources.values()):
-                for by_player in sources.values():
-                    by_player.pop(pid, None)
-                sources["model"][pid] = {"_out": 1.0, "_why": {"status": status}}
+            for by_player in sources.values():
+                by_player.pop(pid, None)
+            sources["model"][pid] = {"_out": 1.0, "_why": {"status": status}}
             continue
         share = _PLAY_SHARE.get(status)
         if share is None:
@@ -161,19 +161,25 @@ async def build_lines(conn, season: int, week: int, *, future: bool = False) -> 
     positions = list(POSITIONS) + (list(IDP_POSITIONS) if await _any_idp_league(conn, season) else [])
     players = await conn.fetch(
         """
-        SELECT sleeper_player_id, full_name, position, pro_team, injury_status, espn_player_id
+        SELECT sleeper_player_id, full_name, position, pro_team, injury_status, status, espn_player_id
         FROM players WHERE position = ANY($1::text[]) AND pro_team IS NOT NULL
         """,
         positions,
     )
+    sleeper_rows = await feeds.sleeper_week(season, week, "projections")
+    # Injury status: Sleeper's live one from this feed where the player is
+    # in it (an Out player upgraded mid-week counts as healthy on the very
+    # next run), else the daily player sync's.
+    live = {r["sleeper_player_id"]: r.get("injury_status") for r in sleeper_rows}
 
-    def status(value):
+    def status(r):
+        value = live[r["sleeper_player_id"]] if r["sleeper_player_id"] in live else r["injury_status"]
         if not future:
             return value
-        return value if value in _LONG_TERM_OUT else None
+        return value if _long_term_out(value, r["status"]) else None
 
     universe = {
-        r["sleeper_player_id"]: {"position": r["position"], "team": r["pro_team"], "injury_status": status(r["injury_status"])}
+        r["sleeper_player_id"]: {"position": r["position"], "team": r["pro_team"], "injury_status": status(r)}
         for r in players
     }
     by_espn = {r["espn_player_id"]: r["sleeper_player_id"] for r in players if r["espn_player_id"]}
@@ -181,7 +187,6 @@ async def build_lines(conn, season: int, week: int, *, future: bool = False) -> 
     for r in players:
         by_name.setdefault((_name_key(r["full_name"]), r["position"]), r["sleeper_player_id"])
 
-    sleeper_rows = await feeds.sleeper_week(season, week, "projections")
     history = [
         {**dict(r), "stats": json.loads(r["stats"])}
         for r in await conn.fetch(
@@ -209,7 +214,7 @@ async def build_lines(conn, season: int, week: int, *, future: bool = False) -> 
     except Exception:
         logger.warning("ESPN projections fetch failed (season=%s week=%s)", season, week, exc_info=True)
     sources["espn"] = espn
-    _apply_availability(sources, universe, await _rostered(conn, season))
+    _apply_availability(sources, universe)
 
     started = {
         feeds.team_code(team)
