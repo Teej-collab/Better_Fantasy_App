@@ -30,7 +30,7 @@ import re
 
 from app.domain.projections import accuracy, stat_lines
 from app.domain.projections.distribution import simulate
-from app.domain.projections.model import ProjectionModel
+from app.domain.projections.model import _OUT, _PLAY_SHARE, ProjectionModel
 from app.domain.projections.scoring import expected_points, floor_ceiling
 from app.domain.scoring_engine import rules_dict_from_rows
 from app.providers import projection_feeds as feeds
@@ -120,6 +120,41 @@ async def _any_idp_league(conn, season: int) -> bool:
     ))
 
 
+async def _rostered(conn, season: int) -> set[str]:
+    return {
+        r["sleeper_player_id"]
+        for r in await conn.fetch("SELECT DISTINCT sleeper_player_id FROM current_rosters WHERE season = $1", season)
+    }
+
+
+def _apply_availability(sources: dict[str, dict[str, dict]], universe: dict[str, dict], rostered: set[str]) -> None:
+    """Injury status is the engine's call, not each feed's: Sleeper's and
+    ESPN's projections lag on it (an IR'd receiver can still carry a full
+    line). A player ruled out (Out, IR, PUP, suspended…) gets one explicit
+    zero line — every source dropped — so no source, and no screen's old
+    fallback projection, can put points back on him. A doubtful or
+    questionable player's outside lines are scaled by the same chance he
+    plays that the model already applies to its own."""
+    for pid, info in universe.items():
+        status = info.get("injury_status")
+        if status in _OUT:
+            if pid in rostered or any(pid in by_player for by_player in sources.values()):
+                for by_player in sources.values():
+                    by_player.pop(pid, None)
+                sources["model"][pid] = {"_out": 1.0, "_why": {"status": status}}
+            continue
+        share = _PLAY_SHARE.get(status)
+        if share is None:
+            continue
+        for source in ("sleeper", "espn"):
+            line = sources[source].get(pid)
+            if line:
+                sources[source][pid] = {
+                    k: (v * share if isinstance(v, (int, float)) and k not in ("_pts_allow", "_yds_allow") else v)
+                    for k, v in line.items()
+                }
+
+
 async def build_lines(conn, season: int, week: int, *, future: bool = False) -> dict[str, int]:
     """All three sources' stat lines for the week. Returns {source: players}.
     future: a week after the current one (see the module docstring)."""
@@ -174,6 +209,7 @@ async def build_lines(conn, season: int, week: int, *, future: bool = False) -> 
     except Exception:
         logger.warning("ESPN projections fetch failed (season=%s week=%s)", season, week, exc_info=True)
     sources["espn"] = espn
+    _apply_availability(sources, universe, await _rostered(conn, season))
 
     started = {
         feeds.team_code(team)
@@ -189,6 +225,9 @@ async def build_lines(conn, season: int, week: int, *, future: bool = False) -> 
             if pid in locked_set:
                 continue
             position = universe[pid]["position"]
+            if line.get("_out"):
+                rows.append((season, week, pid, source, position, json.dumps(line), "{}", 0, 0))
+                continue
             if not any(v for k, v in line.items() if not k.startswith("_") and isinstance(v, (int, float))):
                 continue
             sim = simulate(line, position, f"{season}-{week}-{pid}-{source}")

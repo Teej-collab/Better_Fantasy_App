@@ -63,6 +63,7 @@ export function ProjectionPanel({ projection }: { projection: LeagueProjection }
         </div>
       )}
       {stats.length > 0 && <p>{stats.map(([k, v]) => statText(k, v)).join(" · ")}</p>}
+      {why?.status && <p className="text-xs text-black/60 dark:text-white/60">Out this week ({why.status}), so he&apos;s projected for 0.</p>}
       {why?.team && (
         <p className="text-xs text-black/60 dark:text-white/60">
           {why.implied !== undefined

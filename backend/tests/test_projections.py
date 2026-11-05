@@ -175,3 +175,22 @@ async def test_engine_projects_each_league_in_its_own_scoring(pool, monkeypatch)
 def test_blend_weights_lean_on_the_most_accurate_source():
     weights = accuracy.blend({"model": 10.0, "sleeper": 20.0}, {"model": 0.25, "sleeper": 0.375, "espn": 0.375})
     assert abs(weights - (10 * 0.25 + 20 * 0.375) / 0.625) < 1e-9
+
+
+def test_ruled_out_players_get_an_explicit_zero_from_every_source():
+    universe = {
+        "ir": {"position": "WR", "team": "AAA", "injury_status": "IR"},
+        "doubt": {"position": "WR", "team": "AAA", "injury_status": "Doubtful"},
+        "benched": {"position": "WR", "team": "AAA", "injury_status": "Out"},
+    }
+    sources = {
+        "model": {"doubt": {"rec": 1.0}},
+        "sleeper": {"ir": {"rec": 6.0, "rec_yd": 70.0}, "doubt": {"rec": 4.0, "rec_yd": 40.0}},
+        "espn": {"ir": {"rec": 5.0}},
+    }
+    engine._apply_availability(sources, universe, rostered={"benched"})
+    assert sources["model"]["ir"]["_out"] and "ir" not in sources["sleeper"] and "ir" not in sources["espn"]
+    # Rostered but projected by nobody: still pinned to 0 (no fallback).
+    assert sources["model"]["benched"]["_out"]
+    assert sources["sleeper"]["doubt"] == {"rec": 1.0, "rec_yd": 10.0}
+    assert expected_points(sources["model"]["ir"], {}, "WR", PPR) == 0

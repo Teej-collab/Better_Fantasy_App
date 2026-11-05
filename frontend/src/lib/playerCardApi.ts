@@ -111,7 +111,8 @@ export type LeagueProjection = {
   // The stat line behind it (pass_yd, rush_att, rec, tgt…).
   stat_line: Record<string, number>;
   // What our model used: team, opp, implied points, matchup…
-  why: { team?: string; opp?: string; implied?: number; opp_implied?: number; matchup?: number } | null;
+  // status: set when he's ruled out (Out, IR…) and projected 0.
+  why: { team?: string; opp?: string; implied?: number; opp_implied?: number; matchup?: number; status?: string } | null;
   // Chance of each bonus this league pays (bonus_rush_100…).
   bonus_odds: Record<string, number>;
   rest_of_season: { week: number; points: number }[];

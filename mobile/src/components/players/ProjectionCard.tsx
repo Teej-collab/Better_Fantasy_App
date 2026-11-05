@@ -63,6 +63,7 @@ export function ProjectionCard({ projection }: { projection: LeagueProjection })
         </View>
       )}
       {stats.length > 0 && <Text style={styles.line}>{stats.map(([k, v]) => statText(k, v)).join(' · ')}</Text>}
+      {why?.status && <Text style={styles.muted}>Out this week ({why.status}), so he's projected for 0.</Text>}
       {why?.team && (
         <Text style={styles.muted}>
           {why.implied !== undefined

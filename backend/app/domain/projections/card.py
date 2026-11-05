@@ -54,6 +54,8 @@ async def player_projection(conn, league_id: int, season: int, sleeper_player_id
         )
     }
     model_line, model_probs = lines.get("model", ({}, {}))
+    if model_line.get("_out"):
+        stat_line = {}
     bonus_odds = {k: v for k, v in model_probs.items() if k.startswith("bonus_") and k in rules and v >= 0.01}
     return {
         "week": week,
