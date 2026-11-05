@@ -108,6 +108,72 @@ export function Hex({
   );
 }
 
+/** A player in a cell: his headshot standing over a faint team logo, or
+ *  — a D/ST, or no headshot — the team logo alone. */
+export function HexPortrait({
+  width,
+  color,
+  glow = false,
+  strokeWidth = 2,
+  headshot,
+  logo,
+}: {
+  width: number;
+  color: string;
+  glow?: boolean;
+  strokeWidth?: number;
+  headshot?: string | null;
+  logo?: string | null;
+}) {
+  const clipId = `hexp${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+  const h = width * HEX_RATIO;
+  const pad = glow ? 9 : 2;
+  const points = hexPoints(width, h, strokeWidth / 2 + 0.5, pad);
+  const logoSize = headshot ? width * 0.9 : width * 0.62;
+  return (
+    <View style={{ width, height: h }}>
+      <Svg width={width + 2 * pad} height={h + 2 * pad} style={{ position: 'absolute', left: -pad, top: -pad }} pointerEvents="none">
+        {glow && (
+          <>
+            <Polygon points={points} fill="none" stroke={color} strokeWidth={14} strokeOpacity={0.12} strokeLinejoin="round" />
+            <Polygon points={points} fill="none" stroke={color} strokeWidth={7} strokeOpacity={0.25} strokeLinejoin="round" />
+          </>
+        )}
+        <Polygon points={points} fill={Elite.cell} stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+        <Defs>
+          <ClipPath id={clipId}>
+            <Polygon points={hexPoints(width, h, strokeWidth + 0.5, pad)} />
+          </ClipPath>
+        </Defs>
+        {logo ? (
+          <SvgImage
+            href={{ uri: logo }}
+            x={pad + (width - logoSize) / 2}
+            y={pad + (headshot ? h * 0.06 : (h - logoSize) / 2)}
+            width={logoSize}
+            height={logoSize}
+            opacity={headshot ? 0.22 : 1}
+            preserveAspectRatio="xMidYMid meet"
+            clipPath={`url(#${clipId})`}
+          />
+        ) : null}
+        {headshot ? (
+          <SvgImage
+            href={{ uri: headshot }}
+            x={pad - width * 0.15}
+            y={pad + h * 0.22}
+            width={width * 1.3}
+            height={h * 0.8}
+            preserveAspectRatio="xMidYMax meet"
+            clipPath={`url(#${clipId})`}
+          />
+        ) : null}
+        <Polygon points={points} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      </Svg>
+    </View>
+  );
+}
+
 /** Rows of `wide` and `wide - 1` cells, each short row tucked into the
  *  gaps of the rows around it. */
 export function Honeycomb({ cell, wide = 4, gap = 6, children }: { cell: number; wide?: number; gap?: number; children: ReactNode[] }) {

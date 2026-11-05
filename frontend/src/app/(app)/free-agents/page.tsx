@@ -5,13 +5,16 @@ import {
   getCurrentWeek,
   getMe,
   getMyFreeAgents,
+  getTrendingPlayers,
   getWaiverPriority,
   getWaiverSettings,
   listSeasons,
   resolveWeek,
   safeLatestSeason,
 } from "@/lib/api";
+import { ANTON, SATISFY, ELITE } from "@/components/elite/Elite";
 import { FreeAgentsList } from "@/components/FreeAgentsList";
+import { TrendingRail } from "@/components/TrendingRail";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 import { MyWaiverClaims } from "@/components/MyWaiverClaims";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
@@ -75,28 +78,42 @@ export default async function FreeAgentsPage({
     latestSeason !== null ? await getCurrentWeek(latestSeason) : { current_week: null };
   const week = resolveWeek(currentWeek);
 
-  const [players, waiverSettings, waiverPriority] = await Promise.all([
+  // Trending is a side rail: a failed fetch just leaves it out.
+  const trending = (kind: "add" | "drop") =>
+    getTrendingPlayers(sessionCookie, { kind, window: "24h", source: "auto" }).catch(() => null);
+  const [players, waiverSettings, waiverPriority, trendingAdds, trendingDrops] = await Promise.all([
     getMyFreeAgents(sessionCookie, position, search),
     getWaiverSettings(),
     latestSeason !== null ? getWaiverPriority(latestSeason, week, sessionCookie) : Promise.resolve(null),
+    trending("add"),
+    trending("drop"),
   ]);
 
   return (
     <div className="flex flex-col gap-4">
       <MyTeamSubNav active="freeAgents" />
-      <h1 className="text-2xl font-semibold">Free Agents</h1>
+      {/* Elite (Web A "Wire Room", 2026-11-05): title left, waiver facts right. */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col leading-none">
+          <span className={`${SATISFY} text-2xl`} style={{ color: ELITE.orange }}>
+            the
+          </span>
+          <h1
+            className={`${ANTON} text-4xl tracking-wide sm:text-5xl`}
+            style={{ color: ELITE.green, textShadow: "0 0 8px rgba(57,255,20,.7), 0 0 22px rgba(57,255,20,.35)" }}
+          >
+            FREE AGENTS
+          </h1>
+        </div>
+        <span className="rounded-xl border border-black/10 px-3 py-2 text-xs text-black/60 dark:border-white/10 dark:text-white/60">
+          {waiverSettings.uses_faab ? `FAAB · $${waiverSettings.acquisition_budget} budget` : "Waiver priority"}
+        </span>
+      </div>
 
-      <p className="text-sm text-black/50 dark:text-white/50">
-        Every player not currently on a roster in this league, sorted by real fantasy relevance. This league uses{" "}
-        {waiverSettings.uses_faab ? `FAAB bidding ($${waiverSettings.acquisition_budget} budget)` : "standard waiver priority"}
-        .
-      </p>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start gap-5">
+      <section className="flex min-w-0 flex-[999_1_640px] flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
         <PlayerSearchInput />
-        <Link href="/free-agents/trending" className="text-sm font-medium text-black/70 hover:underline dark:text-white/70">
-          Trending adds &amp; drops →
-        </Link>
       </div>
 
       <div className="flex flex-wrap gap-x-3 text-sm">
@@ -147,6 +164,11 @@ export default async function FreeAgentsPage({
       )}
 
       <FreeAgentsList players={players} bidding={me.league_format?.league_type === "guillotine"} />
+      </section>
+      <aside className="w-full flex-[1_1_320px] lg:sticky lg:top-4 lg:max-w-[360px]">
+        <TrendingRail adds={trendingAdds} drops={trendingDrops} />
+      </aside>
+      </div>
     </div>
   );
 }

@@ -97,6 +97,24 @@ export type PlayerCard = {
   on_trade_block?: boolean;
   // ESPN-style game log (2026-10): each game's line by category, with our points.
   game_log?: PlayerGameLog | null;
+  // This app's own projection in this league's scoring (2026-11-05).
+  league_projection?: LeagueProjection | null;
+};
+
+export type LeagueProjection = {
+  week: number;
+  points: number;
+  floor: number | null;
+  ceiling: number | null;
+  // Each source's number in this league's scoring: model (ours), espn, sleeper.
+  by_source: Partial<Record<"model" | "espn" | "sleeper", number>>;
+  // The stat line behind it (pass_yd, rush_att, rec, tgt…).
+  stat_line: Record<string, number>;
+  // What our model used: team, opp, implied points, matchup…
+  why: { team?: string; opp?: string; implied?: number; opp_implied?: number; matchup?: number } | null;
+  // Chance of each bonus this league pays (bonus_rush_100…).
+  bonus_odds: Record<string, number>;
+  rest_of_season: { week: number; points: number }[];
 };
 
 export type PlayerGameLog = {

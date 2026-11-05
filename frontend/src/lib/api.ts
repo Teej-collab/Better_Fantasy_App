@@ -2068,6 +2068,9 @@ export type MyFreeAgent = {
   rostered_team_name?: string | null;
   rostered_owner_name?: string | null;
   is_mine?: boolean;
+  // ESPN's "% Rost" and "+/-" across every league in the app (7 days).
+  rost_pct?: number | null;
+  rost_change?: number | null;
 };
 
 // Called server-side (free-agents/page.tsx) with the session cookie
@@ -2138,7 +2141,8 @@ export async function getMyFreeAgents(
 // across all of Sleeper (backend app/domain/trending.py).
 export type TrendingKind = "add" | "drop";
 export type TrendingWindow = "24h" | "7d" | "season";
-export type TrendingSource = "app" | "sleeper";
+// "auto": our leagues once there's enough to rank, else all of Sleeper.
+export type TrendingSource = "app" | "sleeper" | "auto";
 export type TrendingPlayer = {
   sleeper_player_id: string;
   full_name: string;
@@ -2152,6 +2156,7 @@ export type TrendingPlayer = {
   leagues: number | null;
   rostered_leagues: number;
   available: boolean;
+  headshot_url?: string | null;
 };
 export type TrendingPlayers = {
   source: TrendingSource;

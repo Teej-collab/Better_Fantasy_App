@@ -313,6 +313,11 @@ export type FreeAgent = {
   rostered_team_name?: string | null;
   rostered_owner_name?: string | null;
   is_mine?: boolean;
+  // Their opponent's rank against the position (1 = toughest).
+  opponent_position_rank?: PositionRank;
+  // ESPN's "% Rost" and "+/-" across every league in the app (7 days).
+  rost_pct?: number | null;
+  rost_change?: number | null;
 };
 
 export type AddFreeAgentResult =
@@ -390,6 +395,24 @@ export type PlayerCard = {
   is_on_my_team: boolean;
   // Listed by their owner on the Trades page's trade block (2026-10-23).
   on_trade_block?: boolean;
+  // This app's own projection in this league's scoring (2026-11-05).
+  league_projection?: LeagueProjection | null;
+};
+
+export type LeagueProjection = {
+  week: number;
+  points: number;
+  floor: number | null;
+  ceiling: number | null;
+  // Each source's number in this league's scoring: model (ours), espn, sleeper.
+  by_source: Partial<Record<'model' | 'espn' | 'sleeper', number>>;
+  // The stat line behind it (pass_yd, rush_att, rec, tgt…).
+  stat_line: Record<string, number>;
+  // What our model used: team, opp, implied points, matchup…
+  why: { team?: string; opp?: string; implied?: number; opp_implied?: number; matchup?: number } | null;
+  // Chance of each bonus this league pays (bonus_rush_100…).
+  bonus_odds: Record<string, number>;
+  rest_of_season: { week: number; points: number }[];
 };
 
 // GET /nfl/scoreboard — ESPN's public scoreboard, this week's real NFL games.
@@ -1940,7 +1963,8 @@ export type WarRoom = {
 // all of Sleeper (backend app/domain/trending.py).
 export type TrendingKind = 'add' | 'drop';
 export type TrendingWindow = '24h' | '7d' | 'season';
-export type TrendingSource = 'app' | 'sleeper';
+// 'auto': our leagues once there's enough to rank, else all of Sleeper.
+export type TrendingSource = 'app' | 'sleeper' | 'auto';
 export type TrendingPlayer = {
   sleeper_player_id: string;
   full_name: string;

@@ -8,6 +8,7 @@ import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { GameLogTable } from '@/components/players/GameLogTable';
+import { ProjectionCard } from '@/components/players/ProjectionCard';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { formatPoints } from '@/lib/format';
@@ -180,6 +181,13 @@ export default function PlayerScreen() {
               }
             />
           </View>
+        )}
+
+        {p.league_projection && (
+          <>
+            <SectionTitle>Projection</SectionTitle>
+            <ProjectionCard projection={p.league_projection} />
+          </>
         )}
 
         {(p.weekly_scores.length > 0 || p.game_log) && (

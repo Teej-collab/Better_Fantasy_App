@@ -8,6 +8,7 @@ import { getPlayerCard, type PlayerCard } from "@/lib/playerCardApi";
 import { addToTradeBlock, removeFromTradeBlock } from "@/lib/tradesApi";
 import { nflTeamColor, nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
+import { ProjectionPanel } from "@/components/players/ProjectionPanel";
 import { GameLogTable } from "@/components/players/GameLogTable";
 
 const TABS = ["Overview", "Game Log"] as const;
@@ -409,6 +410,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
 
             {tab === "Overview" && (
               <>
+                {card.league_projection && <ProjectionPanel projection={card.league_projection} />}
                 {(card.age || card.height || card.weight || card.years_exp !== null) && (
                   <div className="grid grid-cols-4 gap-2 rounded-xl bg-black/5 p-3 text-center dark:bg-white/5">
                     <BioStat label="Age" value={card.age ?? "—"} />

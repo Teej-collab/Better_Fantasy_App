@@ -5,11 +5,19 @@ import { useEffect, useState } from "react";
 import { addFreeAgent, getMyTeam, submitWaiverClaim, type MyFreeAgent, type RosterEntry } from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
-import { nflTeamName } from "@/lib/nfl-teams";
+import { EliteCard, EliteLabel, ELITE, HEX_CLIP } from "@/components/elite/Elite";
+import { nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { formatGameTime } from "@/lib/gameTime";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
 import { formatPositionRank, rankColorVar } from "@/lib/positionRank";
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from "@/components/players/PlayerViews";
+
+// A player whose share of rosters jumped this much in a week is "hot".
+const HOT_CHANGE = 5;
+const HEX_BUTTON = "flex h-[30px] w-[28px] shrink-0 items-center justify-center text-base font-black text-[#07090c] hover:brightness-110";
+const PRIMARY = "w-fit rounded-full bg-[#39ff14] px-3 py-1.5 text-xs font-bold text-[#07090c] hover:brightness-110";
+const SECONDARY = "w-fit rounded-full border border-white/15 px-3 py-1.5 text-xs font-medium text-[#f5f4ec]/70 hover:bg-white/5";
+const CHOICE = "rounded-full border border-white/15 px-3 py-1.5 text-xs text-[#f5f4ec] hover:bg-white/10";
 
 function formatStat(value: number | null): string {
   return value !== null ? value.toFixed(1) : "—";
@@ -182,7 +190,7 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
 
   const header = (
     <div className="flex items-center justify-between gap-3">
-      <h2 className="font-display text-lg tracking-wide uppercase">Available</h2>
+      <EliteLabel>Available</EliteLabel>
       <PlayerViewsPill view={view} onChange={setView} />
     </div>
   );
@@ -213,18 +221,18 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
                     </Link>
                   )
                 ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setView("matchup");
-                    if (p.waiver_clears_at || p.game_locked) startClaim(p);
-                    else startAdd(p);
-                  }}
-                  aria-label={p.waiver_clears_at || p.game_locked ? `Claim ${p.full_name}` : `Add ${p.full_name}`}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-400 text-sm font-bold text-black"
-                >
-                  +
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setView("matchup");
+                      if (p.waiver_clears_at || p.game_locked) startClaim(p);
+                      else startAdd(p);
+                    }}
+                    aria-label={p.waiver_clears_at || p.game_locked ? `Claim ${p.full_name}` : `Add ${p.full_name}`}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-400 text-sm font-bold text-black"
+                  >
+                    +
+                  </button>
                 )}
                 <PlayerHeadshot sleeperPlayerId={p.sleeper_player_id} proTeam={p.pro_team} name={p.full_name} size={28} />
                 <span className="flex min-w-0 flex-col">
@@ -247,297 +255,271 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
     );
   }
 
+  // Elite (Web A "Wire Room", 2026-11-05): an always-dark table — hex add
+  // button, headshot with the team's logo, OPP, PROJ, ESPN's %ROST and
+  // +/- (7 days, across every league in the app), and last week.
+  const GRID = "grid grid-cols-[34px_minmax(0,1fr)_52px_56px] sm:grid-cols-[34px_minmax(200px,1fr)_96px_56px_60px_70px_52px]";
   return (
     <div className="flex flex-col gap-2">
       {header}
-        <div className="neon-panel flex flex-col rounded-lg bg-black/[0.015] dark:bg-white/[0.03]">
-        <div className="flex items-center justify-between gap-2 border-b border-black/5 px-3 py-2 text-[11px] sm:gap-3 sm:px-4 font-semibold tracking-wide text-black/50 uppercase dark:border-white/5 dark:text-white/50">
-          <span>Players</span>
-          <span className="flex shrink-0 items-center gap-2 sm:gap-4">
-            <span className="w-10 text-right">Proj</span>
-            <span className="w-10 text-right">Score</span>
-            <span className="w-[52px]" aria-hidden />
-          </span>
+      <EliteCard tone="green" className="overflow-hidden">
+        <div className={`${GRID} items-center gap-2 border-b border-white/[0.07] px-3 py-2 text-[10px] font-extrabold tracking-[0.12em] text-[#f5f4ec]/50 uppercase sm:px-4`}>
+          <span aria-hidden />
+          <span>Player</span>
+          <span className="hidden sm:block">Opp</span>
+          <span className="text-right">Proj</span>
+          <span className="hidden text-right sm:block">%Rost</span>
+          <span className="text-right">+/- 7d</span>
+          <span className="hidden text-right sm:block">Last</span>
         </div>
-        <ol className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-          {players.map((p, i) => (
-            <li key={p.sleeper_player_id}>
-              <div className="flex items-center justify-between gap-2 px-3 py-3 text-sm sm:gap-3 sm:px-4">
-                <span className="flex min-w-0 items-center gap-2 sm:gap-3">
-                  <span className="w-5 shrink-0 text-black/50 tabular-nums dark:text-white/50">{i + 1}</span>
-                  <PlayerHeadshot sleeperPlayerId={p.sleeper_player_id} proTeam={p.pro_team} name={p.full_name} size={36} />
-                  <span className="flex min-w-0 flex-col">
-                    <button
-                      onClick={() => openPlayerCard(p.sleeper_player_id)}
-                      className="text-left font-medium wrap-break-word hover:underline"
-                    >
-                      {p.full_name}
-                      {hasInjuryBadge(p.injury_status) && (
-                        <span
-                          className="ml-1.5 text-xs font-bold text-red-500 dark:text-red-400"
-                          title={p.injury_status ?? undefined}
-                        >
-                          {injuryShortCode(p.injury_status as string)}
-                        </span>
-                      )}
-                    </button>
-                    <span className="text-xs text-black/50 dark:text-white/50">
-                      {/* players.position stores defenses as the raw "DEF" (Sleeper's own value) — shown as "D/ST" everywhere else in the app. */}
-                      {p.position === "DEF" ? "D/ST" : p.position} ·{" "}
-                      {/* Abbreviation on phones — the full name wrapped this line to three rows at 375-390px. */}
-                      <span className="sm:hidden">{p.pro_team ?? "—"}</span>
-                      <span className="hidden sm:inline">{nflTeamName(p.pro_team ?? undefined) ?? p.pro_team ?? "—"}</span>
-                    </span>
-                    {p.next_opponent && (
-                      <span className="text-xs text-black/50 dark:text-white/50">
-                        {p.next_opponent}
-                        {p.game_time && mounted && ` · ${formatGameTime(p.game_time)}`}
-                        {formatPositionRank(p.opponent_position_rank, p.position) && (
-                          <>
-                            {" · "}
-                            <span style={{ color: rankColorVar(p.opponent_position_rank!.rank) }}>
-                              {formatPositionRank(p.opponent_position_rank, p.position)}
-                            </span>
-                          </>
-                        )}
-                      </span>
-                    )}
-                    {p.rostered_team_id != null && (
-                      <span className="text-xs font-medium text-sky-600 dark:text-sky-400">
-                        {p.is_mine ? "Your team" : `On ${p.rostered_team_name ?? "a team"}`}
-                      </span>
-                    )}
-                    {p.rostered_team_id == null && (p.waiver_clears_at || p.game_locked) && (
-                      <span
-                        className="mt-0.5 w-fit rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold text-black/60 uppercase dark:bg-white/10 dark:text-white/60"
-                        title={
-                          p.waiver_clears_at
-                            ? "Dropped recently — this league's real 1-day waiver period applies"
-                            : "Their game has already kicked off this week — needs a waiver claim"
-                        }
-                      >
-                        On waivers{mounted && p.waiver_clears_at && ` · clears ${formatGameTime(p.waiver_clears_at)}`}
-                      </span>
-                    )}
-                  </span>
-                </span>
-                <span className="flex shrink-0 items-center gap-2 text-right text-xs tabular-nums sm:gap-4 text-black/60 dark:text-white/60">
-                  <span className="w-10">{p.on_bye ? "Bye" : formatStat(p.projected_points)}</span>
-                  <span className="w-10">{formatStat(p.score)}</span>
+        <ol className="flex flex-col divide-y divide-white/[0.06]">
+          {players.map((p) => {
+            const change = p.rost_change ?? null;
+            const hot = change !== null && change >= HOT_CHANGE;
+            const onWaivers = Boolean(p.waiver_clears_at || p.game_locked);
+            const rank = formatPositionRank(p.opponent_position_rank, p.position);
+            return (
+              <li key={p.sleeper_player_id}>
+                <div className={`${GRID} items-center gap-2 px-3 py-2.5 text-sm sm:px-4`}>
                   {p.rostered_team_id != null ? (
-                    // A search hit on someone's roster (2026-10): trade for them instead.
                     p.is_mine ? (
-                      <span className="w-[52px] text-center text-xs text-black/50 dark:text-white/50">Yours</span>
+                      <span className="text-[10px] text-[#f5f4ec]/50">Yours</span>
                     ) : (
-                      <Link
-                        href={tradeHref(p)}
-                        className="w-[52px] rounded-full border border-sky-400 px-2 py-1.5 text-center text-xs font-medium text-sky-500 hover:bg-sky-400/10"
-                      >
-                        Trade
+                      <Link href={tradeHref(p)} aria-label={`Propose a trade for ${p.full_name}`} className={HEX_BUTTON} style={{ clipPath: HEX_CLIP, background: "#60a5fa" }}>
+                        ⇄
                       </Link>
                     )
                   ) : activeId === p.sleeper_player_id ? (
-                    <button
-                      onClick={close}
-                      className="w-[52px] rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
-                    >
-                      Close
-                    </button>
-                  ) : p.waiver_clears_at || p.game_locked ? (
-                    <button
-                      onClick={() => startClaim(p)}
-                      className="w-[52px] rounded-full border border-[var(--wl-accent)] px-3 py-1.5 text-xs font-medium text-[var(--wl-accent)] hover:bg-[var(--wl-accent)]/10"
-                    >
-                      Claim
+                    <button type="button" onClick={close} aria-label="Close" className={HEX_BUTTON} style={{ clipPath: HEX_CLIP, background: "rgba(245,244,236,.35)" }}>
+                      ×
                     </button>
                   ) : (
                     <button
-                      onClick={() => startAdd(p)}
-                      className="w-[52px] rounded-full bg-[var(--wl-accent-dim)] px-3 py-1.5 text-xs font-medium text-white hover:brightness-110"
+                      type="button"
+                      onClick={() => (onWaivers ? startClaim(p) : startAdd(p))}
+                      aria-label={onWaivers ? `Claim ${p.full_name}` : `Add ${p.full_name}`}
+                      title={onWaivers ? "On waivers: file a claim" : "Add"}
+                      className={HEX_BUTTON}
+                      style={{ clipPath: HEX_CLIP, background: onWaivers ? "#facc15" : ELITE.green }}
                     >
-                      Add
+                      +
                     </button>
                   )}
-                </span>
-              </div>
-
-              {activeId === p.sleeper_player_id && panel && (
-                <div className="border-t border-black/5 bg-black/[0.02] px-4 py-3 text-sm dark:border-white/5 dark:bg-white/[0.02]">
-                  {panel.status === "confirm" && (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-black/70 dark:text-white/70">
-                        Add <strong>{p.full_name}</strong> to your bench? This is a real roster move.
-                      </p>
-                      <button
-                        onClick={() => submitAdd(p)}
-                        className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
-                      >
-                        Confirm add
-                      </button>
-                    </div>
-                  )}
-
-                  {panel.status === "submitting" && <p className="text-black/50 dark:text-white/50">Adding…</p>}
-
-                  {panel.status === "success" && (
-                    <p className="text-emerald-600 dark:text-emerald-400">{panel.message}</p>
-                  )}
-
-                  {panel.status === "error" && <p className="text-red-500">{panel.message}</p>}
-
-                  {panel.status === "needs-drop" && (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-black/70 dark:text-white/70">
-                        Your roster is full — pick a player to drop to add <strong>{p.full_name}</strong>.
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {panel.roster.map((entry) => (
-                          <button
-                            key={entry.player_id}
-                            onClick={() => setPanel({ status: "confirm-drop", roster: panel.roster, dropCandidate: entry })}
-                            className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
-                          >
-                            {entry.player_name}
-                            <span className="ml-1 text-black/50 dark:text-white/50">({entry.lineup_slot})</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {panel.status === "confirm-drop" && (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-black/70 dark:text-white/70">
-                        Drop <strong>{panel.dropCandidate.player_name}</strong> to add <strong>{p.full_name}</strong>?
-                        This is a real roster move.
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => submitAdd(p, panel.dropCandidate.player_id)}
-                          className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
-                        >
-                          Confirm drop &amp; add
-                        </button>
-                        <button
-                          onClick={() => setPanel({ status: "needs-drop", roster: panel.roster })}
-                          className="w-fit rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
-                        >
-                          Back
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {panel.status === "claim-menu" && (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-black/70 dark:text-white/70">
-                        <strong>{p.full_name}</strong> is still on waivers
-                        {mounted && p.waiver_clears_at && ` until ${formatGameTime(p.waiver_clears_at)}`}. File a claim —
-                        it resolves automatically, {bidding ? "highest bid wins (waiver priority breaks a tie)" : "highest this-week priority wins"}.
-                      </p>
-                      {bidding && (
-                        <label className="flex items-center gap-2 text-xs text-black/60 dark:text-white/60">
-                          FAAB bid $
-                          <input
-                            type="number"
-                            min={0}
-                            value={bid}
-                            onChange={(e) => setBid(e.target.value)}
-                            className="w-20 rounded-lg border border-black/10 bg-transparent px-2 py-1 text-sm tabular-nums dark:border-white/10"
-                          />
-                        </label>
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <span className="relative shrink-0">
+                      <PlayerHeadshot sleeperPlayerId={p.sleeper_player_id} proTeam={p.pro_team} name={p.full_name} size={38} />
+                      {p.position !== "DEF" && teamLogoUrl(p.pro_team) && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={teamLogoUrl(p.pro_team)!}
+                          alt={p.pro_team ?? ""}
+                          className="absolute -right-1.5 -bottom-1 h-[18px] w-[18px] rounded-full bg-[#07090c] p-px"
+                        />
                       )}
-                      {panel.rosterFull ? (
-                        <div className="flex flex-col gap-2">
-                          <p className="text-xs text-amber-600 dark:text-amber-400">
-                            Your roster is full — pick who to drop if this claim wins.
-                          </p>
-                          <button
-                            onClick={pickDropForClaim}
-                            className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
-                          >
-                            Pick a drop
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => submitClaim(p)}
-                            className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
-                          >
-                            File claim
-                          </button>
-                          <button
-                            onClick={pickDropForClaim}
-                            className="w-fit rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
-                          >
-                            File claim with a drop
-                          </button>
-                        </div>
+                    </span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openPlayerCard(p.sleeper_player_id)}
+                          className="truncate text-left font-bold text-[#f5f4ec] hover:underline"
+                        >
+                          {p.full_name}
+                        </button>
+                        <span className="shrink-0 text-[11px] font-semibold text-[#f5f4ec]/50">{p.position === "DEF" ? "D/ST" : p.position}</span>
+                        {hot && (
+                          <span className="shrink-0 px-1.5 py-px text-[9px] font-extrabold tracking-wider text-[#07090c]" style={{ background: ELITE.orange, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }}>
+                            HOT
+                          </span>
+                        )}
+                        {hasInjuryBadge(p.injury_status) && (
+                          <span className="shrink-0 text-xs font-bold text-red-400" title={p.injury_status ?? undefined}>
+                            {injuryShortCode(p.injury_status as string)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="truncate text-[11px] text-[#f5f4ec]/50">
+                        <span className="sm:hidden">{p.pro_team ?? "—"}</span>
+                        <span className="hidden sm:inline">{nflTeamName(p.pro_team ?? undefined) ?? p.pro_team ?? "—"}</span>
+                        {p.next_opponent && <span className="sm:hidden"> · {p.next_opponent}</span>}
+                        {p.game_time && mounted && ` · ${formatGameTime(p.game_time)}`}
+                      </span>
+                      {p.rostered_team_id != null && (
+                        <span className="text-[11px] font-medium text-sky-400">{p.is_mine ? "Your team" : `On ${p.rostered_team_name ?? "a team"}`}</span>
                       )}
-                    </div>
-                  )}
-
-                  {panel.status === "claim-pick-drop" && (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-black/70 dark:text-white/70">
-                        Pick a player to drop if the claim on <strong>{p.full_name}</strong> wins.
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {panel.roster.map((entry) => (
-                          <button
-                            key={entry.player_id}
-                            onClick={() =>
-                              setPanel({ status: "claim-confirm-drop", roster: panel.roster, dropCandidate: entry })
-                            }
-                            className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
-                          >
-                            {entry.player_name}
-                            <span className="ml-1 text-black/50 dark:text-white/50">({entry.lineup_slot})</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {panel.status === "claim-confirm-drop" && (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-black/70 dark:text-white/70">
-                        File a claim: if it wins, drop <strong>{panel.dropCandidate.player_name}</strong> to add{" "}
-                        <strong>{p.full_name}</strong>.
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => submitClaim(p, panel.dropCandidate.player_id)}
-                          className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
+                      {p.rostered_team_id == null && onWaivers && (
+                        <span
+                          className="mt-0.5 w-fit rounded-full bg-[#facc15]/15 px-1.5 py-px text-[10px] font-semibold text-[#facc15] uppercase"
+                          title={
+                            p.waiver_clears_at
+                              ? "Dropped recently — this league's real 1-day waiver period applies"
+                              : "Their game has already kicked off this week — needs a waiver claim"
+                          }
                         >
-                          Confirm claim
-                        </button>
-                        <button
-                          onClick={() => setPanel({ status: "claim-pick-drop", roster: panel.roster })}
-                          className="w-fit rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
-                        >
-                          Back
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {panel.status === "claim-submitting" && (
-                    <p className="text-black/50 dark:text-white/50">Filing claim…</p>
-                  )}
-
-                  {panel.status === "claim-success" && (
-                    <p className="text-emerald-600 dark:text-emerald-400">{panel.message}</p>
-                  )}
-
-                  {panel.status === "claim-error" && <p className="text-red-500">{panel.message}</p>}
+                          On waivers{mounted && p.waiver_clears_at && ` · clears ${formatGameTime(p.waiver_clears_at)}`}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  <span className="hidden flex-col text-xs sm:flex">
+                    <span className="text-[#f5f4ec]/80">{p.on_bye ? "Bye" : (p.next_opponent ?? "—")}</span>
+                    {rank && <span style={{ color: rankColorVar(p.opponent_position_rank!.rank) }}>{rank}</span>}
+                  </span>
+                  <span className="text-right font-extrabold text-[#f5f4ec] tabular-nums">{p.on_bye ? "Bye" : formatStat(p.projected_points)}</span>
+                  <span className="hidden text-right text-xs text-[#f5f4ec]/75 tabular-nums sm:block">{p.rost_pct != null ? `${p.rost_pct}%` : "—"}</span>
+                  <span
+                    className="text-right text-xs font-extrabold tabular-nums"
+                    style={{ color: change === null || change === 0 ? "rgba(245,244,236,.45)" : change > 0 ? ELITE.green : ELITE.orange }}
+                  >
+                    {change === null || change === 0 ? "—" : `${change > 0 ? "+" : "−"}${Math.abs(change)} ${change > 0 ? "▲" : "▼"}`}
+                  </span>
+                  <span className="hidden text-right text-xs text-[#f5f4ec]/75 tabular-nums sm:block">{formatStat(p.last_week_score)}</span>
                 </div>
-              )}
-            </li>
-          ))}
+
+                {activeId === p.sleeper_player_id && panel && (
+                  <div className="border-t border-white/[0.07] bg-white/[0.03] px-4 py-3 text-sm text-[#f5f4ec]">
+                    {panel.status === "confirm" && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[#f5f4ec]/75">
+                          Add <strong>{p.full_name}</strong> to your bench? This is a real roster move.
+                        </p>
+                        <button onClick={() => submitAdd(p)} className={PRIMARY}>
+                          Confirm add
+                        </button>
+                      </div>
+                    )}
+
+                    {panel.status === "submitting" && <p className="text-[#f5f4ec]/50">Adding…</p>}
+
+                    {panel.status === "success" && <p className="text-[#9dff86]">{panel.message}</p>}
+
+                    {panel.status === "error" && <p className="text-red-400">{panel.message}</p>}
+
+                    {panel.status === "needs-drop" && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[#f5f4ec]/75">
+                          Your roster is full — pick a player to drop to add <strong>{p.full_name}</strong>.
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {panel.roster.map((entry) => (
+                            <button
+                              key={entry.player_id}
+                              onClick={() => setPanel({ status: "confirm-drop", roster: panel.roster, dropCandidate: entry })}
+                              className={CHOICE}
+                            >
+                              {entry.player_name}
+                              <span className="ml-1 text-[#f5f4ec]/50">({entry.lineup_slot})</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {panel.status === "confirm-drop" && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[#f5f4ec]/75">
+                          Drop <strong>{panel.dropCandidate.player_name}</strong> to add <strong>{p.full_name}</strong>?
+                          This is a real roster move.
+                        </p>
+                        <div className="flex gap-2">
+                          <button onClick={() => submitAdd(p, panel.dropCandidate.player_id)} className={PRIMARY}>
+                            Confirm drop &amp; add
+                          </button>
+                          <button onClick={() => setPanel({ status: "needs-drop", roster: panel.roster })} className={SECONDARY}>
+                            Back
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {panel.status === "claim-menu" && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[#f5f4ec]/75">
+                          <strong>{p.full_name}</strong> is still on waivers
+                          {mounted && p.waiver_clears_at && ` until ${formatGameTime(p.waiver_clears_at)}`}. File a claim —
+                          it resolves automatically, {bidding ? "highest bid wins (waiver priority breaks a tie)" : "highest this-week priority wins"}.
+                        </p>
+                        {bidding && (
+                          <label className="flex items-center gap-2 text-xs text-[#f5f4ec]/65">
+                            FAAB bid $
+                            <input
+                              type="number"
+                              min={0}
+                              value={bid}
+                              onChange={(e) => setBid(e.target.value)}
+                              className="w-20 rounded-lg border border-white/10 bg-transparent px-2 py-1 text-sm tabular-nums"
+                            />
+                          </label>
+                        )}
+                        {panel.rosterFull ? (
+                          <div className="flex flex-col gap-2">
+                            <p className="text-xs text-amber-400">Your roster is full — pick who to drop if this claim wins.</p>
+                            <button onClick={pickDropForClaim} className={PRIMARY}>
+                              Pick a drop
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            <button onClick={() => submitClaim(p)} className={PRIMARY}>
+                              File claim
+                            </button>
+                            <button onClick={pickDropForClaim} className={SECONDARY}>
+                              File claim with a drop
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {panel.status === "claim-pick-drop" && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[#f5f4ec]/75">
+                          Pick a player to drop if the claim on <strong>{p.full_name}</strong> wins.
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {panel.roster.map((entry) => (
+                            <button
+                              key={entry.player_id}
+                              onClick={() => setPanel({ status: "claim-confirm-drop", roster: panel.roster, dropCandidate: entry })}
+                              className={CHOICE}
+                            >
+                              {entry.player_name}
+                              <span className="ml-1 text-[#f5f4ec]/50">({entry.lineup_slot})</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {panel.status === "claim-confirm-drop" && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[#f5f4ec]/75">
+                          File a claim: if it wins, drop <strong>{panel.dropCandidate.player_name}</strong> to add{" "}
+                          <strong>{p.full_name}</strong>.
+                        </p>
+                        <div className="flex gap-2">
+                          <button onClick={() => submitClaim(p, panel.dropCandidate.player_id)} className={PRIMARY}>
+                            Confirm claim
+                          </button>
+                          <button onClick={() => setPanel({ status: "claim-pick-drop", roster: panel.roster })} className={SECONDARY}>
+                            Back
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {panel.status === "claim-submitting" && <p className="text-[#f5f4ec]/50">Filing claim…</p>}
+
+                    {panel.status === "claim-success" && <p className="text-[#9dff86]">{panel.message}</p>}
+
+                    {panel.status === "claim-error" && <p className="text-red-400">{panel.message}</p>}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ol>
-      </div>
+      </EliteCard>
     </div>
   );
 }

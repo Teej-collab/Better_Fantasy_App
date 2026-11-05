@@ -175,7 +175,7 @@ export const IN_GAME_INJURY_LABELS = {
   ruled_out: 'Out',
 } as const;
 
-function ordinal(rank: number): string {
+export function ordinal(rank: number): string {
   const r100 = rank % 100;
   if (r100 >= 11 && r100 <= 13) return `${rank}th`;
   switch (rank % 10) {
