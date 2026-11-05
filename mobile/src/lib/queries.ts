@@ -19,7 +19,7 @@ import { trackTap } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useScreenFocused } from '@/lib/screenFocus';
-import type { MyTeam, RosterEntry, WeeklyAwards } from '@/lib/types';
+import type { MyTeam, RosterEntry, TrendingKind, TrendingSource, TrendingWindow, WeeklyAwards } from '@/lib/types';
 import { applyChange } from '@/lib/lineupMoves';
 
 // This is the main reason the native app feels faster than the web one:
@@ -218,6 +218,14 @@ export function useChatMessages(conversationId: number) {
   return useQuery({
     queryKey: ['chat-messages', conversationId],
     queryFn: async () => (await api.chatMessages(conversationId)).messages,
+  });
+}
+
+export function useTrendingPlayers(kind: TrendingKind, window: TrendingWindow, source: TrendingSource, position?: string) {
+  return useQuery({
+    queryKey: ['trending-players', kind, window, source, position ?? 'all'],
+    queryFn: () => api.trendingPlayers(kind, window, source, position),
+    placeholderData: (previous) => previous,
   });
 }
 

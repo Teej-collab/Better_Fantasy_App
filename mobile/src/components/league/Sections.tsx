@@ -1106,7 +1106,7 @@ export function ActivitySection({ season }: { season: number | null }) {
   );
 }
 
-const SOURCE_TAG: Record<RosterItem['source'], string | null> = { free_agent: null, waiver: 'WAIVER CLAIM', commissioner: 'COMMISSIONER' };
+const SOURCE_TAG: Record<RosterItem['source'], string | null> = { free_agent: null, waiver: 'WAIVER CLAIM', commissioner: 'COMMISSIONER', sync: null };
 
 function MovesCard({ items, mine }: { items: RosterItem[]; mine: boolean }) {
   const first = items[0];

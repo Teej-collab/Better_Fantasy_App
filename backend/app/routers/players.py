@@ -15,6 +15,7 @@ from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
 from app.domain.player_card import get_player_card
+from app.domain.trending import KINDS, SLEEPER_WINDOWS, WINDOWS, get_trending
 
 router = APIRouter(prefix="/players", tags=["players"])
 
@@ -76,6 +77,29 @@ async def list_players(request: Request, position: str | None = None, search: st
 
         rows = await conn.fetch(query, *params)
     return {"players": [dict(r) for r in rows]}
+
+
+@router.get("/trending")
+async def trending_players(
+    request: Request,
+    kind: str = "add",
+    window: str = "24h",
+    source: str = "app",
+    position: str | None = None,
+):
+    """Most added / most dropped players across every league in this app
+    (source "app") or across all of Sleeper (source "sleeper", 24h or 7d
+    only) — app/domain/trending.py. `available` on each row is the
+    caller's own active league."""
+    payload = _require_session(request)
+    windows = SLEEPER_WINDOWS if source == "sleeper" else WINDOWS
+    if kind not in KINDS or window not in windows or source not in ("app", "sleeper"):
+        raise HTTPException(status_code=400, detail="Unknown kind, window or source")
+    active_season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        return await get_trending(conn, active_season, league_id, source, kind, window, position or None)
 
 
 @router.get("/{sleeper_player_id}/card")

@@ -116,7 +116,7 @@ export function ChugFeedCard({ chugs }: { chugs: ChugFeedEntry[] }) {
   );
 }
 
-const SOURCE_ICON = { free_agent: '➕', waiver: '🎯', commissioner: '🛠️' } as const;
+const SOURCE_ICON = { free_agent: '➕', waiver: '🎯', commissioner: '🛠️', sync: '➕' } as const;
 
 function rosterSummary(item: Extract<LeagueActivityItem, { kind: 'roster' }>): string {
   if (item.added_player_name && item.dropped_player_name) {

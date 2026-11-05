@@ -90,6 +90,12 @@ async def trending() -> dict[str, int]:
     return net
 
 
+async def sleeper_trending(kind: str, lookback_hours: int, limit: int = 200) -> list[dict]:
+    """[{player_id, count}] most added (kind "add") or dropped ("drop")
+    across every Sleeper league, busiest first."""
+    return await _sleeper(f"/players/nfl/trending/{kind}?lookback_hours={lookback_hours}&limit={limit}", 1800)
+
+
 async def season_schedule(season: int) -> dict[str, dict[int, str]]:
     """{pro_team: {week: "IND" | "@NYG"}} for the whole regular season.
     18 scoreboard calls the first time, then cached for 12 hours — the

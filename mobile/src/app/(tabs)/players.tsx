@@ -82,7 +82,10 @@ export function PlayersScreenContent() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
         ListHeaderComponent={
           <View style={styles.header}>
-            <View style={[styles.titleRow, { justifyContent: 'flex-end' }]}>
+            <View style={[styles.titleRow, { justifyContent: 'space-between' }]}>
+              <Pressable onPress={() => router.push('/trending')} hitSlop={12}>
+                <Text style={styles.link}>Trending</Text>
+              </Pressable>
               <Pressable onPress={() => router.push('/waivers')} hitSlop={12}>
                 <Text style={styles.link}>My claims</Text>
               </Pressable>

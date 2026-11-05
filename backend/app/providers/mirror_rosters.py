@@ -10,15 +10,57 @@ pass.
 The whole league's rows are replaced in one transaction, so a reader
 never sees half a league. A player this app doesn't know (no players
 row, or an ESPN id with no match) is skipped.
+
+Each pass also compares every team's roster before and after the copy
+and logs the adds and drops to roster_transactions (source 'sync',
+2026-11-05) — the source league's own history never reaches this app,
+and these rows feed that league's activity feed and the league-wide
+Trending page. Nothing is logged before the league has drafted (every
+pick would look like an add) or on its first copy (empty before).
 """
+import logging
+
 from app.domain.league_settings_import import slot_label
 from app.providers.sleeper import league as sleeper
 
+logger = logging.getLogger(__name__)
+
 _SLEEPER_ABBR = {"WAS": "WSH"}
 
+# More changes than this to one team in a single pass (a few minutes) is
+# a source glitch or a commissioner reset, not real roster moves.
+_MAX_MOVES_PER_TEAM = 6
 
-async def _write(conn, season: int, league_id: int, rows: list[tuple[int, str, str]]) -> int:
-    """rows: (team_db_id, sleeper_player_id, slot)."""
+_DRAFTED_SLEEPER_STATUSES = {"in_season", "post_season", "complete"}
+
+
+def roster_moves(
+    before: dict[int, set[str]], after: dict[int, set[str]]
+) -> list[tuple[int, str | None, str | None]]:
+    """(team_id, added, dropped) per move, an add and a drop on the same
+    team paired into one row the way an in-app swap is logged. A player
+    who left one team and joined another in the same pass was traded,
+    not dropped and picked up, so neither side is logged. Only teams
+    with a roster on both sides count — a team missing from one side is
+    a new team or a bad fetch, not 15 adds or 15 drops."""
+    teams = [t for t in after if before.get(t) and after.get(t)]
+    added = {t: after[t] - before[t] for t in teams}
+    dropped = {t: before[t] - after[t] for t in teams}
+    traded = set().union(*added.values()) & set().union(*dropped.values()) if teams else set()
+    moves: list[tuple[int, str | None, str | None]] = []
+    for t in teams:
+        adds = sorted(added[t] - traded)
+        drops = sorted(dropped[t] - traded)
+        if not adds and not drops or len(adds) + len(drops) > _MAX_MOVES_PER_TEAM:
+            continue
+        for i in range(max(len(adds), len(drops))):
+            moves.append((t, adds[i] if i < len(adds) else None, drops[i] if i < len(drops) else None))
+    return moves
+
+
+async def _write(conn, season: int, league_id: int, rows: list[tuple[int, str, str]], drafted: bool) -> int:
+    """rows: (team_db_id, sleeper_player_id, slot). drafted: the source
+    league's draft is done, so roster changes are real adds and drops."""
     known = {
         r["sleeper_player_id"]
         for r in await conn.fetch(
@@ -27,6 +69,12 @@ async def _write(conn, season: int, league_id: int, rows: list[tuple[int, str, s
     }
     rows = [r for r in rows if r[1] in known]
     async with conn.transaction():
+        before: dict[int, set[str]] = {}
+        for r in await conn.fetch(
+            "SELECT team_id, sleeper_player_id FROM current_rosters WHERE season = $1 AND league_id = $2",
+            season, league_id,
+        ):
+            before.setdefault(r["team_id"], set()).add(r["sleeper_player_id"])
         await conn.execute("DELETE FROM current_rosters WHERE season = $1 AND league_id = $2", season, league_id)
         await conn.executemany(
             """
@@ -36,6 +84,25 @@ async def _write(conn, season: int, league_id: int, rows: list[tuple[int, str, s
             """,
             [(season, team, pid, slot, league_id) for team, pid, slot in rows],
         )
+        if drafted:
+            after: dict[int, set[str]] = {}
+            for team, pid, _ in rows:
+                after.setdefault(team, set()).add(pid)
+            moves = roster_moves(before, after)
+            if moves:
+                # A savepoint: a failed log never costs the roster copy itself.
+                try:
+                    async with conn.transaction():
+                        await conn.executemany(
+                            """
+                            INSERT INTO roster_transactions
+                                (season, league_id, team_id, added_sleeper_player_id, dropped_sleeper_player_id, source)
+                            VALUES ($1, $2, $3, $4, $5, 'sync')
+                            """,
+                            [(season, league_id, team, add, drop) for team, add, drop in moves],
+                        )
+                except Exception:
+                    logger.warning("Couldn't log mirror roster moves for league %s", league_id, exc_info=True)
     return len(rows)
 
 
@@ -69,7 +136,7 @@ async def sync_sleeper(pool, season: int, league_id: int, sleeper_league_id: str
                 slot_of.setdefault(pid, "TAXI")
             for pid in roster.get("players") or []:
                 rows.append((team, _SLEEPER_ABBR.get(pid, pid), slot_of.get(pid, "BE")))
-        return await _write(conn, season, league_id, rows)
+        return await _write(conn, season, league_id, rows, league.get("status") in _DRAFTED_SLEEPER_STATUSES)
 
 
 async def sync_espn(pool, season: int, league_id: int, provider) -> int:
@@ -92,4 +159,5 @@ async def sync_espn(pool, season: int, league_id: int, provider) -> int:
                 pid = by_espn.get(p.playerId)
                 if pid:
                     rows.append((team, pid, slot_label("espn", getattr(p, "lineupSlot", "BE") or "BE")))
-        return await _write(conn, season, league_id, rows)
+        # espn_api only fills league.draft once ESPN says the draft is done.
+        return await _write(conn, season, league_id, rows, bool(league.draft))

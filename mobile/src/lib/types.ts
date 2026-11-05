@@ -745,7 +745,8 @@ export type LeagueActivityItem =
       team_name: string;
       owner_id: number;
       owner_name: string;
-      source: 'free_agent' | 'waiver' | 'commissioner';
+      // 'sync': a move made on ESPN/Sleeper, picked up by the mirror copy.
+      source: 'free_agent' | 'waiver' | 'commissioner' | 'sync';
       added_player_name: string | null;
       dropped_player_name: string | null;
     }
@@ -1933,4 +1934,32 @@ export type WarRoom = {
   report_card: WarRoomReportCard | null;
   // Dynasty leagues only.
   dynasty?: WarRoomDynasty | null;
+};
+
+// Most added / dropped players across every league in the app, or across
+// all of Sleeper (backend app/domain/trending.py).
+export type TrendingKind = 'add' | 'drop';
+export type TrendingWindow = '24h' | '7d' | 'season';
+export type TrendingSource = 'app' | 'sleeper';
+export type TrendingPlayer = {
+  sleeper_player_id: string;
+  full_name: string;
+  position: string;
+  pro_team: string | null;
+  injury_status: string | null;
+  headshot_url: string | null;
+  count: number;
+  // App leagues only (null for Sleeper-wide rows).
+  adds: number | null;
+  drops: number | null;
+  leagues: number | null;
+  rostered_leagues: number;
+  available: boolean;
+};
+export type TrendingPlayers = {
+  source: TrendingSource;
+  kind: TrendingKind;
+  window: TrendingWindow;
+  leagues_tracked: number;
+  players: TrendingPlayer[];
 };

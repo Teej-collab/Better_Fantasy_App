@@ -121,6 +121,10 @@ import type {
   WeekMatchupContext,
   WeekMatchupContextItem,
   YourWeek,
+  TrendingKind,
+  TrendingPlayers,
+  TrendingSource,
+  TrendingWindow,
 } from '@/lib/types';
 import type { FormatOptions, LeagueFormat } from '@/lib/leagueFormat';
 import type { PreviewPlayer, ScoringCatalog } from '@/lib/scoringCatalog';
@@ -488,6 +492,10 @@ export const api = {
       body: JSON.stringify({ sleeper_player_id: playerId }),
     }),
   // `position` is the stored value (defenses are "DEF", shown as "D/ST").
+  trendingPlayers: (kind: TrendingKind, window: TrendingWindow, source: TrendingSource, position?: string) =>
+    request<TrendingPlayers>(
+      `/players/trending?kind=${kind}&window=${window}&source=${source}${position ? `&position=${encodeURIComponent(position)}` : ''}`
+    ),
   freeAgents: (position?: string, search?: string) => {
     // A search also finds rostered players (each tagged with its team).
     const params = [

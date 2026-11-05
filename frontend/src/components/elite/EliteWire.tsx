@@ -16,7 +16,7 @@ type Filter = "all" | "trades" | "moves" | "mine";
 type Card = { kind: "trade"; item: LeagueActivityTradeItem } | { kind: "roster"; items: LeagueActivityRosterItem[] };
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const SOURCE_TAG: Record<LeagueActivityRosterItem["source"], string | null> = { free_agent: null, waiver: "WAIVER CLAIM", commissioner: "COMMISSIONER" };
+const SOURCE_TAG: Record<LeagueActivityRosterItem["source"], string | null> = { free_agent: null, waiver: "WAIVER CLAIM", commissioner: "COMMISSIONER", sync: null };
 
 function dayLabel(iso: string, now: number): string {
   const d = new Date(iso);

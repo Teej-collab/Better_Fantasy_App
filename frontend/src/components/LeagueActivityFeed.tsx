@@ -7,6 +7,7 @@ const SOURCE_ICON: Record<LeagueActivityRosterItem["source"], string> = {
   free_agent: "➕",
   waiver: "🎯",
   commissioner: "🛠️",
+  sync: "➕",
 };
 
 function rosterSummary(item: LeagueActivityRosterItem): string {

@@ -92,8 +92,11 @@ export default async function FreeAgentsPage({
         .
       </p>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <PlayerSearchInput />
+        <Link href="/free-agents/trending" className="text-sm font-medium text-black/70 hover:underline dark:text-white/70">
+          Trending adds &amp; drops →
+        </Link>
       </div>
 
       <div className="flex flex-wrap gap-x-3 text-sm">

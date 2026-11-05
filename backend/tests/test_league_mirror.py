@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 from app.domain import league_settings_import as imp
 from app.domain import league_switch
 from app.main import app
+from app.providers.mirror_rosters import roster_moves
 from app.providers.sleeper import league as sleeper_league
 from tests.conftest import TEST_SEASON
 
@@ -143,8 +144,34 @@ async def test_a_move_on_sleeper_shows_up_on_the_next_copy(pool, monkeypatch):
             score = await conn.fetchval("SELECT home_score FROM matchups WHERE league_id = $1 AND week = 1", league_id)
         assert roster == {"test-mir-qb": "QB", "test-mir-rb2": "RB"}
         assert float(score) == 90.5
+
+        # The two players gone from Sleeper are logged as drops and trend.
+        async with pool.acquire() as conn:
+            logged = await conn.fetch(
+                "SELECT added_sleeper_player_id, dropped_sleeper_player_id, source FROM roster_transactions "
+                "WHERE league_id = $1 ORDER BY dropped_sleeper_player_id", league_id
+            )
+        assert [(r["added_sleeper_player_id"], r["dropped_sleeper_player_id"], r["source"]) for r in logged] == [
+            (None, "test-mir-rb", "sync"), (None, "test-mir-wr", "sync"),
+        ]
+        trending = (await client.get("/players/trending?kind=drop&window=24h")).json()
+        mine = {p["sleeper_player_id"]: p for p in trending["players"] if p["sleeper_player_id"].startswith("test-mir")}
+        assert mine["test-mir-rb"]["drops"] >= 1 and mine["test-mir-rb"]["available"] is True
+        assert (await client.get("/players/trending?source=sleeper&window=season")).status_code == 400
     finally:
         await client.__aexit__(None, None, None)
+
+
+def test_roster_moves_pairs_swaps_and_skips_trades_and_glitches():
+    before = {1: {"a", "b", "c"}, 2: {"x", "y"}, 3: {"p"}, 4: set(), 5: {f"g{i}" for i in range(10)}, 6: {"m", "z"}}
+    after = {1: {"a", "x", "d", "e"}, 2: {"b", "c"}, 3: {"p", "q"}, 4: {"new"}, 5: {f"h{i}" for i in range(10)},
+             6: {"m", "w"}}
+    # 1 and 2 traded b + c for x (not logged); 2 also dropped y; 4 had no
+    # roster before; 5 changed 20 players at once; 6 swapped z for w.
+    assert sorted(roster_moves(before, after), key=str) == sorted(
+        [(1, "d", None), (1, "e", None), (2, None, "y"), (3, "q", None), (6, "w", "z")], key=str
+    )
+
 
 
 async def test_switching_now_unlocks_moves_and_carries_faab(pool, monkeypatch):
