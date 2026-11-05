@@ -88,13 +88,15 @@ async def reslot_best_ball_lineups(conn, season: int, week: int, league_id: int)
         """
         SELECT cr.team_id, cr.sleeper_player_id, cr.lineup_slot, p.position,
                s.fantasy_points AS points,
-               CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $2) THEN 0 ELSE COALESCE(proj.projected_points, p.projected_avg_points) END AS projected
+               CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $2) THEN 0 ELSE COALESCE(lpp.projected_points, proj.projected_points, p.projected_avg_points) END AS projected
         FROM current_rosters cr
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         LEFT JOIN player_week_stats s
                ON s.sleeper_player_id = cr.sleeper_player_id AND s.season = $1 AND s.week = $2 AND s.league_id = $3
         LEFT JOIN player_weekly_projections proj
                ON proj.sleeper_player_id = cr.sleeper_player_id AND proj.season = $1 AND proj.week = $2
+        LEFT JOIN league_player_projections lpp
+               ON lpp.league_id = $3 AND lpp.sleeper_player_id = cr.sleeper_player_id AND lpp.season = $1 AND lpp.week = $2
         WHERE cr.season = $1 AND cr.league_id = $3
         """,
         season, week, league_id,

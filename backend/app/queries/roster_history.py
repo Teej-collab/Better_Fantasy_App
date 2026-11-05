@@ -26,11 +26,13 @@ async def snapshot_week(conn, season: int, week: int) -> int:
             """
             INSERT INTO roster_history (season, week, team_id, sleeper_player_id, lineup_slot, points_projected)
             SELECT cr.season, $2, cr.team_id, cr.sleeper_player_id, cr.lineup_slot,
-                   CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = cr.season AND tbw.bye_week = $2) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END
+                   CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = cr.season AND tbw.bye_week = $2) THEN 0 ELSE COALESCE(lpp.projected_points, pwp.projected_points, p.projected_avg_points) END
             FROM current_rosters cr
             JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
             LEFT JOIN player_weekly_projections pwp
                 ON pwp.season = cr.season AND pwp.week = $2 AND pwp.sleeper_player_id = cr.sleeper_player_id
+            LEFT JOIN league_player_projections lpp
+                ON lpp.league_id = cr.league_id AND lpp.season = cr.season AND lpp.week = $2 AND lpp.sleeper_player_id = cr.sleeper_player_id
             WHERE cr.season = $1
             RETURNING id
             """,
@@ -42,11 +44,13 @@ async def snapshot_week(conn, season: int, week: int) -> int:
             """
             INSERT INTO roster_history (season, week, team_id, sleeper_player_id, lineup_slot, points_projected)
             SELECT ld.season, ld.week, ld.team_id, ld.sleeper_player_id, ld.lineup_slot,
-                   CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = ld.season AND tbw.bye_week = ld.week) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END
+                   CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = ld.season AND tbw.bye_week = ld.week) THEN 0 ELSE COALESCE(lpp.projected_points, pwp.projected_points, p.projected_avg_points) END
             FROM locked_departures ld
             JOIN players p ON p.sleeper_player_id = ld.sleeper_player_id
             LEFT JOIN player_weekly_projections pwp
                 ON pwp.season = ld.season AND pwp.week = ld.week AND pwp.sleeper_player_id = ld.sleeper_player_id
+            LEFT JOIN league_player_projections lpp
+                ON lpp.league_id = ld.league_id AND lpp.season = ld.season AND lpp.week = ld.week AND lpp.sleeper_player_id = ld.sleeper_player_id
             WHERE ld.season = $1 AND ld.week = $2
               AND NOT EXISTS (
                   SELECT 1 FROM roster_history rh
@@ -92,7 +96,7 @@ async def get_roster_history_for_week(conn, season: int, team_id: int, snapshot_
                pws.fantasy_points AS points_scored, pws.raw_stats,
                CASE WHEN $3 = $4 THEN rh.points_projected
                     WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = rh.season AND tbw.bye_week = $4) THEN 0
-                    ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END AS points_projected,
+                    ELSE COALESCE(lpp.projected_points, pwp.projected_points, p.projected_avg_points) END AS points_projected,
                rh.sleeper_player_id AS player_id, p.pro_team, p.injury_status,
                ($3 = $4 AND rh.is_boom) AS is_boom, ($3 = $4 AND rh.is_bust) AS is_bust,
                p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = rh.season AND tbw.bye_week = $4) AS on_bye
@@ -104,6 +108,8 @@ async def get_roster_history_for_week(conn, season: int, team_id: int, snapshot_
             AND pws.league_id = tbs.league_id
         LEFT JOIN player_weekly_projections pwp
             ON pwp.season = rh.season AND pwp.week = $4 AND pwp.sleeper_player_id = rh.sleeper_player_id
+        LEFT JOIN league_player_projections lpp
+            ON lpp.league_id = tbs.league_id AND lpp.season = rh.season AND lpp.week = $4 AND lpp.sleeper_player_id = rh.sleeper_player_id
         WHERE rh.season = $1 AND rh.team_id = $2 AND rh.week = $3
         """,
         season, team_id, snapshot_week, score_week,

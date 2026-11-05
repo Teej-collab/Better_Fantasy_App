@@ -294,6 +294,48 @@ async def trigger_projected_points_sync(request: Request):
     return results
 
 
+@router.post("/projections/run")
+async def trigger_projection_engine(request: Request, week: int | None = None):
+    """Runs the projection engine (app/domain/projections/engine.py) now,
+    for this NFL week or `week` — the same run the scheduled job does.
+    Site admin only: it rewrites every league's projections."""
+    from app.domain.projections import engine as projection_engine
+    from app.providers.nfl_scoreboard import get_real_current_week
+
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+    week = week or await get_real_current_week()
+    if week is None:
+        raise HTTPException(status_code=400, detail="No NFL regular-season week right now")
+    results = await projection_engine.run_week(pool, int(_require("ACTIVE_SEASON")), week)
+    record_job_run("projection_engine")
+    return {"week": week, **results}
+
+
+@router.get("/projections/accuracy")
+async def projection_accuracy(request: Request):
+    """Each source's graded misses this season, by position (accuracy.py)."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        rows = await conn.fetch(
+            """
+            SELECT source, position, SUM(players) AS players,
+                   ROUND(SUM(mae * players) / NULLIF(SUM(players), 0), 2) AS mae,
+                   ROUND(SUM(bias * players) / NULLIF(SUM(players), 0), 2) AS bias,
+                   COUNT(DISTINCT week) AS weeks
+            FROM projection_accuracy WHERE season = $1
+            GROUP BY source, position ORDER BY position, mae
+            """,
+            season,
+        )
+    return {"season": season, "rows": [dict(r) for r in rows]}
+
+
 # ---- Admin dashboard / product intelligence (2026-09) — site-owner-only
 # visibility into who's using The Weekend and how. Gated by
 # require_site_admin (app/auth/league_context.py), NOT the sync

@@ -151,9 +151,14 @@ async def commissioner_get_roster(league_id: int, team_id: int, request: Request
             projected = {
                 r["sleeper_player_id"]: float(r["projected_points"])
                 for r in await conn.fetch(
-                    "SELECT sleeper_player_id, projected_points FROM player_weekly_projections "
-                    "WHERE season = $1 AND week = $2 AND sleeper_player_id = ANY($3::text[])",
-                    active_season, week, ids,
+                    "SELECT ids.sleeper_player_id, COALESCE(lpp.projected_points, pwp.projected_points) AS projected_points "
+                    "FROM unnest($3::text[]) AS ids(sleeper_player_id) "
+                    "LEFT JOIN player_weekly_projections pwp ON pwp.season = $1 AND pwp.week = $2 "
+                    "AND pwp.sleeper_player_id = ids.sleeper_player_id "
+                    "LEFT JOIN league_player_projections lpp ON lpp.league_id = $4 AND lpp.season = $1 AND lpp.week = $2 "
+                    "AND lpp.sleeper_player_id = ids.sleeper_player_id "
+                    "WHERE COALESCE(lpp.projected_points, pwp.projected_points) IS NOT NULL",
+                    active_season, week, ids, league_id,
                 )
             }
             byes = {

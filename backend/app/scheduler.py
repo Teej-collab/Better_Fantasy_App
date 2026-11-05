@@ -144,6 +144,11 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   up to 24h of extra delay waiting for one fixed nightly slot. Loops
   over every league with an expired waiver_wire row, same "not just
   League #1" shape as the keeper/draft-clock jobs above.
+- Projection engine (ENABLE_PROJECTION_ENGINE_SCHEDULER, 2026-11-05):
+  this app's own projections (app/domain/projections/) — history,
+  Vegas lines, the three sources' stat lines and every league's own
+  points — at 6 AM and noon Central daily, plus Sunday 10:45 AM after
+  inactives. Grades the week before on each run.
 - Injury alerts (ENABLE_INJURY_ALERTS_SCHEDULER, 2026-09-27): checks
   ESPN's injuries feed every 2 hours (INJURY_WATCH_EVERY_HOURS) and
   pushes status changes and news for rostered players
@@ -710,6 +715,19 @@ async def _run_adp_snapshot_job():
         saved = await adp.snapshot_preseason_adp(conn, season, today)
     logger.info("ADP snapshot finished: season=%s formats=%s", season, saved)
     record_job_run("adp_snapshot")
+
+
+async def _run_projection_engine_job():
+    from app.domain.projections import engine as projection_engine
+    from app.providers.nfl_scoreboard import get_real_current_week
+
+    week = await get_real_current_week()
+    if week is None:
+        return
+    season = int(_require("ACTIVE_SEASON"))
+    results = await projection_engine.run_week(await get_pool(), season, week)
+    logger.info("Projection engine finished: season=%s week=%s %s", season, week, results)
+    record_job_run("projection_engine")
 
 
 async def _run_projected_points_sync_job():
@@ -1322,6 +1340,18 @@ def start_scheduler():
             timezone="America/Chicago", id="sleeper_player_sync",
         )
         logger.info("Sleeper player sync scheduler started (daily at 7:00 PM Central)")
+        started_any = True
+
+    if os.getenv("ENABLE_PROJECTION_ENGINE_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        for job_id, trigger in (
+            ("projection_engine_morning", {"hour": 6, "minute": 0}),
+            ("projection_engine_noon", {"hour": 12, "minute": 0}),
+            ("projection_engine_inactives", {"day_of_week": "sun", "hour": 10, "minute": 45}),
+        ):
+            _scheduler.add_job(
+                _run_projection_engine_job, "cron", timezone="America/Chicago", id=job_id, **trigger,
+            )
+        logger.info("Projection engine scheduler started (6 AM + noon Central, Sunday 10:45 AM)")
         started_any = True
 
     if os.getenv("ENABLE_ADP_SNAPSHOT_SCHEDULER", "").lower() in ("1", "true", "yes"):

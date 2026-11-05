@@ -395,6 +395,8 @@ async def cleanup_test_season(pool):
         await conn.execute(
             "DELETE FROM player_weekly_projections WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1]
         )
+        for table in ("league_player_projections", "projection_lines", "projection_accuracy", "nfl_game_lines", "nfl_player_weeks"):
+            await conn.execute(f"DELETE FROM {table} WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])  # noqa: S608
         await conn.execute("DELETE FROM league_scoring_rules WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM teams_by_season WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         # keeper_selections.owner_id -> owners.owner_id, so it goes before

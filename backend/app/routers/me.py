@@ -804,7 +804,7 @@ async def list_free_agents(
         query = """
             SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
                    p.espn_player_id,
-                   CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END AS projected_points,
+                   CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(lpp.projected_points, pwp.projected_points, p.projected_avg_points) END AS projected_points,
                    p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $3) AS on_bye,
                    pws.fantasy_points AS score,
                    pws_prev.fantasy_points AS last_week_score,
@@ -823,6 +823,8 @@ async def list_free_agents(
                 AND pws_prev.league_id = $2
             LEFT JOIN player_weekly_projections pwp
                 ON pwp.season = $1 AND pwp.week = $3 AND pwp.sleeper_player_id = p.sleeper_player_id
+            LEFT JOIN league_player_projections lpp
+                ON lpp.league_id = $2 AND lpp.season = $1 AND lpp.week = $3 AND lpp.sleeper_player_id = p.sleeper_player_id
             WHERE (p.is_draftable OR (p.position = ANY($5::text[]) AND p.pro_team IS NOT NULL))
         """
         if not with_rostered:
@@ -837,7 +839,7 @@ async def list_free_agents(
             query += f" AND p.full_name ILIKE ${len(params) + 1}"
             params.append(f"%{search}%")
         query += (
-            " ORDER BY CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END DESC NULLS LAST, "
+            " ORDER BY CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(lpp.projected_points, pwp.projected_points, p.projected_avg_points) END DESC NULLS LAST, "
             "p.search_rank ASC NULLS LAST, p.full_name ASC"
         )
 
