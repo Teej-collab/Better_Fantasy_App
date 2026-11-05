@@ -104,7 +104,8 @@ async def _with_values(conn, trades_list: list[dict], season: int, my_team_id: i
     """Adds each trade's one-line value read (app/domain/trade_values.py)."""
     week = await trade_values.current_week(conn, season)
     ids = sorted({a["sleeper_player_id"] for t in trades_list for a in t["assets"]})
-    values = await trade_values.player_values(conn, season, week, ids)
+    league_id = await trade_values.league_of_team(conn, my_team_id)
+    values = await trade_values.player_values(conn, season, week, ids, league_id)
     for t in trades_list:
         t["value"] = trade_values.summary_for(t, my_team_id or 0, values)
     return trades_list
@@ -140,10 +141,10 @@ async def team_roster(team_id: int, request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        await require_active_league_id(conn, payload)
+        league_id = await require_active_league_id(conn, payload)
         roster = await trades_domain.get_team_roster_for_trade(conn, season, team_id)
         week = await trade_values.current_week(conn, season)
-        values = await trade_values.player_values(conn, season, week, [p["sleeper_player_id"] for p in roster])
+        values = await trade_values.player_values(conn, season, week, [p["sleeper_player_id"] for p in roster], league_id)
         on_block = {
             r["sleeper_player_id"]
             for r in await conn.fetch("SELECT sleeper_player_id FROM trade_block WHERE team_id = $1", team_id)
@@ -501,7 +502,7 @@ async def trade_block(request: Request, pool=Depends(get_pool)):
             league_id, season,
         )
         week = await trade_values.current_week(conn, season)
-        values = await trade_values.player_values(conn, season, week, [r["sleeper_player_id"] for r in rows])
+        values = await trade_values.player_values(conn, season, week, [r["sleeper_player_id"] for r in rows], league_id)
     return {
         "players": [
             {

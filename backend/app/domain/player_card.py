@@ -40,10 +40,11 @@ import logging
 
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.nfl_schedule import schedule_lookup_by_pro_team
+from app.domain.projections.card import player_projection
 from app.providers.espn.player_info import get_player_info
 from app.providers.espn.player_game_log import get_player_game_log
 from app.providers.espn.player_overview import get_player_overview
-from app.providers.nfl_scoreboard import get_week_scoreboard
+from app.providers.nfl_scoreboard import get_real_current_week, get_week_scoreboard
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +242,16 @@ async def get_player_card(
         r["opponent"] = opponent_by_week.get(r["week"])
 
     card["weekly_scores"] = weekly_scores
+
+    # This app's own projection, in this league's scoring (2026-11-05).
+    card["league_projection"] = None
+    if season is not None:
+        try:
+            card["league_projection"] = await player_projection(
+                conn, league_id, season, sleeper_player_id, await get_real_current_week()
+            )
+        except Exception:
+            logger.warning("League projection lookup failed for %s", sleeper_player_id, exc_info=True)
 
     # The ESPN-style game log (2026-10): each game's box-score line by
     # category, with our fantasy points for that week beside it.

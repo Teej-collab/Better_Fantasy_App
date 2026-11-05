@@ -437,14 +437,19 @@ async def trade_review(conn, league_id: int, season: int) -> dict:
     if player_ids:
         rows = await conn.fetch(
             """
-            SELECT p.sleeper_player_id, COALESCE(SUM(w.projected_points), 0) AS ros, pl.pro_team, pl.injury_status
+            SELECT p.sleeper_player_id, COALESCE(SUM(COALESCE(lpp.projected_points, w.projected_points)), 0) AS ros,
+                   pl.pro_team, pl.injury_status
             FROM unnest($3::text[]) AS p(sleeper_player_id)
             JOIN players pl ON pl.sleeper_player_id = p.sleeper_player_id
+            CROSS JOIN generate_series($2::int, 17) AS wk(week)
             LEFT JOIN player_weekly_projections w
-                ON w.sleeper_player_id = p.sleeper_player_id AND w.season = $1 AND w.week >= $2 AND w.week <= 17
+                ON w.sleeper_player_id = p.sleeper_player_id AND w.season = $1 AND w.week = wk.week
+            LEFT JOIN league_player_projections lpp
+                ON lpp.league_id = $4 AND lpp.sleeper_player_id = p.sleeper_player_id
+                AND lpp.season = $1 AND lpp.week = wk.week
             GROUP BY p.sleeper_player_id, pl.pro_team, pl.injury_status
             """,
-            season, week, player_ids,
+            season, week, player_ids, league_id,
         )
         projections = {r["sleeper_player_id"]: r for r in rows}
     votes = {

@@ -45,6 +45,7 @@ from app.domain import league_format
 from app.domain.headshots import headshot_url
 from app.domain import lineup_engine
 from app.domain import player_views
+from app.domain import trending
 from app.domain import waivers
 from app.domain.waiver_settings import get_waiver_settings
 from app.domain.lineup_exceptions import (
@@ -865,6 +866,13 @@ async def list_free_agents(
         # happens on an actual add/claim attempt in
         # ensure_waiver_clock_if_game_locked), so this is a synthetic,
         # display-only flag derived straight from locked_pro_teams.
+        # ESPN's "% Rost" and "+/-", across this app's leagues (2026-11-05).
+        rates = await trending.roster_rates(conn, active_season, [r["sleeper_player_id"] for r in rows])
+        for row in rows:
+            rate = rates.get(row["sleeper_player_id"], {})
+            row["rost_pct"] = rate.get("rost_pct")
+            row["rost_change"] = rate.get("rost_change")
+
         locked_pro_teams = await _waiver_locked_pro_teams(conn, active_season, league_id)
         for row in rows:
             clears_at = clears_at_by_player.get(row["sleeper_player_id"])

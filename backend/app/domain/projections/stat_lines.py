@@ -12,6 +12,7 @@ Sleeper's keys were read off its public stats/projections feeds; ESPN's
 numeric stat ids were matched against real box scores (Mahomes and
 McCaffrey, 2026 weeks 7–8, both feeds side by side).
 """
+from app.domain.roster_slots import fantasy_position
 
 SLEEPER_TO_CATEGORY: dict[str, str] = {
     "pass_att": "_pass_att", "pass_cmp": "pass_cmp", "pass_yd": "pass_yd", "pass_td": "pass_td",
@@ -32,6 +33,14 @@ SLEEPER_DEF_TO_CATEGORY: dict[str, str] = {
     "blk_kick": "def_block", "def_td": "def_return_td", "def_st_td": "def_return_td",
     "pts_allow": "_pts_allow", "yds_allow": "_yds_allow",
 }
+
+# Individual defenders (IDP leagues). idp_tkl is solo + assisted, the
+# same total tackles the box-score path scores (stat_derivations).
+SLEEPER_IDP_TO_CATEGORY: dict[str, str] = {
+    "idp_tkl": "idp_tackle", "idp_sack": "idp_sack", "idp_int": "idp_int", "idp_pass_def": "idp_pass_def",
+    "idp_tkl_loss": "idp_tfl", "idp_qb_hit": "idp_qb_hit", "idp_def_td": "idp_td",
+}
+IDP_GROUPS = ("DL", "LB", "DB")
 
 ESPN_TO_CATEGORY: dict[int, str] = {
     0: "_pass_att", 1: "pass_cmp", 3: "pass_yd", 4: "pass_td", 15: "pass_td_40", 19: "two_pt_pass", 20: "pass_int",
@@ -70,7 +79,12 @@ def _fill_fg_yards(line: dict[str, float]) -> None:
 
 def from_sleeper(stats: dict, position: str) -> dict[str, float]:
     line: dict[str, float] = {}
-    mapping = SLEEPER_DEF_TO_CATEGORY if position == "DEF" else SLEEPER_TO_CATEGORY
+    if position == "DEF":
+        mapping = SLEEPER_DEF_TO_CATEGORY
+    elif fantasy_position(position) in IDP_GROUPS:
+        mapping = SLEEPER_IDP_TO_CATEGORY
+    else:
+        mapping = SLEEPER_TO_CATEGORY
     for key, category in mapping.items():
         _add(line, category, stats.get(key))
     if position == "K":

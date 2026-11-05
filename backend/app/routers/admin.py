@@ -295,7 +295,7 @@ async def trigger_projected_points_sync(request: Request):
 
 
 @router.post("/projections/run")
-async def trigger_projection_engine(request: Request, week: int | None = None):
+async def trigger_projection_engine(request: Request, week: int | None = None, rest_of_season: bool = False):
     """Runs the projection engine (app/domain/projections/engine.py) now,
     for this NFL week or `week` — the same run the scheduled job does.
     Site admin only: it rewrites every league's projections."""
@@ -309,7 +309,7 @@ async def trigger_projection_engine(request: Request, week: int | None = None):
     week = week or await get_real_current_week()
     if week is None:
         raise HTTPException(status_code=400, detail="No NFL regular-season week right now")
-    results = await projection_engine.run_week(pool, int(_require("ACTIVE_SEASON")), week)
+    results = await projection_engine.run_week(pool, int(_require("ACTIVE_SEASON")), week, rest_of_season=rest_of_season)
     record_job_run("projection_engine")
     return {"week": week, **results}
 

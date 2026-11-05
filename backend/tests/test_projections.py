@@ -2,6 +2,7 @@
 import json
 
 from app.domain.projections import accuracy, engine, stat_lines
+from app.domain.projections.card import player_projection
 from app.domain.projections.distribution import simulate
 from app.domain.projections.model import ProjectionModel
 from app.domain.projections.scoring import expected_points
@@ -146,6 +147,11 @@ async def test_engine_projects_each_league_in_its_own_scoring(pool, monkeypatch)
     std_source = json.loads(std["by_source"])
     assert abs(std_source["sleeper"] - 10.0) < 0.01 and abs(std_source["espn"] - 11.1) < 0.01
     assert float(ppr["floor_points"]) < float(ppr["projected_points"]) < float(ppr["ceiling_points"])
+
+    async with pool.acquire() as conn:
+        card = await player_projection(conn, leagues[0], TEST_SEASON, "test-proj-wr", week)
+    assert card["points"] == float(ppr["projected_points"]) and card["by_source"] == by_source
+    assert card["stat_line"]["rec"] > 5 and card["why"]["team"] == "AAA"
 
     # Rosters read the league's own number over the old global one.
     async with pool.acquire() as conn:

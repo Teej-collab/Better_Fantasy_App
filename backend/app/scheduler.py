@@ -725,7 +725,10 @@ async def _run_projection_engine_job():
     if week is None:
         return
     season = int(_require("ACTIVE_SEASON"))
-    results = await projection_engine.run_week(await get_pool(), season, week)
+    # The morning run also re-projects every later week (trade values,
+    # rest of season); the others only this week.
+    morning = datetime.now(ZoneInfo("America/Chicago")).hour < 9
+    results = await projection_engine.run_week(await get_pool(), season, week, rest_of_season=morning)
     logger.info("Projection engine finished: season=%s week=%s %s", season, week, results)
     record_job_run("projection_engine")
 

@@ -20,7 +20,9 @@ one week, built the way the big sites build theirs:
    league average, shrunk for a small sample.
 5. Kickers from the team's implied points and the kicker's distance
    mix; a D/ST from the opponent's implied points, its own and the
-   opponent's sack/turnover rates.
+   opponent's sack/turnover rates; an individual defender (IDP) from his
+   own recent per-game tackles, sacks and so on, pulled toward his
+   position group's average.
 
 Everything averages out of history (nfl_player_weeks), so it re-fits
 itself every week. The result is a stat line in this app's scoring
@@ -29,12 +31,16 @@ each league scores it (scoring.py).
 """
 from dataclasses import dataclass, field
 
+from app.domain.roster_slots import fantasy_position
 from app.providers.projection_feeds import team_code
 
 HALF_LIFE_WEEKS = 4.0
 PRIOR_SEASON_WEIGHT = 0.35
 OTHER_TEAM_WEIGHT = 0.5
 SKILL = ("QB", "RB", "WR", "TE")
+IDP = ("DL", "LB", "DB")
+_IDP_STATS = {"idp_tkl": "idp_tackle", "idp_sack": "idp_sack", "idp_int": "idp_int", "idp_pass_def": "idp_pass_def",
+              "idp_tkl_loss": "idp_tfl", "idp_qb_hit": "idp_qb_hit", "idp_def_td": "idp_td"}
 
 _OUT = {"Out", "IR", "PUP", "Suspended", "NFI", "COV", "Inactive"}
 # Questionable players play most weeks; like ESPN and Sleeper the line
@@ -219,11 +225,18 @@ class ProjectionModel:
 
     def _build_players(self) -> None:
         self.players: dict[str, dict] = {}
+        self.idp_avg: dict[str, _Acc] = {}
         for r in self.rows:
-            if r["position"] not in (*SKILL, "K"):
+            group = fantasy_position(r["position"])
+            if group not in (*SKILL, "K", *IDP):
                 continue
             s = r["stats"]
-            active = _g(s, "off_snp") > 0 or any(_g(s, k) for k in ("pass_att", "rush_att", "rec_tgt", "fga", "xpa"))
+            if group in IDP:
+                if _g(s, "def_snp") <= 0:
+                    continue
+                self.idp_avg.setdefault(group, _Acc()).add(1.0, {k: _g(s, k) for k in _IDP_STATS})
+            active = (_g(s, "off_snp") > 0 or _g(s, "def_snp") > 0
+                      or any(_g(s, k) for k in ("pass_att", "rush_att", "rec_tgt", "fga", "xpa")))
             if not active:
                 continue
             team = team_code(r["team"])
@@ -274,7 +287,7 @@ class ProjectionModel:
         by_team: dict[str, list[str]] = {}
         for pid, info in universe.items():
             team = team_code(info.get("team"))
-            if team and team in lines and info.get("position") in (*SKILL, "K", "DEF"):
+            if team and team in lines and fantasy_position(info.get("position")) in (*SKILL, "K", "DEF", *IDP):
                 by_team.setdefault(team, []).append(pid)
 
         out: dict[str, dict] = {}
@@ -332,7 +345,12 @@ class ProjectionModel:
                 info = universe[pid]
                 if info.get("injury_status") in _OUT:
                     continue
-                if info["position"] == "K":
+                group = fantasy_position(info["position"])
+                if group in IDP:
+                    line = self._idp_line(pid, team, group, _PLAY_SHARE.get(info.get("injury_status"), 1.0))
+                    if line:
+                        out[pid] = line
+                elif info["position"] == "K":
                     out[pid] = self._kicker_line(pid, team, implied, env, opp)
                 elif info["position"] == "DEF":
                     out[pid] = self._defense_line(team, opp, lines)
@@ -399,6 +417,22 @@ class ProjectionModel:
         if pos != "QB" and tds:
             line["two_pt_rec" if pos in ("WR", "TE") else "two_pt_rush"] = tds * 0.03
         return {k: round(v, 3) for k, v in line.items()}
+
+    def _idp_line(self, pid: str, team: str, group: str, play: float) -> dict | None:
+        """Per-game averages over the games he played, pulled toward the
+        group's average by 1.5 games' worth. A defender with no snaps on
+        record gets nothing (most are deep backups)."""
+        _, raw = self._player_acc(pid, team)
+        if raw.w < 0.05:
+            return None
+        lg = self.idp_avg.get(group)
+        line = {}
+        for key, category in _IDP_STATS.items():
+            league = lg.mean(key) if lg else 0.0
+            value = (raw.total(key) + 1.5 * league) / (raw.w + 1.5) * play
+            if value:
+                line[category] = round(value, 3)
+        return line or None
 
     def _kicker_line(self, pid: str, team: str, implied: float, env: float, opp: str) -> dict:
         _, raw = self._player_acc(pid, team)

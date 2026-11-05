@@ -20,7 +20,7 @@ import httpx
 _SLEEPER = "https://api.sleeper.com"
 _ESPN_FANTASY = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{season}/segments/0/leaguedefaults/3"
 _ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
-_POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
+_POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF", "DL", "LB", "DB")
 _TEAM = {"WAS": "WSH"}
 
 _ESPN_POSITION = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 16: "DEF"}

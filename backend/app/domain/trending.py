@@ -84,10 +84,48 @@ async def sleeper_wide_trending(
     return out[:LIMIT]
 
 
+async def roster_rates(conn, season: int, player_ids: list[str]) -> dict[str, dict]:
+    """{player_id: {rost_pct, rost_change}} across this app's leagues —
+    ESPN's "% Rost" and "+/-": the share of leagues rostering him, and
+    how much that share moved over the last 7 days (net adds over the
+    league count, in points of percent)."""
+    tracked = await _leagues_tracked(conn, season)
+    if not tracked or not player_ids:
+        return {}
+    rows = await conn.fetch(
+        """
+        SELECT ids.pid,
+               (SELECT count(DISTINCT cr.league_id) FROM current_rosters cr
+                WHERE cr.season = $1 AND cr.sleeper_player_id = ids.pid) AS rostered,
+               (SELECT count(*) FROM roster_transactions rt WHERE rt.season = $1 AND rt.created_at >= now() - interval '7 days'
+                AND rt.added_sleeper_player_id = ids.pid)
+             - (SELECT count(*) FROM roster_transactions rt WHERE rt.season = $1 AND rt.created_at >= now() - interval '7 days'
+                AND rt.dropped_sleeper_player_id = ids.pid) AS net
+        FROM unnest($2::text[]) AS ids(pid)
+        """,
+        season, list(set(player_ids)),
+    )
+    return {
+        r["pid"]: {"rost_pct": round(100 * r["rostered"] / tracked, 1), "rost_change": round(100 * r["net"] / tracked, 1)}
+        for r in rows
+    }
+
+
+# "auto" (the Free Agents page's strip): this app's own leagues once
+# they have enough moves to rank, all of Sleeper until then.
+AUTO_MIN_PLAYERS = 4
+
+
 async def get_trending(
     conn, season: int, league_id: int, source: str, kind: str, window: str, position: str | None
 ) -> dict:
-    if source == "sleeper":
+    if source == "auto":
+        players = await app_trending(conn, season, league_id, kind, window, position)
+        source = "app"
+        if len(players) < AUTO_MIN_PLAYERS and window in SLEEPER_WINDOWS:
+            players = await sleeper_wide_trending(conn, season, league_id, kind, window, position)
+            source = "sleeper"
+    elif source == "sleeper":
         players = await sleeper_wide_trending(conn, season, league_id, kind, window, position)
     else:
         players = await app_trending(conn, season, league_id, kind, window, position)

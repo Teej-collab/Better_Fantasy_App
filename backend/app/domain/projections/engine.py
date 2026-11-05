@@ -15,7 +15,14 @@ Runs the projection engine for one week (see this package's __init__):
   4. score_leagues — every league's own points, per source and blended,
      into league_player_projections.
 
-run_week does all four. Grading a finished week is accuracy.grade_week.
+run_week does all four for the current week; with rest_of_season it
+also projects every later week of the regular season (build_lines +
+score_leagues per week), which trade values and the rest-of-season
+numbers read. A later week only counts long-term absences (IR, PUP,
+suspension) as out — this week's "Out" is usually back by then — and
+until Vegas posts its line, the week's implied points come from
+Sleeper's projected D/ST points allowed. Grading a finished week is
+accuracy.grade_week.
 """
 import json
 import logging
@@ -33,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 REGULAR_SEASON_WEEKS = 18
 POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
+IDP_POSITIONS = ("DL", "DE", "DT", "NT", "LB", "ILB", "OLB", "MLB", "DB", "CB", "S", "SS", "FS")
+_LONG_TERM_OUT = {"IR", "PUP", "Suspended", "NFI"}
 
 
 def _name_key(name: str | None) -> str:
@@ -104,17 +113,32 @@ async def _game_lines(conn, season: int, week: int, sleeper_rows: list[dict]) ->
     return lines
 
 
-async def build_lines(conn, season: int, week: int) -> dict[str, int]:
-    """All three sources' stat lines for the week. Returns {source: players}."""
+async def _any_idp_league(conn, season: int) -> bool:
+    return bool(await conn.fetchval(
+        "SELECT 1 FROM league_scoring_rules WHERE season = $1 AND stat_category LIKE 'idp\\_%' AND points_per_unit <> 0 LIMIT 1",
+        season,
+    ))
+
+
+async def build_lines(conn, season: int, week: int, *, future: bool = False) -> dict[str, int]:
+    """All three sources' stat lines for the week. Returns {source: players}.
+    future: a week after the current one (see the module docstring)."""
+    positions = list(POSITIONS) + (list(IDP_POSITIONS) if await _any_idp_league(conn, season) else [])
     players = await conn.fetch(
         """
         SELECT sleeper_player_id, full_name, position, pro_team, injury_status, espn_player_id
         FROM players WHERE position = ANY($1::text[]) AND pro_team IS NOT NULL
         """,
-        list(POSITIONS),
+        positions,
     )
+
+    def status(value):
+        if not future:
+            return value
+        return value if value in _LONG_TERM_OUT else None
+
     universe = {
-        r["sleeper_player_id"]: {"position": r["position"], "team": r["pro_team"], "injury_status": r["injury_status"]}
+        r["sleeper_player_id"]: {"position": r["position"], "team": r["pro_team"], "injury_status": status(r["injury_status"])}
         for r in players
     }
     by_espn = {r["espn_player_id"]: r["sleeper_player_id"] for r in players if r["espn_player_id"]}
@@ -248,7 +272,7 @@ async def score_leagues(conn, season: int, week: int, league_ids: list[int] | No
     return written
 
 
-async def run_week(pool, season: int, week: int) -> dict:
+async def run_week(pool, season: int, week: int, *, rest_of_season: bool = False, last_week: int = 17) -> dict:
     async with pool.acquire() as conn:
         out = {"history_weeks": await sync_history(conn, season, week)}
         try:
@@ -260,4 +284,13 @@ async def run_week(pool, season: int, week: int) -> dict:
             out["graded"] = await accuracy.grade_week(conn, season, week - 1)
         out["lines"] = await build_lines(conn, season, week)
         out["league_rows"] = await score_leagues(conn, season, week)
+        if rest_of_season:
+            out["future_weeks"] = []
+            for later in range(week + 1, last_week + 1):
+                try:
+                    await build_lines(conn, season, later, future=True)
+                    await score_leagues(conn, season, later)
+                    out["future_weeks"].append(later)
+                except Exception:
+                    logger.warning("Rest-of-season projection failed (season=%s week=%s)", season, later, exc_info=True)
     return out

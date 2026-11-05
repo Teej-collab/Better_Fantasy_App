@@ -38,21 +38,39 @@ async def current_week(conn, season: int) -> int:
     return await league_queries.get_cached_current_week(conn, season) or 1
 
 
-async def player_values(conn, season: int, week: int, player_ids: list[str]) -> dict[str, dict]:
-    """{player_id: {per_week, pro_team, injury_status, name, position}}."""
+async def league_of_team(conn, team_id: int | None) -> int | None:
+    if not team_id:
+        return None
+    return await conn.fetchval("SELECT league_id FROM teams_by_season WHERE id = $1", team_id)
+
+
+async def player_values(
+    conn, season: int, week: int, player_ids: list[str], league_id: int | None = None
+) -> dict[str, dict]:
+    """{player_id: {per_week, pro_team, injury_status, name, position}}.
+    per_week is the rest of the season's average weekly projection — in
+    league_id's own scoring where the projection engine has projected
+    that week (app/domain/projections/), else the global projection."""
     if not player_ids:
         return {}
     rows = await conn.fetch(
         """
         SELECT pl.sleeper_player_id, pl.full_name, pl.position, pl.pro_team, pl.injury_status,
-               COALESCE(AVG(w.projected_points) FILTER (WHERE w.projected_points > 0), 0) AS per_week
+               COALESCE(AVG(v.points) FILTER (WHERE v.points > 0), 0) AS per_week
         FROM players pl
-        LEFT JOIN player_weekly_projections w
-            ON w.sleeper_player_id = pl.sleeper_player_id AND w.season = $1 AND w.week >= $2 AND w.week <= $3
+        LEFT JOIN LATERAL (
+            SELECT COALESCE(lpp.projected_points, w.projected_points) AS points
+            FROM generate_series($2::int, $3::int) AS wk(week)
+            LEFT JOIN player_weekly_projections w
+                ON w.sleeper_player_id = pl.sleeper_player_id AND w.season = $1 AND w.week = wk.week
+            LEFT JOIN league_player_projections lpp
+                ON lpp.league_id = $5 AND lpp.sleeper_player_id = pl.sleeper_player_id
+                AND lpp.season = $1 AND lpp.week = wk.week
+        ) v ON TRUE
         WHERE pl.sleeper_player_id = ANY($4::text[])
         GROUP BY pl.sleeper_player_id
         """,
-        season, week, LAST_WEEK, list(set(player_ids)),
+        season, week, LAST_WEEK, list(set(player_ids)), league_id,
     )
     return {
         r["sleeper_player_id"]: {
@@ -147,7 +165,7 @@ async def evaluate(
     slots = await roster_slots(conn, season, league_id)
     mine = await roster_ids(conn, season, my_team_id)
     theirs = await roster_ids(conn, season, their_team_id)
-    values = await player_values(conn, season, week, mine + theirs)
+    values = await player_values(conn, season, week, mine + theirs, league_id)
     my_drops = [p for p in (my_drops or []) if p in mine and p not in give]
 
     def player(pid: str) -> dict:
@@ -209,7 +227,7 @@ async def drop_candidates(conn, season: int, team_id: int, exclude: list[str]) -
         season, team_id, IR_SLOT_LABEL, TAXI_SLOT_LABEL, exclude,
     )
     ids = [r["sleeper_player_id"] for r in rows]
-    values = await player_values(conn, season, week, ids)
+    values = await player_values(conn, season, week, ids, await league_of_team(conn, team_id))
     out = [{"id": pid, **values.get(pid, {"name": pid, "position": None, "per_week": 0.0})} for pid in ids]
     return sorted(out, key=lambda p: p["per_week"])
 
@@ -266,7 +284,7 @@ async def partners(conn, season: int, league_id: int, my_team_id: int) -> list[d
         league_id, season,
     ):
         rosters.setdefault(r["team_id"], []).append(r["sleeper_player_id"])
-    values = await player_values(conn, season, week, [p for ids in rosters.values() for p in ids])
+    values = await player_values(conn, season, week, [p for ids in rosters.values() for p in ids], league_id)
 
     strength: dict[int, dict[str, float]] = {}
     depth: dict[int, dict[str, float]] = {}

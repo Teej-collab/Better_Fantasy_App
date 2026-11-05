@@ -52,12 +52,14 @@ CANONICAL_RULES: dict[str, float] = {
     "yds_allow_lt100": 5, "yds_allow_100_199": 3, "yds_allow_200_299": 2, "yds_allow_300_349": 0,
     "yds_allow_350_399": -1, "yds_allow_400_449": -3, "yds_allow_450_499": -5, "yds_allow_500_549": -6,
     "yds_allow_550_plus": -7,
+    "idp_tackle": 1, "idp_sack": 2, "idp_int": 3, "idp_pass_def": 1, "idp_tfl": 1, "idp_qb_hit": 0.5, "idp_td": 6,
 }
 
 _TD_KEYS = ("pass_td", "rush_td", "rec_td", "two_pt_pass", "two_pt_rush", "two_pt_rec", "ret_td")
 _MINOR_KEYS = ("pass_int", "fum_lost", "pass_td_40", "rush_td_40", "rec_td_40")
 _KICK_KEYS = ("fg_made_0_39", "fg_made_40_49", "fg_made_50_plus", "xp_made",
               "fg_miss_0_29", "fg_miss_30_39", "fg_miss_40_49", "fg_miss_50_plus")
+_IDP_KEYS = ("idp_tackle", "idp_sack", "idp_int", "idp_pass_def", "idp_tfl", "idp_qb_hit", "idp_td")
 _DEF_COUNT_KEYS = ("def_sack", "def_int", "def_fum_rec", "def_return_td", "def_safety", "def_block")
 
 
@@ -156,6 +158,8 @@ def simulate(line: dict[str, float], position: str, seed: str) -> dict:
             hits[yds_tier] = hits.get(yds_tier, 0) + 1
         elif group == "K":
             stats = _sim_kicker(rng, line)
+        elif group in ("DL", "LB", "DB"):
+            stats = {key: _poisson(rng, line[key]) for key in _IDP_KEYS if line.get(key)}
         else:
             stats = _sim_offense(rng, line, group or "")
             for stat, mark, category in GAME_BONUSES:
