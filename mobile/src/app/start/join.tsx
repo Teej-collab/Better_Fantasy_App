@@ -1,4 +1,4 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
@@ -240,6 +240,21 @@ export default function JoinScreen() {
         autoCorrect={false}
       />
       {notFound && <Text style={startStyles.error}>No league found for that code — check it with your commissioner.</Text>}
+      {notFound && code.trim().length === 6 && (
+        <GhostButton
+          label="It's a survivor pool code? Join the pool"
+          onPress={() =>
+            void api
+              .joinSurvivorPool({ code: code.trim() })
+              .then((r) => {
+                haptics.success();
+                void queryClient.invalidateQueries({ queryKey: ['survivor-pools'] });
+                router.replace(`/survivor/pick/${r.entry_id}` as Href);
+              })
+              .catch((e: Error) => Alert.alert("Couldn't join that pool", e.message))
+          }
+        />
+      )}
       {preview && (
         <View style={[startStyles.card, startStyles.cardLit]}>
           <View style={startStyles.found}>

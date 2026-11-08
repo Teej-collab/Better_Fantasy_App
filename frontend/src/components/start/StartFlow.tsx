@@ -50,6 +50,7 @@ import {
   type UnclaimedOwner,
 } from "@/lib/leaguesApi";
 import { seasonalEmblem } from "@/lib/seasonal";
+import { survivorApi } from "@/lib/survivorApi";
 import { IOS_APP_URL } from "@/lib/appLinks";
 import styles from "./StartFlow.module.css";
 
@@ -469,6 +470,21 @@ export function StartFlow({
           />
         </label>
         {previewError && <p className={styles.error}>{previewError}</p>}
+        {previewError && code.trim().length === 6 && (
+          <button
+            type="button"
+            className="text-left text-sm font-bold"
+            style={{ color: "#39ff14" }}
+            onClick={() =>
+              survivorApi
+                .join({ code: code.trim() })
+                .then((r) => router.push(`/survivor/${r.pool_id}?entry=${r.entry_id}`))
+                .catch((e: Error) => setPreviewError(e.message))
+            }
+          >
+            It&apos;s a survivor pool code? Join the pool
+          </button>
+        )}
         {preview && (
           <div className={styles.card} style={{ borderColor: "color-mix(in srgb, var(--wl-accent) 45%, transparent)" }}>
             <span className="flex items-center gap-2 text-xs font-bold tracking-wider text-[color:var(--wl-accent)] uppercase">

@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -36,6 +36,9 @@ export function NeedsLeague({ displayName }: { displayName: string | null }) {
         <Pressable onPress={() => openLeagues('create')} style={({ pressed }) => [styles.outline, pressed && styles.pressed]}>
           <Text style={styles.outlineText}>Create a League</Text>
         </Pressable>
+        <Pressable onPress={() => router.push('/survivor' as Href)} style={({ pressed }) => [styles.survivor, pressed && styles.pressed]}>
+          <Text style={styles.survivorText}>Just here for a survivor pool?</Text>
+        </Pressable>
       </NeonPanel>
     </View>
   );
@@ -50,5 +53,7 @@ const styles = StyleSheet.create({
   primaryText: { color: '#06110a', fontSize: 15, fontWeight: '600' },
   outline: { alignSelf: 'stretch', alignItems: 'center', borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, paddingVertical: 13 },
   outlineText: { color: Colors.text, fontSize: 15, fontWeight: '500' },
+  survivor: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 12, minHeight: 44 },
+  survivorText: { color: '#39ff14', fontSize: 14, fontWeight: '700' },
   pressed: { opacity: 0.7 },
 });

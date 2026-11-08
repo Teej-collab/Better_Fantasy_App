@@ -31,6 +31,9 @@ export function NeedsLeagueCard() {
         >
           Join or create a league
         </Link>
+        <Link href="/survivor" className="mt-1 text-sm font-bold" style={{ color: "#39ff14" }}>
+          Just here for a survivor pool?
+        </Link>
       </div>
     </div>
   );
