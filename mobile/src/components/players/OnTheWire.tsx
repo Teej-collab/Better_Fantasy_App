@@ -9,10 +9,11 @@ import { openPlayer, useTrendingPlayers } from '@/lib/queries';
 import type { TrendingKind, TrendingPlayer } from '@/lib/types';
 
 // The Free Agents page's trending strip (elite App A "Hot Wire",
-// 2026-11-05): the four most added (or dropped) players of the last day —
-// across this app's leagues once they have enough moves to rank, all of
-// Sleeper until then — each a hex portrait over his team's logo, the
-// hottest lit orange. "See all" opens the full Trending page.
+// 2026-11-05): the four most added (or dropped) players across this
+// app's leagues — the last day, or the last week when the day is too
+// quiet to rank — and all of Sleeper (labeled as such) only when even the
+// week is quiet. Each is a hex portrait over his team's logo, the hottest
+// lit orange. "See all" opens the full Trending page.
 export function OnTheWire() {
   const [kind, setKind] = useState<TrendingKind>('add');
   const trending = useTrendingPlayers(kind, '24h', 'auto');
@@ -20,10 +21,11 @@ export function OnTheWire() {
   const players = (data?.players ?? []).slice(0, 4);
   if (!trending.isPending && players.length === 0) return null;
   const accent = kind === 'add' ? Elite.green : Elite.orange;
-  const where =
-    data?.source === 'app'
-      ? `${data.leagues_tracked} ${data.leagues_tracked === 1 ? 'league' : 'leagues'} on The Weekend`
-      : 'all of Sleeper';
+  const span = data?.window === '7d' ? 'Last 7 days' : 'Last 24 hrs';
+  const fromSleeper = data !== undefined && data.source !== 'app';
+  const where = fromSleeper
+    ? 'Trending across Sleeper'
+    : `${data?.leagues_tracked ?? 0} ${data?.leagues_tracked === 1 ? 'league' : 'leagues'} on The Weekend`;
 
   return (
     <View style={styles.card}>
@@ -41,11 +43,14 @@ export function OnTheWire() {
         </View>
       </View>
       <View style={styles.subRow}>
-        <Text style={styles.sub}>Last 24 hrs · {where}</Text>
+        <Text style={styles.sub}>
+          {span} · {where}
+        </Text>
         <Pressable onPress={() => router.push('/trending')} hitSlop={10}>
           <Text style={styles.seeAll}>See all</Text>
         </Pressable>
       </View>
+      {fromSleeper && <Text style={styles.sub}>Switches to our leagues once they&apos;re busy enough to rank.</Text>}
       <View style={styles.cells}>
         {players.map((p, i) => (
           <WireCell key={p.sleeper_player_id} player={p} hottest={i === 0} accent={accent} kind={kind} source={data?.source} />

@@ -8,10 +8,11 @@ import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 
 // The Free Agents page's Trending rail (elite Web A "Wire Room",
-// 2026-11-05): the last day's most added or dropped players — across
-// this app's leagues once they have enough moves to rank, all of
-// Sleeper until then — each with a bar for how hard he's moving. Green
-// counts are players still free in your league.
+// 2026-11-05): the most added or dropped players across this app's
+// leagues — the last day, or the last week when the day is too quiet to
+// rank — and all of Sleeper (labeled as such) only when even the week is
+// quiet. Each has a bar for how hard he's moving; green counts are
+// players still free in your league.
 export function TrendingRail({ adds, drops }: { adds: TrendingPlayers | null; drops: TrendingPlayers | null }) {
   const [kind, setKind] = useState<"add" | "drop">("add");
   const { openPlayerCard } = usePlayerCard();
@@ -19,10 +20,11 @@ export function TrendingRail({ adds, drops }: { adds: TrendingPlayers | null; dr
   const players = (data?.players ?? []).slice(0, 10);
   const accent = kind === "add" ? ELITE.green : ELITE.orange;
   const max = players[0]?.count || 1;
-  const where =
-    data?.source === "app"
-      ? `${data.leagues_tracked} ${data.leagues_tracked === 1 ? "league" : "leagues"} on The Weekend`
-      : "all of Sleeper";
+  const span = data?.window === "7d" ? "Last 7 days" : "Last 24 hrs";
+  const fromSleeper = data !== null && data.source !== "app";
+  const where = fromSleeper
+    ? "Trending across Sleeper"
+    : `${data?.leagues_tracked ?? 0} ${data?.leagues_tracked === 1 ? "league" : "leagues"} on The Weekend`;
 
   return (
     <EliteCard tone="green" className="flex flex-col gap-3 p-4">
@@ -37,7 +39,10 @@ export function TrendingRail({ adds, drops }: { adds: TrendingPlayers | null; dr
           </button>
         </div>
       </div>
-      <p className="text-xs text-[#f5f4ec]/55">Last 24 hrs · {where}</p>
+      <p className="text-xs text-[#f5f4ec]/55">
+        {span} · {where}
+        {fromSleeper && <span className="mt-0.5 block">Switches to our leagues once they&apos;re busy enough to rank.</span>}
+      </p>
       {players.length === 0 ? (
         <p className="text-sm text-[#f5f4ec]/55">Nothing moving yet.</p>
       ) : (

@@ -111,9 +111,12 @@ async def roster_rates(conn, season: int, player_ids: list[str]) -> dict[str, di
     }
 
 
-# "auto" (the Free Agents page's strip): this app's own leagues once
-# they have enough moves to rank, all of Sleeper until then.
+# "auto" (the Free Agents page's strip): this app's own leagues when
+# they have enough moves to rank; a thin day widens to their last week
+# (the "window" in the response says which), and all of Sleeper only
+# when even the week is too quiet.
 AUTO_MIN_PLAYERS = 4
+_AUTO_WIDER = {"24h": "7d"}
 
 
 async def get_trending(
@@ -122,6 +125,10 @@ async def get_trending(
     if source == "auto":
         players = await app_trending(conn, season, league_id, kind, window, position)
         source = "app"
+        if len(players) < AUTO_MIN_PLAYERS and window in _AUTO_WIDER:
+            wider = await app_trending(conn, season, league_id, kind, _AUTO_WIDER[window], position)
+            if len(wider) >= AUTO_MIN_PLAYERS:
+                players, window = wider, _AUTO_WIDER[window]
         if len(players) < AUTO_MIN_PLAYERS and window in SLEEPER_WINDOWS:
             players = await sleeper_wide_trending(conn, season, league_id, kind, window, position)
             source = "sleeper"

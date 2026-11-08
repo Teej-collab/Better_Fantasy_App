@@ -158,6 +158,25 @@ async def test_a_move_on_sleeper_shows_up_on_the_next_copy(pool, monkeypatch):
         mine = {p["sleeper_player_id"]: p for p in trending["players"] if p["sleeper_player_id"].startswith("test-mir")}
         assert mine["test-mir-rb"]["drops"] >= 1 and mine["test-mir-rb"]["available"] is True
         assert (await client.get("/players/trending?source=sleeper&window=season")).status_code == 400
+
+        # A quiet day: "auto" widens to the leagues' last week before it
+        # falls back to all of Sleeper.
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE roster_transactions SET created_at = now() - interval '3 days' WHERE league_id = $1", league_id
+            )
+            await conn.execute(
+                """
+                INSERT INTO roster_transactions (season, league_id, team_id, dropped_sleeper_player_id, source, created_at)
+                SELECT season, league_id, team_id, p, 'sync', now() - interval '3 days'
+                FROM (SELECT season, league_id, team_id FROM roster_transactions WHERE league_id = $1 LIMIT 1) t,
+                     unnest(ARRAY['test-mir-qb', 'test-mir-rb2']) AS p
+                """,
+                league_id,
+            )
+        auto = (await client.get("/players/trending?kind=drop&window=24h&source=auto")).json()
+        assert auto["source"] == "app" and auto["window"] == "7d"
+        assert {p["sleeper_player_id"] for p in auto["players"]} >= {"test-mir-rb", "test-mir-wr", "test-mir-qb", "test-mir-rb2"}
     finally:
         await client.__aexit__(None, None, None)
 
