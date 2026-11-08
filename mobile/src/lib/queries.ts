@@ -133,6 +133,14 @@ export function useMatchupContext(season: number | null, week: number | null) {
   });
 }
 
+export function useSchedule(season: number | null) {
+  return useQuery({
+    queryKey: ['schedule', season],
+    queryFn: () => api.schedule(season!),
+    enabled: season !== null,
+  });
+}
+
 export function useStandings(season: number | null) {
   return useQuery({
     queryKey: ['standings', season],

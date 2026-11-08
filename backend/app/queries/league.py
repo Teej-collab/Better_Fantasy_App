@@ -343,6 +343,27 @@ async def list_week_matchups(conn, season: int, week: int, league_id: int = DEFA
     )
 
 
+async def list_season_schedule(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
+    """Every matchup of the season, for the Schedule (2026-11-08)."""
+    return await conn.fetch(
+        """
+        SELECT m.id AS matchup_id, m.week, m.is_playoff, m.headline,
+               ht.id AS home_team_id, ht.team_name AS home_team_name, m.home_score,
+               ho.owner_id AS home_owner_id, ho.display_name AS home_owner_name, ho.logo_url AS home_logo_url,
+               at.id AS away_team_id, at.team_name AS away_team_name, m.away_score,
+               ao.owner_id AS away_owner_id, ao.display_name AS away_owner_name, ao.logo_url AS away_logo_url
+        FROM matchups m
+        JOIN teams_by_season ht ON m.home_team_id = ht.id
+        JOIN teams_by_season at ON m.away_team_id = at.id
+        LEFT JOIN owners ho ON ho.owner_id = ht.owner_id
+        LEFT JOIN owners ao ON ao.owner_id = at.owner_id
+        WHERE m.season = $1 AND m.league_id = $2
+        ORDER BY m.week, m.id
+        """,
+        season, league_id,
+    )
+
+
 async def get_matchup(conn, matchup_id: int):
     return await conn.fetchrow(
         """

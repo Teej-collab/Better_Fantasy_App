@@ -9,7 +9,7 @@ import { ordinal } from '@/lib/bracketEngine';
 import { haptics } from '@/lib/haptics';
 import { trackTap } from '@/lib/analytics';
 import { api } from '@/lib/api';
-import { useLeagueActivity, useMe, useMyWeek, usePowerRankingsTrend, useRivalries, useScoringCatalog, useSeasonTeams, useStandings } from '@/lib/queries';
+import { useLeagueActivity, useMe, useMyWeek, usePowerRankingsTrend, useRivalries, useSchedule, useScoringCatalog, useSeasonTeams, useStandings } from '@/lib/queries';
 import { scoringSummary } from '@/lib/scoringDisplay';
 import type { LeagueActivityItem } from '@/lib/types';
 
@@ -17,10 +17,11 @@ import type { LeagueActivityItem } from '@/lib/types';
 // section as a card showing your own line from it, so nothing hides in
 // a scrolling chip row. Tapping a card opens that section.
 
-export type HubSection = 'league' | 'standings' | 'powerRankings' | 'rivalries' | 'scoring' | 'rules' | 'history' | 'activity';
+export type HubSection = 'league' | 'standings' | 'schedule' | 'powerRankings' | 'rivalries' | 'scoring' | 'rules' | 'history' | 'activity';
 
 const COLORS = {
   standings: '#4ade80',
+  schedule: '#818cf8',
   power: '#facc15',
   rivalries: '#ff8a3d',
   activity: '#4cc3ff',
@@ -125,6 +126,11 @@ export function LeagueHub({ season, onOpen }: { season: number | null; onOpen: (
     : 'Every rivalry in the league';
 
   const latest = activity[0] ? describeMove(activity[0]) : null;
+  // Schedule: this week's (or the next) game.
+  const schedule = useSchedule(season).data;
+  const nextWeek = schedule?.weeks.find((w) => w.status !== 'final' && w.matchups.some((m) => m.home.owner_id === ownerId || m.away.owner_id === ownerId));
+  const nextGame = nextWeek?.matchups.find((m) => m.home.owner_id === ownerId || m.away.owner_id === ownerId);
+  const nextOpponent = nextGame ? (nextGame.home.owner_id === ownerId ? nextGame.away : nextGame.home) : null;
   const survivor = useQuery({ queryKey: ['survivor-pools'], queryFn: api.survivorPools, staleTime: 60_000 }).data;
   const myEntries = survivor?.pools.flatMap((p) => p.mine) ?? [];
   const needing = myEntries.filter((m) => m.needs_pick).length;
@@ -140,6 +146,14 @@ export function LeagueHub({ season, onOpen }: { season: number | null; onOpen: (
         title={place ? `${ordinal(place)} · ${record}` : null}
         detail="Scores · Table · Playoffs and What-If"
         onPress={() => onOpen('standings')}
+      />
+      <HubCard
+        wide
+        label="Schedule"
+        color={COLORS.schedule}
+        title={nextWeek && nextOpponent ? `Week ${nextWeek.week} · vs ${nextOpponent.owner_name ?? nextOpponent.team_name}` : null}
+        detail="Every week's matchups · your season"
+        onPress={() => onOpen('schedule')}
       />
       <HubCard
         wide

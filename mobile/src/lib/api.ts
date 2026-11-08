@@ -127,6 +127,7 @@ import type {
   TrendingWindow,
   InboxNotification,
   ChugsOwed,
+  SeasonSchedule,
   LeagueNotificationLevel,
 } from '@/lib/types';
 import type { FormatOptions, LeagueFormat } from '@/lib/leagueFormat';
@@ -469,6 +470,7 @@ export const api = {
     request<{ players: PlayFantasyPlayer[] }>(
       `/nfl/games/${encodeURIComponent(gameId)}/plays/${encodeURIComponent(playId)}/fantasy`,
     ),
+  schedule: (season: number) => request<SeasonSchedule>(`/seasons/${season}/schedule`),
   standings: (season: number) => request<{ standings: StandingsRow[] }>(`/seasons/${season}/standings`),
   matchupContext: (season: number, week: number) =>
     request<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`),

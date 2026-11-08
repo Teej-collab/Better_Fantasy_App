@@ -710,3 +710,32 @@ async def test_system_status_is_for_admins_only(pool, monkeypatch):
     assert {"using_relay", "scoreboard"} <= set(body["espn"])
     assert {"requests_last_minute", "errors_last_5_minutes"} <= set(body["traffic"])
     assert isinstance(body["recent_requests"], list)
+
+
+async def test_season_schedule_marks_each_week_and_keeps_upcoming_scores_out(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    team_a, team_b = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        for week, home, away, hs, as_ in ((1, team_a, team_b, 110.5, 98.0), (2, team_b, team_a, 40.2, 51.0), (3, team_a, team_b, 0, 0)):
+            await conn.execute(
+                "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, league_id, headline) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                TEST_SEASON, week, home, away, hs, as_, DEFAULT_LEAGUE_ID, "Rivalry Week" if week == 3 else None,
+            )
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 2) ON CONFLICT (season) DO UPDATE SET current_week = 2",
+            TEST_SEASON,
+        )
+    cookies = await _member_cookies(pool, "schedule")
+    assert (await _get(f"/seasons/{TEST_SEASON}/schedule")).status_code == 401
+    resp = await _get(f"/seasons/{TEST_SEASON}/schedule", cookies)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["current_week"] == 2
+    assert [(w["week"], w["status"]) for w in body["weeks"]] == [(1, "final"), (2, "live"), (3, "upcoming")]
+    upcoming = body["weeks"][2]["matchups"][0]
+    assert (upcoming["home"]["score"], upcoming["away"]["score"], upcoming["headline"]) == (None, None, "Rivalry Week")
+    assert body["weeks"][1]["matchups"][0]["home"]["score"] == 40.2
+    assert body["weeks"][0]["matchups"][0]["home"]["owner_name"] == "Alice Smith"
+    # Only the finished week counts toward the records.
+    assert body["records"] == {str(team_a): "1-0", str(team_b): "0-1"}

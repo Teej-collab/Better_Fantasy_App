@@ -8,6 +8,7 @@ import { EliteChips, EliteTitle } from '@/components/elite/Elite';
 import { SeasonTabs } from '@/components/league/LeagueUI';
 import { SwipeBack } from '@/components/league/SwipeBack';
 import { RulesSection } from '@/components/league/RulesSection';
+import { ScheduleSection } from '@/components/league/ScheduleSection';
 import { ScoringSection } from '@/components/league/ScoringSection';
 import {
   ActivitySection,
@@ -31,6 +32,7 @@ import { useTabBarScroll } from '@/lib/tabBar';
 const LEAGUE_SECTIONS = [
   { key: 'league', label: 'Teams' },
   { key: 'standings', label: 'Standings' },
+  { key: 'schedule', label: 'Schedule' },
   { key: 'powerRankings', label: 'Power Rankings' },
   { key: 'rivalries', label: 'Rivalries' },
   { key: 'scoring', label: 'Scoring' },
@@ -42,11 +44,11 @@ const LEAGUE_SECTIONS = [
 type LeagueSectionKey = (typeof LEAGUE_SECTIONS)[number]['key'] | 'hub';
 
 // Sections whose content changes by season get season tabs.
-const SEASONAL: LeagueSectionKey[] = ['league', 'standings', 'powerRankings'];
+const SEASONAL: LeagueSectionKey[] = ['league', 'standings', 'schedule', 'powerRankings'];
 
 // Sections with the elite look (2026-10-31), which draw their own neon
 // title and use the elite season chips.
-const ELITE: LeagueSectionKey[] = ['league', 'standings', 'powerRankings', 'rivalries', 'activity'];
+const ELITE: LeagueSectionKey[] = ['league', 'standings', 'schedule', 'powerRankings', 'rivalries', 'activity'];
 
 function eliteHeading(section: LeagueSectionKey, season: number | null): { kicker: string; title: string } | null {
   const year = season !== null ? `The ${season}` : 'The';
@@ -55,6 +57,8 @@ function eliteHeading(section: LeagueSectionKey, season: number | null): { kicke
       return { kicker: 'The', title: 'Hive' };
     case 'standings':
       return { kicker: year, title: 'Standings' };
+    case 'schedule':
+      return { kicker: year, title: 'Schedule' };
     case 'powerRankings':
       return { kicker: year, title: 'Power Rankings' };
     case 'rivalries':
@@ -155,6 +159,7 @@ function LeagueScreenContent() {
           )}
           {section === 'league' && <LeagueOverview season={shownSeason} />}
           {section === 'standings' && <StandingsSection key={params.w ?? params.view ?? 'standings'} season={shownSeason} initialView={params.view} whatIf={params.w} />}
+          {section === 'schedule' && <ScheduleSection key={shownSeason ?? 'schedule'} season={shownSeason} />}
           {section === 'powerRankings' && <PowerRankingsSection season={shownSeason} />}
           {section === 'rivalries' && <RivalriesSection />}
           {section === 'scoring' && <ScoringSection />}

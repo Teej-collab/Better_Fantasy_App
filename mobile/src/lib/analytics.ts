@@ -57,6 +57,7 @@ export function classifyRoute(path: string): string {
 export const LEAGUE_SECTION_ROUTES: Record<string, string> = {
   league: '/league',
   standings: '/standings',
+  schedule: '/schedule',
   powerRankings: '/power-rankings',
   rivalries: '/rivalries',
   scoring: '/scoring',

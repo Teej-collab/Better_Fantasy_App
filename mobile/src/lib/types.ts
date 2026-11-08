@@ -2013,3 +2013,10 @@ export type InboxNotification = {
 export type ChugsOwed = { league_id: number; name: string; owed: number; fine: number };
 
 export type LeagueNotificationLevel = { league_id: number; name: string; level: 'all' | 'mine' | 'off' };
+
+// GET /seasons/{season}/schedule (2026-11-08): the whole season, week by
+// week. An upcoming week's scores are null.
+export type ScheduleSide = { team_id: number; team_name: string; owner_id: number | null; owner_name: string | null; logo_url: string | null; score: number | null };
+export type ScheduleMatchup = { matchup_id: number; headline: string | null; is_playoff: boolean; home: ScheduleSide; away: ScheduleSide };
+export type ScheduleWeek = { week: number; status: 'final' | 'live' | 'upcoming'; is_playoff: boolean; matchups: ScheduleMatchup[] };
+export type SeasonSchedule = { season: number; current_week: number | null; weeks: ScheduleWeek[]; records: Record<string, string> };

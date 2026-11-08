@@ -176,6 +176,54 @@ async def week_matchups(
     return {"matchups": [dict(r) for r in rows]}
 
 
+@router.get("/seasons/{season}/schedule")
+async def season_schedule(season: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
+    """The whole season week by week (2026-11-08, the app's Schedule):
+    each week final, live or upcoming against the league's current week,
+    and each team's regular-season record from the weeks that are done.
+    An upcoming week's scores are left out (they're placeholders)."""
+    async with pool.acquire() as conn:
+        current, frozen = await queries.get_week_state(conn, season)
+        rows = await queries.list_season_schedule(conn, season, league_id)
+    if current is None and rows:
+        current = rows[-1]["week"] + 1  # a past season: all of it is done
+
+    def status(week: int) -> str:
+        if week < current or week == frozen:
+            return "final"
+        return "live" if week == current else "upcoming"
+
+    records: dict[int, list[int]] = {}
+    weeks: dict[int, dict] = {}
+    for r in rows:
+        state = status(r["week"])
+        week = weeks.setdefault(r["week"], {"week": r["week"], "status": state, "is_playoff": False, "matchups": []})
+        week["is_playoff"] = week["is_playoff"] or bool(r["is_playoff"])
+        sides = []
+        for side in ("home", "away"):
+            score = r[f"{side}_score"]
+            sides.append({
+                "team_id": r[f"{side}_team_id"],
+                "team_name": r[f"{side}_team_name"],
+                "owner_id": r[f"{side}_owner_id"],
+                "owner_name": r[f"{side}_owner_name"],
+                "logo_url": r[f"{side}_logo_url"],
+                "score": float(score) if score is not None and state != "upcoming" else None,
+            })
+        home, away = sides
+        if state == "final" and not r["is_playoff"] and home["score"] is not None and away["score"] is not None:
+            for me, them in ((home, away), (away, home)):
+                rec = records.setdefault(me["team_id"], [0, 0, 0])
+                rec[0 if me["score"] > them["score"] else 1 if me["score"] < them["score"] else 2] += 1
+        week["matchups"].append({"matchup_id": r["matchup_id"], "headline": r["headline"], "is_playoff": bool(r["is_playoff"]), "home": home, "away": away})
+    return {
+        "season": season,
+        "current_week": current,
+        "weeks": list(weeks.values()),
+        "records": {str(t): f"{w}-{l}" + (f"-{ties}" if ties else "") for t, (w, l, ties) in records.items()},
+    }
+
+
 @router.get("/seasons/{season}/weeks/{week}/matchup-context")
 async def week_matchup_context(
     season: int, week: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
