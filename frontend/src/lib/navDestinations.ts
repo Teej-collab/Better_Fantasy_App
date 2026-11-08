@@ -22,6 +22,7 @@ export type DestinationKey =
   | "league"
   | "home"
   | "standings"
+  | "schedule"
   | "matchups"
   | "playerCards"
   | "freeAgents"
@@ -59,6 +60,9 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // panel glow — indigo wins since it never collided with anything else.
   league: { key: "league", label: "League", color: "#6366f1" },
   standings: { key: "standings", label: "Standings", color: "#0ea5e9" },
+  // The season week by week (2026-11-08); indigo-violet, clear of
+  // Standings' sky and Power Rankings' blue.
+  schedule: { key: "schedule", label: "Schedule", color: "#818cf8" },
   matchups: { key: "matchups", label: "Matchup", color: "#ec4899" },
   playerCards: { key: "playerCards", label: "Player Cards", color: "#22d3ee" },
   // The primary nav's "Players" tab (-> /free-agents) and LeagueSubNav's
@@ -145,6 +149,7 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
   team: "/team",
   league: "/league",
   standings: "/standings",
+  schedule: "/schedule",
   playerCards: "/players",
   freeAgents: "/free-agents",
   chat: "/chat",
@@ -243,6 +248,7 @@ export function isValidNavOrder(order: string[]): order is DestinationKey[] {
 export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "league",
   "standings",
+  "schedule",
   "powerRankings",
   "rivalries",
   "rules",
@@ -254,7 +260,7 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
 // grouping is specific to how that one component presents these tabs,
 // not a reordering of LEAGUE_SUBNAV_ORDER itself (Home's Discover grid
 // still reads that flat list directly and has no concept of "primary").
-// Exactly 3 tabs each side (2026-09-03 fix) — LeagueSubNav.tsx renders
+// Exactly 3 tabs each side (2026-09-03 fix; 4 + 4 since Schedule, 2026-11-08) — LeagueSubNav.tsx renders
 // each side as a fixed 3-column grid, so this set's size must stay 3
 // for the two rows to come out even; changing it requires updating
 // LeagueSubNav's grid-cols count to match. Primary = "what's the
@@ -262,6 +268,7 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
 export const LEAGUE_SUBNAV_PRIMARY = new Set<DestinationKey>([
   "league",
   "standings",
+  "schedule",
   "powerRankings",
 ]);
 

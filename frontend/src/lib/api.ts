@@ -873,6 +873,18 @@ export type WeekPowerRanking = {
   note?: string | null;
 };
 
+// GET /seasons/{season}/schedule (2026-11-08): the whole season, week by
+// week. An upcoming week's scores are null. Same shape as the app's
+// SeasonSchedule (mobile/src/lib/types.ts).
+export type ScheduleSide = { team_id: number; team_name: string; owner_id: number | null; owner_name: string | null; logo_url: string | null; score: number | null };
+export type ScheduleMatchup = { matchup_id: number; headline: string | null; is_playoff: boolean; home: ScheduleSide; away: ScheduleSide };
+export type ScheduleWeek = { week: number; status: "final" | "live" | "upcoming"; is_playoff: boolean; matchups: ScheduleMatchup[] };
+export type SeasonSchedule = { season: number; current_week: number | null; weeks: ScheduleWeek[]; records: Record<string, string> };
+
+export function getSchedule(season: number, sessionCookie: string | undefined) {
+  return getServer<SeasonSchedule>(`/seasons/${season}/schedule`, sessionCookie);
+}
+
 export function getWeekPowerRankings(season: number, week: number, sessionCookie: string | undefined) {
   return getServer<{ rankings: WeekPowerRanking[] }>(
     `/seasons/${season}/weeks/${week}/power-rankings`,

@@ -35,6 +35,7 @@ EVENT_TYPES = {"page_view", "feature"}
 _ROUTE_PREFIXES: list[tuple[str, str]] = [
     ("/seasons", "nav_seasons"),  # /seasons/{s}/awards, /awards/all-time, /weeks/{w}
     ("/standings", "nav_standings"),
+    ("/schedule", "nav_schedule"),
     ("/matchups", "nav_matchups"),
     ("/gamecast", "nav_gamecast"),
     ("/history", "nav_history"),

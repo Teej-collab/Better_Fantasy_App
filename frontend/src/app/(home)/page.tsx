@@ -981,6 +981,7 @@ type DiscoveryTile = { href: string; label: string; description: string; color: 
 // with blank/missing copy.
 const DISCOVER_DESCRIPTIONS: Partial<Record<DestinationKey, string>> = {
   standings: "Full league standings and records",
+  schedule: "Every week's matchups, and your own season",
   rivalries: "All-time rivalry history and grudges",
   rules: "Scoring, roster, and league settings",
   powerRankings: "Who's actually good this week, plus Luck and Strength of Schedule",

@@ -22,6 +22,7 @@ export type EventType = "page_view" | "feature";
 const ROUTE_PREFIXES: [string, string][] = [
   ["/seasons", "nav_seasons"],
   ["/standings", "nav_standings"],
+  ["/schedule", "nav_schedule"],
   ["/matchups", "nav_matchups"],
   ["/gamecast", "nav_gamecast"],
   ["/history", "nav_history"],
@@ -190,6 +191,7 @@ const EVENT_LABELS: Record<string, string> = {
   nav_home: "Home",
   nav_seasons: "Awards / Season",
   nav_standings: "Standings",
+  nav_schedule: "Schedule",
   nav_matchups: "Matchups",
   nav_gamecast: "Gamecast",
   nav_history: "History",
