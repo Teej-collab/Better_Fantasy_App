@@ -89,6 +89,24 @@ export default async function LeaguePage({
 
       <ActivePollCard leagueId={me.active_league_id} />
 
+      <Link
+        href="/survivor"
+        className="flex items-center justify-between gap-3 rounded-[18px] border px-4 py-3"
+        style={{ borderColor: "rgba(57,255,20,.4)", background: "#141a22" }}
+      >
+        <span className="flex flex-col">
+          <span className={`${ANTON} text-xl tracking-wide`} style={{ color: ELITE.green }}>
+            SURVIVOR
+          </span>
+          <span className="text-xs" style={{ color: ELITE.soft }}>
+            Pick one NFL team a week. Lose and you&apos;re out.
+          </span>
+        </span>
+        <span className="rounded-full px-3 py-1.5 text-xs font-extrabold" style={{ background: ELITE.green, color: ELITE.deep }}>
+          Open
+        </span>
+      </Link>
+
       {teams.length > 0 && (
         <div className="flex flex-col items-center py-1">
           {rows.map((row, r) => (

@@ -141,6 +141,14 @@ export function LeagueHub({ season, onOpen }: { season: number | null; onOpen: (
         detail="Scores · Table · Playoffs and What-If"
         onPress={() => onOpen('standings')}
       />
+      <HubCard
+        wide
+        label="Survivor"
+        color={COLORS.survivor}
+        title={survivorTitle ?? 'New: survivor pools'}
+        detail="Pick one NFL team a week. Lose and you're out"
+        onPress={() => router.push('/survivor' as Href)}
+      />
       <HubCard label="Power" color={COLORS.power} title={nowRank ? `#${nowRank}` : null} detail={moved} onPress={() => onOpen('powerRankings')} />
       <HubCard label="Rivalries" color={COLORS.rivalries} title={rivalName} detail={series} onPress={() => onOpen('rivalries')} />
       <HubCard
@@ -161,14 +169,6 @@ export function LeagueHub({ season, onOpen }: { season: number | null; onOpen: (
       />
       <HubCard label="Rules" color={COLORS.rules} title={null} detail="Waivers, playoffs, house rules" onPress={() => onOpen('rules')} />
       <HubCard label="History" color={COLORS.history} title={null} detail="Recaps, awards, cards" onPress={() => onOpen('history')} />
-      <HubCard
-        wide
-        label="Survivor"
-        color={COLORS.survivor}
-        title={survivorTitle}
-        detail="Pick one NFL team a week. Lose and you're out"
-        onPress={() => router.push('/survivor' as Href)}
-      />
     </View>
   );
 }
