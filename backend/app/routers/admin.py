@@ -15,6 +15,8 @@ working end-to-end back on Aug 19, 2026, so this router migrated to
 match everything else rather than staying on the old stopgap
 indefinitely.
 """
+import json
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -39,7 +41,7 @@ from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
 from app import monitoring
-from app.notifications import admin_alerts
+from app.notifications import admin_alerts, dispatcher, formatter
 from app.queries import admin_recaps
 from app.queries import (
     admin_analytics,
@@ -858,3 +860,45 @@ async def mark_inbox_item_done(body: InboxDoneRequest, request: Request):
         await require_site_admin(conn, payload)
         await admin_inbox.set_done(conn, body.kind, body.ref, payload["user_id"], body.done)
     return {"ok": True}
+
+
+class CorrectionRequest(BaseModel):
+    type: str = Field(min_length=1)
+    title_contains: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=120)
+    body: str = Field(min_length=1, max_length=300)
+    since_hours: int = Field(default=12, ge=1, le=72)
+    dry_run: bool = True
+
+
+@router.post("/notifications/correct")
+async def correct_notifications(request: Request, body: CorrectionRequest):
+    """A push that went out wrong (2026-11-08: "Breece Hall is INACTIVE",
+    from ESPN's placeholder roster): everyone whose inbox got it gets the
+    correction under the same tag, so it replaces the wrong one. Dry run
+    by default, which only lists who would get it."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT ON (owner_id, tag) owner_id, tag, title, url, data
+            FROM notifications
+            WHERE type = $1 AND title ILIKE '%' || $2 || '%' AND owner_id IS NOT NULL
+              AND created_at > now() - make_interval(hours => $3)
+            ORDER BY owner_id, tag, created_at DESC
+            """,
+            body.type, body.title_contains, body.since_hours,
+        )
+        sent = 0
+        if not body.dry_run:
+            for r in rows:
+                data = json.loads(r["data"]) if isinstance(r["data"], str) else (r["data"] or {})
+                push = formatter.correction(body.title, body.body, r["url"], body.type, r["tag"])
+                sent += await dispatcher.send_to_owner(conn, r["owner_id"], dispatcher.in_league(push, data.get("league_id")))
+    return {
+        "dry_run": body.dry_run,
+        "recipients": [{"owner_id": r["owner_id"], "was": r["title"]} for r in rows],
+        "devices_reached": sent,
+    }

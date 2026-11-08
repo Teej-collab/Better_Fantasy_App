@@ -212,3 +212,26 @@ async def test_reply_from_a_chat_push(pool, monkeypatch):
         assert (await client.post(f"/chat/conversations/{conversation_id}/reply", json={"body": "  "})).status_code == 400
     async with pool.acquire() as conn:
         assert await conn.fetchval("SELECT body FROM messages WHERE id = $1", sent.json()["message_id"]) == "always"
+
+
+async def test_admin_correction_replaces_the_wrong_push(pool, monkeypatch):
+    from tests.test_admin import _SESSION_SECRET, _explicit_admin_cookies
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    _no_devices(monkeypatch)
+    owner_id = await _seed_owner(pool, "correct")
+    wrong = dispatcher.in_league(formatter.inactive_starter("Breece Hall", "1:00 PM ET", "inactive-9-2026-10-1-p3"), 9)
+    async with pool.acquire() as conn:
+        await dispatcher.send_to_owner(conn, owner_id, wrong)
+    ask = {"type": "inactive_starter", "title_contains": "Breece Hall", "title": "✅ Breece Hall is active", "body": "Ignore the last alert."}
+    async with _client() as client:
+        assert (await client.post("/admin/notifications/correct", json=ask)).status_code == 401
+        client.cookies.update(await _explicit_admin_cookies(pool, "correct-admin"))
+        dry = (await client.post("/admin/notifications/correct", json=ask)).json()
+        assert [r["owner_id"] for r in dry["recipients"]] == [owner_id]
+        async with pool.acquire() as conn:
+            assert [r["title"] for r in await _inbox(conn, owner_id)] == ["🚫 Breece Hall is INACTIVE"]
+        sent = await client.post("/admin/notifications/correct", json={**ask, "dry_run": False})
+        assert sent.status_code == 200, sent.text
+    async with pool.acquire() as conn:
+        assert [r["title"] for r in await _inbox(conn, owner_id)] == ["✅ Breece Hall is active"]

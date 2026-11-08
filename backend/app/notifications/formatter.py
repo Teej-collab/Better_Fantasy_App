@@ -433,6 +433,12 @@ def pregame_starter_out(player_name: str, status: str, kickoff: str, matchup_id:
     )
 
 
+def correction(title: str, body: str, url: str, type_: str, tag: str | None) -> dict:
+    """Takes back a push that was wrong (POST /admin/notifications/correct).
+    The same tag replaces the wrong one on the lock screen and in the inbox."""
+    return _payload(title, body, url, type_, tag)
+
+
 def inactive_starter(player_name: str, kickoff: str, tag: str) -> dict:
     return _payload(
         f"🚫 {player_name} is INACTIVE",
