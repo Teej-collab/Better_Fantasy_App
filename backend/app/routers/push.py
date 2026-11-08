@@ -131,8 +131,30 @@ async def register_native_device(body: NativeRegisterBody, request: Request, poo
 
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
+        # This phone now belongs to this account: no one else's
+        # team-less registration on it keeps getting pushes.
+        await conn.execute(
+            "UPDATE user_push_tokens SET active = FALSE, updated_at = now() WHERE device_id = $1 AND user_id <> $2",
+            body.device_id, payload["user_id"],
+        )
         if owner_id is None:
-            raise HTTPException(status_code=409, detail="No league yet — join or create one first")
+            # No team yet (someone only in a survivor pool, 2026-11-07):
+            # the phone registers to the account itself until it has one.
+            row = await conn.fetchrow(
+                """
+                INSERT INTO user_push_tokens (user_id, device_id, platform, push_token)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (user_id, device_id) DO UPDATE SET
+                    platform = EXCLUDED.platform, push_token = EXCLUDED.push_token, active = TRUE, updated_at = now()
+                RETURNING id, device_id, platform, active
+                """,
+                payload["user_id"], body.device_id, body.platform, body.push_token,
+            )
+            return dict(row)
+        await conn.execute(
+            "UPDATE user_push_tokens SET active = FALSE, updated_at = now() WHERE user_id = $1 AND device_id = $2",
+            payload["user_id"], body.device_id,
+        )
         row = await native_queries.upsert_registration(
             conn, owner_id, body.device_id, body.platform, body.push_token, body.app_version, body.os_version
         )
@@ -209,6 +231,14 @@ async def deregister_native_device(device_id: str, request: Request, pool=Depend
     payload = _require_session(request)
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
+        teamless = await conn.fetchval(
+            "UPDATE user_push_tokens SET active = FALSE, updated_at = now() WHERE user_id = $1 AND device_id = $2 RETURNING id",
+            payload["user_id"], device_id,
+        )
+        if owner_id is None:
+            if teamless is None:
+                raise HTTPException(status_code=404, detail="No matching device for this account")
+            return Response(status_code=204)
         found = await native_queries.deactivate_registration(conn, owner_id, device_id)
         if not found:
             raise HTTPException(status_code=404, detail="No matching device for this account")

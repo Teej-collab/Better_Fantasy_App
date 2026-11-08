@@ -533,7 +533,7 @@ async def run(conn, season: int, now: datetime | None = None) -> dict:
 
 
 async def due_reminders(conn, season: int, now: datetime | None = None) -> list[dict]:
-    """[{owner_id, entry_id, pool_id, pool_name, week, kind, hours}] for
+    """[{user_id, entry_id, pool_id, pool_name, week, kind, hours}] for
     alive entries still missing a pick inside a reminder window (3 hours
     before the week's first kickoff, 2 before the Sunday deadline),
     each once. Marks them sent."""
@@ -545,18 +545,20 @@ async def due_reminders(conn, season: int, now: datetime | None = None) -> list[
         return []
     marks = {"first": kickoffs[0], "sunday": sunday_deadline(sched)}
     out = []
+    # When both windows are open at once (the first kickoff is the
+    # Sunday deadline), one push covers both.
+    reminded: set[int] = set()
     for kind, at in marks.items():
         if at is None or not (at - REMINDERS[kind] <= now < at):
             continue
         rows = await conn.fetch(
             """
-            SELECT DISTINCT ON (e.id) e.id AS entry_id, e.pool_id, p.name AS pool_name, p.double_from_week, p.start_week, ou.owner_id,
+            SELECT e.id AS entry_id, e.user_id, e.pool_id, p.name AS pool_name, p.double_from_week, p.start_week,
                    (SELECT count(*) FROM survivor_picks sp WHERE sp.entry_id = e.id AND sp.week = $2) AS picked
             FROM survivor_entries e JOIN survivor_pools p ON p.id = e.pool_id
-            JOIN owner_users ou ON ou.user_id = e.user_id
             WHERE p.season = $1 AND e.eliminated_week IS NULL AND p.start_week <= $2
               AND NOT EXISTS (SELECT 1 FROM survivor_reminders r WHERE r.entry_id = e.id AND r.week = $2 AND r.kind = $3)
-            ORDER BY e.id, ou.owner_id
+            ORDER BY e.id
             """,
             season, week, kind,
         )
@@ -567,8 +569,11 @@ async def due_reminders(conn, season: int, now: datetime | None = None) -> list[
                 "INSERT INTO survivor_reminders (entry_id, week, kind) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
                 r["entry_id"], week, kind,
             )
+            if r["entry_id"] in reminded:
+                continue
+            reminded.add(r["entry_id"])
             out.append({
-                "owner_id": r["owner_id"], "entry_id": r["entry_id"], "pool_id": r["pool_id"], "pool_name": r["pool_name"],
+                "user_id": r["user_id"], "entry_id": r["entry_id"], "pool_id": r["pool_id"], "pool_name": r["pool_name"],
                 "week": week, "kind": kind, "hours": max(1, round((at - now).total_seconds() / 3600)),
             })
     return out

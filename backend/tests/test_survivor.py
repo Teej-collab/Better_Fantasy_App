@@ -186,3 +186,32 @@ async def test_only_the_commissioner_makes_a_league_pool(pool, monkeypatch):
         nope = await b.post("/survivor/join", json={"code": made.json()["join_code"]})
         assert nope.status_code == 403
         assert (await b.post("/survivor/pools", json={"name": "Mine", "for_league": True})).status_code == 403
+
+
+async def test_someone_with_no_team_still_gets_the_pick_reminder(pool, monkeypatch):
+    from app.notifications import dispatcher
+
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    kickoff = datetime.now(UTC) + timedelta(hours=2)
+    _fake_schedule(monkeypatch, {"week": 4, "weeks": {4: [_game("KC", "ATL", kickoff)]}})
+    sent = []
+
+    async def fake_send(row, payload):
+        sent.append((row["push_token"], payload["title"]))
+        return True, False
+
+    monkeypatch.setattr(dispatcher, "_send_native_one", fake_send)
+    async with _client() as a:
+        await _signup(a, "foxtrot")
+        made = (await a.post("/survivor/pools", json={"name": "No League Pool"})).json()
+        # No team, so this phone registers to the account itself.
+        reg = await a.post("/push/native/register", json={"device_id": "test-dev-1", "platform": "ios", "push_token": "tok-1"})
+        assert reg.status_code == 200, reg.text
+    async with pool.acquire() as conn:
+        due = await survivor.due_reminders(conn, TEST_SEASON)
+        mine = [r for r in due if r["pool_id"] == made["id"]]
+        assert len(mine) == 1 and mine[0]["kind"] == "first"
+        assert await dispatcher.send_to_user(conn, mine[0]["user_id"], {"title": "pick", "body": "", "data": {}}) == 1
+        assert sent == [("tok-1", "pick")]
+        # Each reminder goes once.
+        assert not [r for r in await survivor.due_reminders(conn, TEST_SEASON) if r["pool_id"] == made["id"]]

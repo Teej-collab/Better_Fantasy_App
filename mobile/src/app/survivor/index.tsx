@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, Stack, type Href } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { ANTON, Elite, EliteCard, EliteTitle } from '@/components/elite/Elite';
@@ -11,6 +11,7 @@ import { Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { formatGameTimeShort } from '@/lib/format';
 import { haptics } from '@/lib/haptics';
+import { registerForPush } from '@/lib/pushRegistration';
 import { queryClient } from '@/lib/queries';
 import type { SurvivorPoolSummary } from '@/lib/survivorTypes';
 
@@ -24,6 +25,12 @@ export default function SurvivorHubScreen() {
   const [code, setCode] = useState('');
   const [joining, setJoining] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  const inAPool = Boolean(q.data?.pools.some((p) => p.mine.length > 0));
+  // Pick reminders need this phone registered, and someone who's only in
+  // survivor pools (no league) never got asked from the tabs.
+  useEffect(() => {
+    if (inAPool) registerForPush().catch(() => {});
+  }, [inAPool]);
 
   if (q.isPending) return <LoadingState />;
   if (!q.data) return <MessageState message="Couldn't load your pools." actionLabel="Try again" onAction={() => void q.refetch()} />;

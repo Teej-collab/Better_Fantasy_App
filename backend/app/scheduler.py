@@ -752,9 +752,12 @@ async def _run_survivor_job():
         results = await survivor.run(conn, season)
         reminders = await survivor.due_reminders(conn, season)
         for r in reminders:
-            prefs = await preferences_queries.get_preferences(conn, r["owner_id"])
-            if prefs["push_enabled"]:
-                await dispatcher.send_to_owner(conn, r["owner_id"], formatter.survivor_pick_needed(r["pool_name"], r["week"], r["hours"], r["pool_id"]))
+            # A team's own push switch applies; an account with no team
+            # (only in survivor pools) gets it on the phones it registered.
+            owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", r["user_id"])
+            if owner_id is not None and not (await preferences_queries.get_preferences(conn, owner_id))["push_enabled"]:
+                continue
+            await dispatcher.send_to_user(conn, r["user_id"], formatter.survivor_pick_needed(r["pool_name"], r["week"], r["hours"], r["pool_id"]))
     if any(results.values()) or reminders:
         logger.info("Survivor job: %s, %s reminders", results, len(reminders))
     record_job_run("survivor")
