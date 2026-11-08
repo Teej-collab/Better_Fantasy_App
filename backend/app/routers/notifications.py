@@ -10,7 +10,9 @@ from pydantic import BaseModel, Field
 
 from app.auth.config import SessionConfig
 from app.auth.session import decode_session_token, get_session_token
+from app.config import _require
 from app.db import get_pool
+from app.domain.chug_standing import FINE_PER_CHUG
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -48,6 +50,29 @@ async def list_notifications(request: Request, limit: int = 60):
         "notifications": [{**dict(r), "data": json.loads(r["data"])} for r in rows],
         "unread": unread,
     }
+
+
+@router.get("/chugs")
+async def chugs_owed(request: Request):
+    """The banner on top of the inbox (2026-11-08): what you owe under
+    the chug rule right now, per league that has it on."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", payload["user_id"])
+        if owner_id is None:
+            return {"chugs": []}
+        rows = await conn.fetch(
+            """
+            SELECT l.id AS league_id, l.name, s.outstanding_owed AS owed, s.fined_owed * $3 AS fine
+            FROM chug_standing s JOIN leagues l ON l.id = s.league_id
+            WHERE s.season = $1 AND s.owner_id = $2 AND l.chug_enabled
+              AND (s.outstanding_owed > 0 OR s.fined_owed > 0)
+            ORDER BY l.name
+            """,
+            int(_require("ACTIVE_SEASON")), owner_id, FINE_PER_CHUG,
+        )
+    return {"chugs": [dict(r) for r in rows]}
 
 
 @router.get("/unread")

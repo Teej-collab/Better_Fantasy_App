@@ -126,6 +126,7 @@ import type {
   TrendingSource,
   TrendingWindow,
   InboxNotification,
+  ChugsOwed,
   LeagueNotificationLevel,
 } from '@/lib/types';
 import type { FormatOptions, LeagueFormat } from '@/lib/leagueFormat';
@@ -639,6 +640,7 @@ export const api = {
   // The notification inbox (2026-11-08).
   notifications: () => request<{ notifications: InboxNotification[]; unread: number }>('/notifications'),
   notificationsUnread: () => request<{ unread: number }>('/notifications/unread'),
+  notificationChugs: () => request<{ chugs: ChugsOwed[] }>('/notifications/chugs'),
   notificationLeagues: () => request<{ leagues: LeagueNotificationLevel[] }>('/notifications/leagues'),
   setNotificationLeague: (leagueId: number, level: LeagueNotificationLevel['level']) =>
     request<{ leagues: LeagueNotificationLevel[] }>(`/notifications/leagues/${leagueId}`, { method: 'PUT', body: JSON.stringify({ level }) }),

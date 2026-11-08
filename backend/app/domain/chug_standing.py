@@ -31,10 +31,13 @@ record in chug_debts:
   explicit "for funsies" case: a real chug never goes to waste banking
   against a future week, but it also never gets refused.
 """
+import logging
 from datetime import datetime
 
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.chug_deadline import is_past_mnf_deadline
+
+logger = logging.getLogger(__name__)
 
 MAX_CONSECUTIVE_DOUBLINGS = 3
 FINE_PER_CHUG = 10
@@ -224,7 +227,15 @@ async def ensure_chug_deadline_settled(
         return 0
     async with pool.acquire() as conn:
         await accrue_weekly_debt(conn, season, week, league_id)
-        return await settle_deadline_for_week(conn, season, week, league_id)
+        settled = await settle_deadline_for_week(conn, season, week, league_id)
+        # "Doubled to 4" / "became a $40 fine", once each (2026-11-08).
+        # Imported here: app/notifications reaches back into app/domain.
+        from app.notifications import chug_alerts
+        try:
+            await chug_alerts.notify_settlements(conn, season, week, league_id)
+        except Exception:
+            logger.exception("Chug settlement pushes failed (league_id=%s week=%s)", league_id, week)
+        return settled
 
 
 async def record_completed_chug(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID) -> None:

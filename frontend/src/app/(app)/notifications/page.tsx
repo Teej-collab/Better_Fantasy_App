@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { ELITE, EliteCard, EliteTitle } from "@/components/elite/Elite";
-import { announceUnread, inboxApi, type InboxNotification } from "@/lib/inboxApi";
+import { announceUnread, inboxApi, type ChugsOwed, type InboxNotification } from "@/lib/inboxApi";
 
 /**
  * The notification inbox (2026-11-08): everything we've pushed you in the
@@ -36,12 +36,49 @@ function dayLabel(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 }
 
+// What you owe under the chug rule, kept on top so it isn't buried
+// under the week's pushes.
+function ChugBanner({ chugs }: { chugs: ChugsOwed[] }) {
+  if (chugs.length === 0) return null;
+  const several = chugs.length > 1;
+  return (
+    <Link
+      href="/chug"
+      className="flex items-center gap-3 rounded-2xl border p-4 hover:brightness-110"
+      style={{ borderColor: "rgba(255,122,26,0.45)", background: "rgba(255,122,26,0.1)" }}
+    >
+      <span className="text-2xl" aria-hidden>
+        🍺
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {chugs.map((c) => (
+          <span key={c.league_id} className="font-extrabold" style={{ color: ELITE.orange }}>
+            {[c.owed > 0 && `You owe ${c.owed} chug${c.owed === 1 ? "" : "s"}`, c.fine > 0 && `$${c.fine} fine unpaid`].filter(Boolean).join(" · ")}
+            {several && (
+              <span className="ml-2 text-xs font-semibold" style={{ color: ELITE.faint }}>
+                {c.name}
+              </span>
+            )}
+          </span>
+        ))}
+        <span className="text-xs" style={{ color: ELITE.soft }}>
+          {chugs.some((c) => c.owed > 0) ? "Due by Monday night kickoff, or it doubles." : "Settle it with your commissioner."}
+        </span>
+      </span>
+      <span className="text-xl font-bold" style={{ color: ELITE.orange }} aria-hidden>
+        ›
+      </span>
+    </Link>
+  );
+}
+
 export default function NotificationsPage() {
   const router = useRouter();
   const [items, setItems] = useState<InboxNotification[] | null>(null);
   const [unread, setUnread] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [chugs, setChugs] = useState<ChugsOwed[]>([]);
 
   const refresh = useCallback(async () => {
     const r = await inboxApi.list();
@@ -53,6 +90,7 @@ export default function NotificationsPage() {
     // The setState lands after the fetch.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh().catch(() => setError("Couldn't load your notifications. Are you signed in?"));
+    inboxApi.chugs().then((r) => setChugs(r.chugs), () => {});
   }, [refresh]);
 
   async function markRead(ids?: number[]) {
@@ -117,6 +155,7 @@ export default function NotificationsPage() {
           </button>
         )}
       </div>
+      <ChugBanner chugs={chugs} />
       {note && (
         <p role="status" className="rounded-xl border border-white/10 bg-[#10151c] px-3 py-2.5 text-sm" style={{ color: ELITE.cream }}>
           {note}

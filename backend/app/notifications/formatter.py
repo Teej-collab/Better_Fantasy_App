@@ -12,6 +12,7 @@ Fantasy-activity formatters (touchdowns, red zone, lead changes) are
 called from app/notifications/fantasy_events.py; injury and player news
 formatters from app/notifications/injury_events.py.
 """
+import datetime
 
 _DEFAULT_ICON = "/images/icon-192.png"
 _BODY_PREVIEW_LENGTH = 120
@@ -437,6 +438,50 @@ def correction(title: str, body: str, url: str, type_: str, tag: str | None) -> 
     """Takes back a push that was wrong (POST /admin/notifications/correct).
     The same tag replaces the wrong one on the lock screen and in the inbox."""
     return _payload(title, body, url, type_, tag)
+
+
+def _chugs(n: int) -> str:
+    return f"{n} chug" if n == 1 else f"{n} chugs"
+
+
+def _names_list(names: list[str]) -> str:
+    if len(names) > 3:
+        names = names[:2] + [f"{len(names) - 2} more"]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
+
+
+def chugs_owed(week: int, owed: int, names: list[str], balance: int, tag: str) -> dict:
+    """The week's chug rule, settled (app/notifications/chug_alerts.py):
+    every starter at 0 or less earned one."""
+    who = f"{_names_list(names)} scored 0 or less" if names else "Starters scored 0 or less"
+    total = f" You owe {balance} in all." if balance > owed else ""
+    return _payload(
+        f"🍺 You owe {_chugs(owed)} from Week {week}",
+        f"{who}.{total} Post by Monday night kickoff or it doubles.",
+        "/chug", "chug_owed", tag,
+    )
+
+
+def chug_deadline_soon(owed: int, kickoff: str, deadline: datetime.datetime, tag: str) -> dict:
+    return _payload(
+        f"⏰ {_chugs(owed)} due by kickoff tonight",
+        f"Post by {kickoff} or it doubles to {owed * 2}.",
+        "/chug", "chug_deadline", tag, extra={"expires": deadline.isoformat()},
+    )
+
+
+def chug_settled(action: str, owed_before: int, owed_after: int, fine: int, tag: str) -> dict:
+    if action == "fined":
+        return _payload(
+            f"💸 Your {_chugs(owed_before)} became a ${fine} fine",
+            "Third deadline missed in a row. A chug can't pay a fine down; settle it with your commissioner.",
+            "/chug", "chug_settled", tag,
+        )
+    return _payload(
+        f"🍺 Your {_chugs(owed_before)} doubled to {owed_after}",
+        "The Monday night deadline passed. Post a chug to start paying it down.",
+        "/chug", "chug_settled", tag,
+    )
 
 
 def inactive_starter(player_name: str, kickoff: str, tag: str) -> dict:

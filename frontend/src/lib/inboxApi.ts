@@ -36,7 +36,11 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 // or muted (still in the inbox).
 export type LeagueNotificationLevel = { league_id: number; name: string; level: "all" | "mine" | "off" };
 
+// The chug banner on top of the inbox: what you owe under the chug rule.
+export type ChugsOwed = { league_id: number; name: string; owed: number; fine: number };
+
 export const inboxApi = {
+  chugs: () => call<{ chugs: ChugsOwed[] }>("/notifications/chugs"),
   leagues: () => call<{ leagues: LeagueNotificationLevel[] }>("/notifications/leagues"),
   setLeague: (leagueId: number, level: LeagueNotificationLevel["level"]) =>
     call<{ leagues: LeagueNotificationLevel[] }>(`/notifications/leagues/${leagueId}`, { method: "PUT", body: JSON.stringify({ level }) }),

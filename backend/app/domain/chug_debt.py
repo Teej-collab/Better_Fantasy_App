@@ -60,24 +60,7 @@ async def compute_chug_debts_for_week(conn, season: int, week: int, league_id: i
         )
 
     for t in team_owners:
-        if in_app:
-            rows = await conn.fetch(
-                """
-                SELECT rh.lineup_slot, pws.fantasy_points AS points_scored
-                FROM roster_history rh
-                LEFT JOIN player_week_stats pws
-                    ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
-                    AND pws.league_id = $4
-                WHERE rh.season = $1 AND rh.week = $2 AND rh.team_id = $3
-                """,
-                season, week, t["team_id"], league_id,
-            )
-        else:
-            rows = await conn.fetch(
-                "SELECT lineup_slot, points_scored FROM rosters "
-                "WHERE season = $1 AND week = $2 AND team_id = $3 AND league_id = $4",
-                season, week, t["team_id"], league_id,
-            )
+        rows = await _lineup_rows(conn, in_app, season, week, t["team_id"], league_id)
         chugs_owed = compute_chugs_owed([dict(r) for r in rows])
 
         await conn.execute(
@@ -90,6 +73,43 @@ async def compute_chug_debts_for_week(conn, season: int, week: int, league_id: i
         )
 
     return len(team_owners)
+
+
+async def _lineup_rows(conn, in_app: bool, season: int, week: int, team_id: int, league_id: int):
+    if in_app:
+        return await conn.fetch(
+            """
+            SELECT rh.lineup_slot, pws.fantasy_points AS points_scored, p.full_name AS player_name
+            FROM roster_history rh
+            LEFT JOIN player_week_stats pws
+                ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
+                AND pws.league_id = $4
+            LEFT JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
+            WHERE rh.season = $1 AND rh.week = $2 AND rh.team_id = $3
+            """,
+            season, week, team_id, league_id,
+        )
+    return await conn.fetch(
+        "SELECT lineup_slot, points_scored, player_name FROM rosters "
+        "WHERE season = $1 AND week = $2 AND team_id = $3 AND league_id = $4",
+        season, week, team_id, league_id,
+    )
+
+
+async def zero_point_starters(conn, season: int, week: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID) -> list[str]:
+    """Who earned this owner the week's chugs, for the "you owe" push
+    (app/notifications/chug_alerts.py) — the same starters
+    compute_chugs_owed counts."""
+    team_id = await conn.fetchval(
+        "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3", season, owner_id, league_id
+    )
+    if team_id is None:
+        return []
+    rows = await _lineup_rows(conn, await uses_in_app_rosters(conn, season, league_id), season, week, team_id, league_id)
+    return [
+        r["player_name"] or "A starter" for r in rows
+        if r["lineup_slot"] not in ("BE", "IR", "TAXI") and (r["points_scored"] or 0) <= 0
+    ]
 
 
 async def compute_chug_debts_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:

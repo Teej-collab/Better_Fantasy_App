@@ -13,7 +13,7 @@ import { haptics } from '@/lib/haptics';
 import { toNativePath } from '@/lib/localNotifications';
 import { runNotificationAction } from '@/lib/notificationActions';
 import { queryClient } from '@/lib/queries';
-import type { InboxNotification } from '@/lib/types';
+import type { ChugsOwed, InboxNotification } from '@/lib/types';
 
 // The notification inbox (2026-11-08): everything we've pushed you in the
 // last 30 days, including what quiet hours held back or a phone missed.
@@ -94,8 +94,37 @@ function Row({ n }: { n: InboxNotification }) {
   );
 }
 
+// What you owe under the chug rule, kept on top so it isn't buried
+// under the week's pushes.
+function ChugBanner({ chugs }: { chugs: ChugsOwed[] }) {
+  if (chugs.length === 0) return null;
+  const several = chugs.length > 1;
+  return (
+    <Pressable
+      onPress={() => {
+        haptics.tap();
+        router.push('/chug');
+      }}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.chug, pressed && styles.pressed]}>
+      <Text style={styles.chugIcon}>🍺</Text>
+      <View style={styles.flex}>
+        {chugs.map((c) => (
+          <Text key={c.league_id} style={styles.chugTitle}>
+            {[c.owed > 0 && `You owe ${c.owed} chug${c.owed === 1 ? '' : 's'}`, c.fine > 0 && `$${c.fine} fine unpaid`].filter(Boolean).join(' · ')}
+            {several ? <Text style={styles.chugLeague}>{`  ${c.name}`}</Text> : null}
+          </Text>
+        ))}
+        <Text style={styles.chugSub}>{chugs.some((c) => c.owed > 0) ? 'Due by Monday night kickoff, or it doubles.' : 'Settle it with your commissioner.'}</Text>
+      </View>
+      <Text style={styles.chugGo}>›</Text>
+    </Pressable>
+  );
+}
+
 export default function InboxScreen() {
   const q = useQuery({ queryKey: ['inbox'], queryFn: api.notifications });
+  const chugs = useQuery({ queryKey: ['inbox-chugs'], queryFn: api.notificationChugs });
   const items = q.data?.notifications ?? [];
   const unread = q.data?.unread ?? 0;
   useEffect(() => {
@@ -131,6 +160,7 @@ export default function InboxScreen() {
         INBOX
       </Text>
       <Text style={styles.sub}>The last 30 days, including anything quiet hours held back.</Text>
+      <ChugBanner chugs={chugs.data?.chugs ?? []} />
       {items.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>Nothing yet</Text>
@@ -183,5 +213,11 @@ const styles = StyleSheet.create({
   emptyTitle: { color: Elite.cream, fontSize: 15, fontWeight: '800' },
   markAll: { color: Elite.green, fontSize: 14, fontWeight: '700' },
   settings: { alignSelf: 'center', padding: 12, marginTop: 8 },
+  chug: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginTop: 6, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,122,26,0.45)', backgroundColor: 'rgba(255,122,26,0.1)' },
+  chugIcon: { fontSize: 24 },
+  chugTitle: { color: Elite.orange, fontSize: 15, fontWeight: '800' },
+  chugLeague: { color: Elite.faint, fontSize: 12, fontWeight: '600' },
+  chugSub: { color: Elite.soft, fontSize: 12, marginTop: 2 },
+  chugGo: { color: Elite.orange, fontSize: 22, fontWeight: '700' },
   settingsText: { color: Elite.faint, fontSize: 13, fontWeight: '600' },
 });

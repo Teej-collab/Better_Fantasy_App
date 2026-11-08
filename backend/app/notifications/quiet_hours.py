@@ -50,6 +50,8 @@ _HOLD_UNTIL_MORNING = {
     # Waiting on you (2026-11-08).
     "trade", "join_request", "friend", "keeper_nudge", "commish_lineup", "survivor_pick_needed",
     "pregame_lineup", "inactive_starter", "guillotine_cut", "punishment_wheel",
+    # The chug rule (chug_alerts.py); the Monday reminder expires at kickoff.
+    "chug_owed", "chug_deadline", "chug_settled",
 }
 
 SEND = "send"

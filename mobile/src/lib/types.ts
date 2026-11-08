@@ -2009,4 +2009,7 @@ export type InboxNotification = {
 
 // Settings > Notifications > Your leagues (2026-11-08): everything, just
 // your team, or muted (still in the inbox).
+// The chug banner on top of the inbox: what you owe under the chug rule.
+export type ChugsOwed = { league_id: number; name: string; owed: number; fine: number };
+
 export type LeagueNotificationLevel = { league_id: number; name: string; level: 'all' | 'mine' | 'off' };

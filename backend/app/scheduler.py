@@ -182,7 +182,8 @@ from app.domain import draft_engine, matchup_context, narrative_engine, recap_re
 from app.domain.season_awards import determine_and_save_season_awards
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
 from app.domain import auction_engine, guillotine, kitty, live_activity, win_prob_history
-from app.notifications import game_alerts, inactives
+from app.notifications import chug_alerts, game_alerts, inactives
+from app.domain.chug_deadline import deadline_from_week_games
 from app.domain.week_flip import is_past_week_flip
 from app.domain import watch_party as watch_party_domain
 from app.domain.chug_debt import compute_chug_debts_for_single_week
@@ -431,6 +432,20 @@ async def _run_red_zone_job():
         await fantasy_events.notify_red_zone(conn, season, week, games)
 
 
+async def _remind_chug_deadlines(pool, season: int, week: int, week_games: list[dict]) -> None:
+    deadline = deadline_from_week_games(week_games)
+    if deadline is None or not (timedelta(0) < deadline - datetime.now(timezone.utc) <= chug_alerts.REMIND_BEFORE):
+        return
+    async with pool.acquire() as conn:
+        league_ids = [r["id"] for r in await conn.fetch("SELECT id FROM leagues WHERE chug_enabled")]
+    for league_id in league_ids:
+        try:
+            async with pool.acquire() as conn:
+                await chug_alerts.remind_deadline(conn, season, week, league_id, deadline)
+        except Exception:
+            logger.exception("Chug deadline reminders failed (league_id=%s)", league_id)
+
+
 async def _run_week_settlement_job():
     """Catches a week actually finishing the moment it happens,
     independent of is_nfl_game_live — real report (2026-09): chug
@@ -500,6 +515,9 @@ async def _run_week_settlement_job():
 
     settle_week = cached_week
     week_games = await get_week_scoreboard(week=settle_week, year=season)
+    # Monday afternoon, before the week is final: "⏰ 2 chugs due by
+    # kickoff tonight" (app/notifications/chug_alerts.py).
+    await _remind_chug_deadlines(pool, season, settle_week, week_games)
     week_is_final = bool(week_games) and all(g.get("completed") for g in week_games)
     if not week_is_final:
         return
@@ -529,6 +547,14 @@ async def _run_week_settlement_job():
                 await compute_chug_debts_for_single_week(pool, season, settle_week, league_id)
                 await accrue_weekly_debt_for_single_week(pool, season, settle_week, league_id)
                 await ensure_chug_deadline_settled(pool, season, settle_week, week_games, league_id=league_id)
+                # "You owe 2 chugs from Week 9" at the Tuesday flip, once
+                # stat corrections have had a day.
+                if is_past_week_flip(week_games):
+                    try:
+                        async with pool.acquire() as conn:
+                            await chug_alerts.notify_chugs_owed(conn, season, settle_week, league_id)
+                    except Exception:
+                        logger.exception("Chugs owed pushes failed (league_id=%s)", league_id)
             # Idempotent — checks the cache before ever calling the real
             # Anthropic API (see narrative_engine.py), so this is a fast
             # no-op on every tick after the first successful generation,
