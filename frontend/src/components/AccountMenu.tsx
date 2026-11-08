@@ -102,6 +102,7 @@ export function AccountMenu({ me }: { me: Me }) {
     { key: "leagues", label: "Leagues & invites", href: "/leagues" },
     { key: "lounge", label: "The Lounge", href: "/lounge" },
     { key: "friends", label: "Friends", href: "/friends" },
+    { key: "survivor", label: "Survivor pools", href: "/survivor" },
     ...(me.is_commissioner
       ? [{ key: "commissioner", label: "Commissioner Tools", href: "/commissioner" }]
       : []),

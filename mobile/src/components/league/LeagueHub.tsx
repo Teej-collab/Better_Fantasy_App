@@ -1,3 +1,5 @@
+import { useQuery } from '@tanstack/react-query';
+import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Card } from '@/components/ui';
@@ -6,6 +8,7 @@ import { Spacing } from '@/constants/theme';
 import { ordinal } from '@/lib/bracketEngine';
 import { haptics } from '@/lib/haptics';
 import { trackTap } from '@/lib/analytics';
+import { api } from '@/lib/api';
 import { useLeagueActivity, useMe, useMyWeek, usePowerRankingsTrend, useRivalries, useScoringCatalog, useSeasonTeams, useStandings } from '@/lib/queries';
 import { scoringSummary } from '@/lib/scoringDisplay';
 import type { LeagueActivityItem } from '@/lib/types';
@@ -25,6 +28,7 @@ const COLORS = {
   scoring: '#2dd4bf',
   rules: '#9aa3b2',
   history: '#f472b6',
+  survivor: '#39ff14',
 };
 
 function describeMove(item: LeagueActivityItem): { title: string; detail: string } {
@@ -121,6 +125,11 @@ export function LeagueHub({ season, onOpen }: { season: number | null; onOpen: (
     : 'Every rivalry in the league';
 
   const latest = activity[0] ? describeMove(activity[0]) : null;
+  const survivor = useQuery({ queryKey: ['survivor-pools'], queryFn: api.survivorPools, staleTime: 60_000 }).data;
+  const myEntries = survivor?.pools.flatMap((p) => p.mine) ?? [];
+  const needing = myEntries.filter((m) => m.needs_pick).length;
+  const aliveIn = survivor?.pools.filter((p) => p.mine.some((m) => m.alive)).length ?? 0;
+  const survivorTitle = needing ? `${needing} pick${needing === 1 ? '' : 's'} needed` : aliveIn ? `Alive in ${aliveIn} pool${aliveIn === 1 ? '' : 's'}` : null;
 
   return (
     <View style={styles.grid}>
@@ -152,6 +161,14 @@ export function LeagueHub({ season, onOpen }: { season: number | null; onOpen: (
       />
       <HubCard label="Rules" color={COLORS.rules} title={null} detail="Waivers, playoffs, house rules" onPress={() => onOpen('rules')} />
       <HubCard label="History" color={COLORS.history} title={null} detail="Recaps, awards, cards" onPress={() => onOpen('history')} />
+      <HubCard
+        wide
+        label="Survivor"
+        color={COLORS.survivor}
+        title={survivorTitle}
+        detail="Pick one NFL team a week. Lose and you're out"
+        onPress={() => router.push('/survivor' as Href)}
+      />
     </View>
   );
 }

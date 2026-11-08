@@ -14,6 +14,7 @@ import {
   KickoffCard,
   Kicker,
   LoungeCard,
+  SurvivorCard,
   Panel,
   PlayersNowCard,
   useNow,
@@ -574,6 +575,7 @@ export function LivingHome() {
       {recapFirst && recapCard}
       {body}
       {!recapFirst && recapCard}
+      <SurvivorCard />
       {chug?.deadline && <ChugCountdownCard deadline={chug.deadline} isPast={chug.is_past} mine={chug.mine} />}
       <DeadlinesCard trade={tradeSettings} keeper={keeperRules} now={now} />
     </ScrollView>

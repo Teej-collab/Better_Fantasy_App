@@ -120,6 +120,16 @@ def draft_starting_soon(minutes: int) -> dict:
     return _payload("🏈 Draft starting soon", f"The draft starts in {minutes} minutes — get in the room.", "/draft", "draft_starting_soon")
 
 
+def survivor_pick_needed(pool_name: str, week: int, hours: int, pool_id: int) -> dict:
+    return _payload(
+        "🛡️ Survivor pick needed",
+        f"You haven't picked for week {week} in {pool_name}. Picks lock in about {hours} hour{'s' if hours != 1 else ''}.",
+        f"/survivor/{pool_id}",
+        "survivor_pick_needed",
+        tag=f"survivor-{pool_id}-{week}",
+    )
+
+
 def draft_room_open() -> dict:
     return _payload("🏈 Draft room is open", "Build your player queue now — the real draft starts in an hour.", "/draft", "draft_room_open")
 

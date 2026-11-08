@@ -128,6 +128,7 @@ import type {
 } from '@/lib/types';
 import type { FormatOptions, LeagueFormat } from '@/lib/leagueFormat';
 import type { PreviewPlayer, ScoringCatalog } from '@/lib/scoringCatalog';
+import type { SurvivorBoard, SurvivorHub, SurvivorPlanner, SurvivorPoolDetail, SurvivorPoolInput } from '@/lib/survivorTypes';
 
 // The production backend by default (mobile/.env). Point it at a local
 // backend with a .env.local, e.g. EXPO_PUBLIC_API_BASE_URL=http://<your-mac>.local:8000.
@@ -619,6 +620,18 @@ export const api = {
   warRoom: () => request<WarRoom>('/war-room'),
   mockBoard: () => request<MockBoard>('/war-room/mock'),
   kitty: () => request<Kitty>('/league/kitty'),
+  // NFL survivor pools (2026-11-07).
+  survivorPools: () => request<SurvivorHub>('/survivor/pools'),
+  survivorPool: (id: number) => request<SurvivorPoolDetail>(`/survivor/pools/${id}`),
+  createSurvivorPool: (body: SurvivorPoolInput) =>
+    request<{ id: number; join_code: string }>('/survivor/pools', { method: 'POST', body: JSON.stringify(body) }),
+  joinSurvivorPool: (body: { code?: string; pool_id?: number }) =>
+    request<{ pool_id: number; entry_id: number }>('/survivor/join', { method: 'POST', body: JSON.stringify(body) }),
+  survivorBoard: (entryId: number) => request<SurvivorBoard>(`/survivor/entries/${entryId}/board`),
+  setSurvivorPicks: (entryId: number, teams: string[]) =>
+    request<SurvivorBoard>(`/survivor/entries/${entryId}/picks`, { method: 'PUT', body: JSON.stringify({ teams }) }),
+  survivorPlanner: (entryId: number) => request<SurvivorPlanner>(`/survivor/entries/${entryId}/planner`),
+  survivorBuyBack: (entryId: number) => request<{ ok: boolean }>(`/survivor/entries/${entryId}/buyback`, { method: 'POST' }),
   addKittyEntry: (entry: { owner_id: number | null; amount: number; reason: string }) =>
     request<Kitty>('/league/kitty', { method: 'POST', body: JSON.stringify(entry) }),
   setKittyPaid: (id: number, paid: boolean) => request<Kitty>(`/league/kitty/${id}/paid`, { method: 'POST', body: JSON.stringify({ paid }) }),

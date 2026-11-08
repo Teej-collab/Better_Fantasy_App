@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { router, type Href } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
@@ -6,6 +7,7 @@ import { OutcomeChip } from '@/components/players/OutcomeChip';
 import { Display, Text } from '@/components/Text';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
+import { api } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
 import { fmt, isStarter, nextEt, untilText } from '@/lib/livingHome';
 import type { LeagueActivityItem, MatchupContextSide, RosterEntry, RosterPlayer, WaiverClaim, WaiverClaimsResponse } from '@/lib/types';
@@ -351,6 +353,26 @@ export function PlayersNowCard({ players, title }: { players: RosterPlayer[]; ti
           right={<Display style={styles.rowScore}>{fmt(p.points_scored)}</Display>}
         />
       ))}
+    </Panel>
+  );
+}
+
+// Survivor (2026-11-07): shows only while one of your entries still
+// needs this week's pick.
+export function SurvivorCard() {
+  const hub = useQuery({ queryKey: ['survivor-pools'], queryFn: api.survivorPools, staleTime: 60_000 }).data;
+  const needing = hub?.pools.flatMap((p) => p.mine.filter((m) => m.needs_pick).map((m) => ({ pool: p.name, entry: m.entry_id }))) ?? [];
+  if (!hub || needing.length === 0) return null;
+  const only = needing.length === 1 ? needing[0] : null;
+  return (
+    <Panel tint="#39ff14" style={styles.lounge} onPress={() => router.push((only ? `/survivor/pick/${only.entry}` : '/survivor') as Href)} label="Make your survivor pick">
+      <View style={styles.spread}>
+        <View style={styles.gap2}>
+          <Kicker color="#9dff86">Survivor · week {hub.week}</Kicker>
+          <Text style={styles.body}>{only ? `No pick yet in ${only.pool}` : `${needing.length} entries still need a pick`}</Text>
+        </View>
+        <Chip color="#39ff14">Pick</Chip>
+      </View>
     </Panel>
   );
 }

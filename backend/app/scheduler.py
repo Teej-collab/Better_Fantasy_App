@@ -151,6 +151,12 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   window (Sunday 10:45 AM, 2:05 PM and 6 PM; Thursday and Monday 6 PM)
   with live injury statuses. Teams already playing keep their pregame
   numbers. Grades the week before on each run.
+- Survivor pools (ENABLE_SURVIVOR_SCHEDULER, 2026-11-07): every 5
+  minutes grades survivor picks whose games are final, makes missed
+  picks (the biggest favorite left, just before the Sunday 1 PM games)
+  or scores them as losses once the week is over, and sends "make your
+  pick" pushes 3 hours before the week's first kickoff and 2 before the
+  Sunday deadline (app/domain/survivor.py).
 - Injury alerts (ENABLE_INJURY_ALERTS_SCHEDULER, 2026-09-27): checks
   ESPN's injuries feed every 2 hours (INJURY_WATCH_EVERY_HOURS) and
   pushes status changes and news for rostered players
@@ -733,6 +739,25 @@ async def _run_projection_engine_job():
     results = await projection_engine.run_week(await get_pool(), season, week, rest_of_season=morning)
     logger.info("Projection engine finished: season=%s week=%s %s", season, week, results)
     record_job_run("projection_engine")
+
+
+async def _run_survivor_job():
+    from app.domain import survivor
+    from app.notifications import dispatcher, formatter
+    from app.queries import owner_preferences as preferences_queries
+
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        results = await survivor.run(conn, season)
+        reminders = await survivor.due_reminders(conn, season)
+        for r in reminders:
+            prefs = await preferences_queries.get_preferences(conn, r["owner_id"])
+            if prefs["push_enabled"]:
+                await dispatcher.send_to_owner(conn, r["owner_id"], formatter.survivor_pick_needed(r["pool_name"], r["week"], r["hours"], r["pool_id"]))
+    if any(results.values()) or reminders:
+        logger.info("Survivor job: %s, %s reminders", results, len(reminders))
+    record_job_run("survivor")
 
 
 async def _run_projected_points_sync_job():
@@ -1359,6 +1384,11 @@ def start_scheduler():
                 _run_projection_engine_job, "cron", timezone="America/Chicago", id=job_id, **trigger,
             )
         logger.info("Projection engine scheduler started (6 AM + noon Central, plus each inactives window)")
+        started_any = True
+
+    if os.getenv("ENABLE_SURVIVOR_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        _scheduler.add_job(_run_survivor_job, "interval", minutes=5, id="survivor", max_instances=1, coalesce=True)
+        logger.info("Survivor scheduler started (every 5 minutes)")
         started_any = True
 
     if os.getenv("ENABLE_ADP_SNAPSHOT_SCHEDULER", "").lower() in ("1", "true", "yes"):
