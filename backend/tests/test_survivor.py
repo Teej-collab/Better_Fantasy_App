@@ -201,17 +201,21 @@ async def test_someone_with_no_team_still_gets_the_pick_reminder(pool, monkeypat
         return True, False
 
     monkeypatch.setattr(dispatcher, "_send_native_one", fake_send)
+    monkeypatch.setattr(dispatcher, "_send_one", lambda row, payload: (sent.append((row["endpoint"], payload["title"])) or (True, False)))
     async with _client() as a:
         await _signup(a, "foxtrot")
         made = (await a.post("/survivor/pools", json={"name": "No League Pool"})).json()
         # No team, so this phone registers to the account itself.
         reg = await a.post("/push/native/register", json={"device_id": "test-dev-1", "platform": "ios", "push_token": "tok-1"})
         assert reg.status_code == 200, reg.text
+        # And a browser, the same way.
+        web = await a.post("/push/subscribe", json={"endpoint": "https://push.test/survivor-1", "keys": {"p256dh": "k", "auth": "a"}})
+        assert web.status_code == 200, web.text
     async with pool.acquire() as conn:
         due = await survivor.due_reminders(conn, TEST_SEASON)
         mine = [r for r in due if r["pool_id"] == made["id"]]
         assert len(mine) == 1 and mine[0]["kind"] == "first"
-        assert await dispatcher.send_to_user(conn, mine[0]["user_id"], {"title": "pick", "body": "", "data": {}}) == 1
-        assert sent == [("tok-1", "pick")]
+        assert await dispatcher.send_to_user(conn, mine[0]["user_id"], {"title": "pick", "body": "", "data": {}}) == 2
+        assert sorted(sent) == [("https://push.test/survivor-1", "pick"), ("tok-1", "pick")]
         # Each reminder goes once.
         assert not [r for r in await survivor.due_reminders(conn, TEST_SEASON) if r["pool_id"] == made["id"]]

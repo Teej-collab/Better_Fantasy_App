@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ANTON, ELITE, EliteCard, EliteTitle, HEX_CLIP } from "@/components/elite/Elite";
 import { kickoffText, LivesPips, TeamLogo } from "@/components/survivor/SurvivorKit";
+import { isPushSupported, isSubscribedOnThisDevice, subscribeToPush } from "@/lib/push";
 import { survivorApi, type SurvivorHub, type SurvivorPoolSummary } from "@/lib/survivorApi";
 
 /**
@@ -67,6 +68,7 @@ export default function SurvivorHubPage() {
         </p>
       )}
       {error && <p className="text-sm" style={{ color: ELITE.orange }}>{error}</p>}
+      {hub.pools.some((p) => p.mine.length > 0) && <ReminderPrompt />}
 
       {hub.pools.length === 0 && !creating && (
         <EliteCard className="p-4">
@@ -119,6 +121,47 @@ export default function SurvivorHubPage() {
           </form>
         </div>
       )}
+    </div>
+  );
+}
+
+// Pick reminders on the web: anyone in a pool whose browser isn't
+// subscribed yet, team or no team (2026-11-07).
+function ReminderPrompt() {
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isPushSupported() || Notification.permission === "denied") return;
+    let live = true;
+    isSubscribedOnThisDevice()
+      .then((on) => live && setShow(!on))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!show) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-[#10151c] px-3 py-2.5">
+      <span className="min-w-48 flex-1 text-sm" style={{ color: ELITE.soft }}>
+        {note ?? "Get a reminder before picks lock if you haven't made yours."}
+      </span>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          subscribeToPush()
+            .then(() => setShow(false))
+            .catch((e: Error) => setNote(e.message))
+            .finally(() => setBusy(false));
+        }}
+        className="min-h-9 rounded-full border px-4 text-xs font-bold disabled:opacity-50"
+        style={{ borderColor: ELITE.green, color: ELITE.green }}
+      >
+        {busy ? "Turning on…" : "Turn on pick reminders"}
+      </button>
     </div>
   );
 }

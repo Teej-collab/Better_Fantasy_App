@@ -66,6 +66,24 @@ async def subscribe(body: SubscribeBody, request: Request, pool=Depends(get_pool
 
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            # No team yet (someone only in a survivor pool, 2026-11-07):
+            # the browser subscribes to the account itself until it has one.
+            row = await conn.fetchrow(
+                """
+                INSERT INTO user_push_subscriptions (user_id, endpoint, p256dh, auth, device_label)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (endpoint) DO UPDATE SET
+                    user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
+                    device_label = EXCLUDED.device_label, active = TRUE, updated_at = now()
+                RETURNING id, device_label, active
+                """,
+                payload["user_id"], body.endpoint, body.keys.p256dh, body.keys.auth, body.device_label,
+            )
+            return dict(row)
+        await conn.execute(
+            "UPDATE user_push_subscriptions SET active = FALSE, updated_at = now() WHERE endpoint = $1", body.endpoint
+        )
         row = await queries.upsert_subscription(
             conn, owner_id, body.endpoint, body.keys.p256dh, body.keys.auth, body.device_label
         )
@@ -98,6 +116,14 @@ async def unsubscribe(body: UnsubscribeBody, request: Request, pool=Depends(get_
     payload = _require_session(request)
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
+        teamless = await conn.fetchval(
+            "UPDATE user_push_subscriptions SET active = FALSE, updated_at = now() WHERE user_id = $1 AND endpoint = $2 RETURNING id",
+            payload["user_id"], body.endpoint,
+        )
+        if owner_id is None:
+            if teamless is None:
+                raise HTTPException(status_code=404, detail="No matching subscription for this account")
+            return {"ok": True}
         found = await queries.deactivate_subscription(conn, owner_id, body.endpoint)
         if not found:
             raise HTTPException(status_code=404, detail="No matching subscription for this account")

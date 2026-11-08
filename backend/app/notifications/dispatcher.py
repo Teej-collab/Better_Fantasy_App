@@ -159,8 +159,8 @@ async def send_to_owner(conn, owner_id: int, payload: dict, now: datetime.dateti
 async def send_to_user(conn, user_id: int, payload: dict) -> int:
     """For something that belongs to an account rather than a team (a
     survivor pool, 2026-11-07): the account's team when it has one
-    (send_to_owner, quiet hours and all), else the phones it registered
-    without one (user_push_tokens)."""
+    (send_to_owner, quiet hours and all), else the phones and browsers it
+    registered without one (user_push_tokens, user_push_subscriptions)."""
     owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", user_id)
     if owner_id is not None:
         return await send_to_owner(conn, owner_id, payload)
@@ -177,6 +177,19 @@ async def send_to_user(conn, user_id: int, payload: dict) -> int:
         else:
             await conn.execute(
                 "UPDATE user_push_tokens SET last_failure_at = now(), active = active AND NOT $2 WHERE id = $1", row["id"], gone
+            )
+    for row in await conn.fetch("SELECT * FROM user_push_subscriptions WHERE user_id = $1 AND active", user_id):
+        try:
+            ok, gone = await asyncio.to_thread(_send_one, row, payload)
+        except Exception:
+            logger.warning("Web push delivery failed unexpectedly (user subscription id=%s)", row["id"], exc_info=True)
+            ok, gone = False, False
+        if ok:
+            delivered += 1
+            await conn.execute("UPDATE user_push_subscriptions SET last_successful_delivery_at = now() WHERE id = $1", row["id"])
+        else:
+            await conn.execute(
+                "UPDATE user_push_subscriptions SET last_failure_at = now(), active = active AND NOT $2 WHERE id = $1", row["id"], gone
             )
     return delivered
 
