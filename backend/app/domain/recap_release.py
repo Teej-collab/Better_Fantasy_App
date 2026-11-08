@@ -57,7 +57,7 @@ async def release_and_notify(conn, season: int, week: int, league_id: int, notif
     if not notify:
         return 0
 
-    payload = formatter.weekly_recap_live(season, week, narrative["text"])
+    payload = dispatcher.in_league(formatter.weekly_recap_live(season, week, narrative["text"]), league_id, league_wide=True)
     owner_rows = await conn.fetch(
         "SELECT DISTINCT owner_id FROM teams_by_season WHERE season = $1 AND league_id = $2",
         season, league_id,

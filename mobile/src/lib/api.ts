@@ -126,6 +126,7 @@ import type {
   TrendingSource,
   TrendingWindow,
   InboxNotification,
+  LeagueNotificationLevel,
 } from '@/lib/types';
 import type { FormatOptions, LeagueFormat } from '@/lib/leagueFormat';
 import type { PreviewPlayer, ScoringCatalog } from '@/lib/scoringCatalog';
@@ -638,6 +639,12 @@ export const api = {
   // The notification inbox (2026-11-08).
   notifications: () => request<{ notifications: InboxNotification[]; unread: number }>('/notifications'),
   notificationsUnread: () => request<{ unread: number }>('/notifications/unread'),
+  notificationLeagues: () => request<{ leagues: LeagueNotificationLevel[] }>('/notifications/leagues'),
+  setNotificationLeague: (leagueId: number, level: LeagueNotificationLevel['level']) =>
+    request<{ leagues: LeagueNotificationLevel[] }>(`/notifications/leagues/${leagueId}`, { method: 'PUT', body: JSON.stringify({ level }) }),
+  // The Reply button on a chat push.
+  replyToChat: (conversationId: number, body: string) =>
+    request<{ conversation_id: number; message_id: number }>(`/chat/conversations/${conversationId}/reply`, { method: 'POST', body: JSON.stringify({ body }) }),
   markNotificationsRead: (ids?: number[]) =>
     request<{ unread: number }>('/notifications/read', { method: 'POST', body: JSON.stringify(ids ? { ids } : {}) }),
   addKittyEntry: (entry: { owner_id: number | null; amount: number; reason: string }) =>

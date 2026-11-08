@@ -209,7 +209,7 @@ async def send_lineup_note(body: LineupNoteRequest, request: Request, pool=Depen
         if team["owner_id"] is not None:
             prefs = await preferences_queries.get_preferences(conn, team["owner_id"])
             if prefs["push_enabled"]:
-                await dispatcher.send_to_owner(conn, team["owner_id"], formatter.commish_lineup_note(note))
+                await dispatcher.send_to_owner(conn, team["owner_id"], dispatcher.in_league(formatter.commish_lineup_note(note), league_id))
                 sent = True
         await commish_log.record(conn, league_id, payload["user_id"], "lineups", f"Note to {team['team_name']}: {note}")
     return {"sent": sent}

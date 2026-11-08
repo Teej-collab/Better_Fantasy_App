@@ -8,9 +8,17 @@ import { queryClient } from '@/lib/queries';
 // ids they act on. iOS only runs a button's code with the app open, so
 // each opens it, does the thing, and lands on the push's own screen.
 type NotificationsModule = typeof import('expo-notifications');
-type PushData = { url?: string; trade_id?: number; entry_id?: number; user_id?: number };
+type PushData = { url?: string; trade_id?: number; entry_id?: number; user_id?: number; conversation_id?: number };
 
-const CATEGORIES: Record<string, { identifier: string; buttonTitle: string; options?: { isDestructive?: boolean; isAuthenticationRequired?: boolean } }[]> = {
+type Action = {
+  identifier: string;
+  buttonTitle: string;
+  options?: { isDestructive?: boolean; isAuthenticationRequired?: boolean };
+  textInput?: { submitButtonTitle: string; placeholder: string };
+};
+
+const CATEGORIES: Record<string, Action[]> = {
+  chat_message: [{ identifier: 'reply', buttonTitle: 'Reply', textInput: { submitButtonTitle: 'Send', placeholder: 'Reply…' } }],
   trade_offer: [
     { identifier: 'accept', buttonTitle: 'Accept', options: { isAuthenticationRequired: true } },
     { identifier: 'decline', buttonTitle: 'Decline', options: { isDestructive: true } },
@@ -33,9 +41,13 @@ function message(e: unknown): string {
 }
 
 /** Runs a button's action; the caller opens the push's screen either way. */
-export async function runNotificationAction(category: string | undefined, action: string, data: PushData): Promise<void> {
+export async function runNotificationAction(category: string | undefined, action: string, data: PushData, userText?: string): Promise<void> {
   try {
-    if (category === 'trade_offer' && data.trade_id) {
+    if (category === 'chat_message' && data.conversation_id && action === 'reply') {
+      const text = userText?.trim();
+      if (text) await api.replyToChat(data.conversation_id, text);
+      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
+    } else if (category === 'trade_offer' && data.trade_id) {
       if (action === 'accept') {
         await api.acceptTrade(data.trade_id, []);
         Alert.alert('Trade accepted');

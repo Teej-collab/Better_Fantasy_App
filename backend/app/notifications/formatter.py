@@ -76,22 +76,31 @@ def _chat_url(conversation_id: int) -> str:
     return f"/chat?conversation={conversation_id}"
 
 
+def _chat(title: str, body: str, conversation_id: int, type_: str) -> dict:
+    """A chat push carries a Reply button (2026-11-08), which posts to
+    POST /chat/conversations/{id}/reply."""
+    return _payload(
+        title, _preview(body) or "Sent an image", _chat_url(conversation_id), type_,
+        category="chat_message", extra={"conversation_id": conversation_id},
+    )
+
+
 def chat_direct_message(sender_name: str, body: str, conversation_id: int) -> dict:
-    return _payload(sender_name, _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_direct_message")
+    return _chat(sender_name, body, conversation_id, "chat_direct_message")
 
 
 def chat_group_message(sender_name: str, body: str, conversation_id: int) -> dict:
     # A group chat is people you picked, so it rides on the Direct
     # Messages switch, not League Chat.
-    return _payload(f"{sender_name} in your group chat", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_direct_message")
+    return _chat(f"{sender_name} in your group chat", body, conversation_id, "chat_direct_message")
 
 
 def chat_league_message(sender_name: str, body: str, conversation_id: int) -> dict:
-    return _payload(f"{sender_name} in League Chat", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_league_message")
+    return _chat(f"{sender_name} in League Chat", body, conversation_id, "chat_league_message")
 
 
 def chat_mention(sender_name: str, body: str, conversation_id: int) -> dict:
-    return _payload(f"{sender_name} mentioned you", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_mention")
+    return _chat(f"{sender_name} mentioned you", body, conversation_id, "chat_mention")
 
 
 def bet_shared(bettor_name: str, leg_count: int) -> dict:
@@ -121,7 +130,7 @@ def watch_party_invite(host_name: str, room_name: str, room_id: int) -> dict:
 
 
 def chat_reply(sender_name: str, body: str, conversation_id: int) -> dict:
-    return _payload(f"{sender_name} replied to you", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_reply")
+    return _chat(f"{sender_name} replied to you", body, conversation_id, "chat_reply")
 
 
 def draft_starting_soon(minutes: int) -> dict:

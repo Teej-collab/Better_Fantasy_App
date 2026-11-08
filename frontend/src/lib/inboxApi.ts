@@ -32,7 +32,14 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Settings > Notifications > Your leagues: everything, just your team,
+// or muted (still in the inbox).
+export type LeagueNotificationLevel = { league_id: number; name: string; level: "all" | "mine" | "off" };
+
 export const inboxApi = {
+  leagues: () => call<{ leagues: LeagueNotificationLevel[] }>("/notifications/leagues"),
+  setLeague: (leagueId: number, level: LeagueNotificationLevel["level"]) =>
+    call<{ leagues: LeagueNotificationLevel[] }>(`/notifications/leagues/${leagueId}`, { method: "PUT", body: JSON.stringify({ level }) }),
   list: () => call<{ notifications: InboxNotification[]; unread: number }>("/notifications"),
   unread: () => call<{ unread: number }>("/notifications/unread"),
   markRead: (ids?: number[]) => call<{ unread: number }>("/notifications/read", { method: "POST", body: JSON.stringify(ids ? { ids } : {}) }),

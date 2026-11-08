@@ -78,3 +78,71 @@ async def mark_read(body: ReadBody, request: Request):
             rid, body.ids,
         )
         return {"unread": await conn.fetchval(f"SELECT count(*) FROM notifications WHERE {column} = $1 AND read_at IS NULL", rid)}
+
+
+# ---- Per league (2026-11-08) ------------------------------------------------
+# Settings > Notifications > Your leagues: for each league, everything (no
+# row), just your team ("mine"), or muted ("off"). The dispatcher reads it.
+
+_LEVELS = {"all", "mine", "off"}
+
+
+async def _owner_or_404(conn, user_id: int) -> int:
+    owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", user_id)
+    if owner_id is None:
+        raise HTTPException(status_code=404, detail="Join a league first")
+    return owner_id
+
+
+async def _league_rows(conn, owner_id: int):
+    return await conn.fetch(
+        """
+        SELECT DISTINCT l.id AS league_id, l.name, COALESCE(n.level, 'all') AS level
+        FROM owner_users ou
+        JOIN league_members lm ON lm.user_id = ou.user_id
+        JOIN leagues l ON l.id = lm.league_id
+        LEFT JOIN league_notification_levels n ON n.owner_id = ou.owner_id AND n.league_id = l.id
+        WHERE ou.owner_id = $1
+        ORDER BY l.name
+        """,
+        owner_id,
+    )
+
+
+@router.get("/leagues")
+async def league_levels(request: Request):
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", payload["user_id"])
+        if owner_id is None:
+            return {"leagues": []}
+        return {"leagues": [dict(r) for r in await _league_rows(conn, owner_id)]}
+
+
+class LevelBody(BaseModel):
+    level: str
+
+
+@router.put("/leagues/{league_id}")
+async def set_league_level(league_id: int, body: LevelBody, request: Request):
+    payload = _require_session(request)
+    if body.level not in _LEVELS:
+        raise HTTPException(status_code=400, detail="level must be all, mine or off")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        owner_id = await _owner_or_404(conn, payload["user_id"])
+        rows = await _league_rows(conn, owner_id)
+        if not any(r["league_id"] == league_id for r in rows):
+            raise HTTPException(status_code=404, detail="You're not in that league")
+        if body.level == "all":
+            await conn.execute("DELETE FROM league_notification_levels WHERE owner_id = $1 AND league_id = $2", owner_id, league_id)
+        else:
+            await conn.execute(
+                """
+                INSERT INTO league_notification_levels (owner_id, league_id, level) VALUES ($1, $2, $3)
+                ON CONFLICT (owner_id, league_id) DO UPDATE SET level = EXCLUDED.level, updated_at = now()
+                """,
+                owner_id, league_id, body.level,
+            )
+        return {"leagues": [dict(r) for r in await _league_rows(conn, owner_id)]}

@@ -2006,3 +2006,7 @@ export type InboxNotification = {
   created_at: string;
   read: boolean;
 };
+
+// Settings > Notifications > Your leagues (2026-11-08): everything, just
+// your team, or muted (still in the inbox).
+export type LeagueNotificationLevel = { league_id: number; name: string; level: 'all' | 'mine' | 'off' };

@@ -19,6 +19,7 @@ import {
   unsubscribeFromPush,
 } from "@/lib/push";
 import { ToggleRow } from "@/components/settings/ToggleRow";
+import { inboxApi, type LeagueNotificationLevel } from "@/lib/inboxApi";
 import { SavedIndicator } from "@/components/settings/SavedIndicator";
 
 const SUNDAY_MODES: { key: SundayMode; emoji: string; label: string; description: string }[] = [
@@ -70,6 +71,75 @@ type PushUiState = {
   permission: NotificationPermission | "unsupported";
   subscribedHere: boolean;
 };
+
+const LEAGUE_LEVELS: { key: LeagueNotificationLevel["level"]; label: string }[] = [
+  { key: "all", label: "Everything" },
+  { key: "mine", label: "My team" },
+  { key: "off", label: "Muted" },
+];
+
+// Your leagues (2026-11-08): how much each league can buzz you. The draft
+// clock always comes through, and a muted league still fills your inbox.
+function LeagueLevels() {
+  const [leagues, setLeagues] = useState<LeagueNotificationLevel[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    inboxApi.leagues().then(
+      (r) => setLeagues(r.leagues),
+      () => setLeagues([]),
+    );
+  }, []);
+  if (!leagues || leagues.length === 0) return null;
+
+  async function set(leagueId: number, level: LeagueNotificationLevel["level"]) {
+    setError(null);
+    const prev = leagues;
+    setLeagues((cur) => cur?.map((l) => (l.league_id === leagueId ? { ...l, level } : l)) ?? cur);
+    try {
+      setLeagues((await inboxApi.setLeague(leagueId, level)).leagues);
+    } catch (e) {
+      setLeagues(prev);
+      setError(e instanceof Error ? e.message : "Couldn't save that.");
+    }
+  }
+
+  return (
+    <section className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+      <h2 className="text-sm font-semibold tracking-wide uppercase">Your Leagues</h2>
+      <p className="mb-2 text-xs text-black/50 dark:text-white/50">
+        &ldquo;My team&rdquo; skips league chat, chugs, recaps and other people&apos;s trades. Muted still fills your inbox, and the draft clock always comes through.
+      </p>
+      {error && (
+        <p role="alert" className="text-xs text-red-500">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+        {leagues.map((l) => (
+          <div key={l.league_id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{l.name}</span>
+            <div role="radiogroup" aria-label={`${l.name} notifications`} className="flex gap-1 rounded-lg bg-black/[0.04] p-1 dark:bg-white/[0.06]">
+              {LEAGUE_LEVELS.map((o) => (
+                <button
+                  key={o.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={l.level === o.key}
+                  onClick={() => void set(l.league_id, o.key)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
+                    l.level === o.key ? "bg-[var(--wl-accent)] text-white" : "text-black/60 dark:text-white/60"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export function NotificationsSection() {
   const [prefs, setPrefs] = useState<OwnerPreferences | null>(null);
@@ -406,6 +476,8 @@ export function NotificationsSection() {
           ))}
         </div>
       </section>
+
+      <LeagueLevels />
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <ToggleRow

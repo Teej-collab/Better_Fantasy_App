@@ -146,6 +146,31 @@ async def _muted(conn, owner_id: int, payload: dict) -> bool:
     return pref is not None and not (await preferences_queries.get_preferences(conn, owner_id))[pref]
 
 
+def in_league(payload: dict, league_id: int | None, *, league_wide: bool = False) -> dict:
+    """Marks a push as coming from a league (2026-11-08), so that league's
+    level in Settings > Notifications applies: `league_wide` is chatter
+    about the league (league chat, a chug, other people's trades) that
+    "Just my team" leaves out, as opposed to something about your team."""
+    if league_id is None:
+        return payload
+    data = {**(payload.get("data") or {}), "league_id": league_id}
+    if league_wide:
+        data["league_wide"] = True
+    return {**payload, "data": data}
+
+
+async def _league_allows(conn, owner_id: int, payload: dict) -> bool:
+    """False when the owner muted the push's league, or set it to just
+    their team and this is league-wide. Always kept in the inbox anyway."""
+    data = payload.get("data") or {}
+    if data.get("league_id") is None or _type(payload) in quiet_hours.ALWAYS_SEND:
+        return True
+    level = await conn.fetchval(
+        "SELECT level FROM league_notification_levels WHERE owner_id = $1 AND league_id = $2", owner_id, data["league_id"]
+    )
+    return level is None or (level == "mine" and not data.get("league_wide"))
+
+
 async def record(conn, payload: dict, *, owner_ids: list[int] = (), user_id: int | None = None) -> None:
     """Keeps the push in the notification inbox (GET /notifications) for
     each recipient, whether or not it reached a device. A tagged push
@@ -213,6 +238,8 @@ async def send_to_owner(conn, owner_id: int, payload: dict, now: datetime.dateti
         return 0
     if keep:
         await record(conn, payload, owner_ids=[owner_id])
+    if not await _league_allows(conn, owner_id, payload):
+        return 0
     if not await _quiet_hours_allow(conn, owner_id, payload, now):
         return 0
     subs = await queries.list_active_subscriptions_for_owner(conn, owner_id)
@@ -274,7 +301,7 @@ async def send_to_owners(conn, owner_ids: list[int], payload: dict) -> int:
     now = datetime.datetime.now(datetime.timezone.utc)
     owner_ids = [o for o in owner_ids if not await _muted(conn, o, payload)]
     await record(conn, payload, owner_ids=owner_ids)
-    owner_ids = [o for o in owner_ids if await _quiet_hours_allow(conn, o, payload, now)]
+    owner_ids = [o for o in owner_ids if await _league_allows(conn, o, payload) and await _quiet_hours_allow(conn, o, payload, now)]
     if not owner_ids:
         return 0
     subs = await queries.list_active_subscriptions_for_owners(conn, owner_ids)

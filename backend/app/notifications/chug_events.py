@@ -26,7 +26,7 @@ async def notify_chug_posted(
             "SELECT DISTINCT owner_id FROM teams_by_season WHERE season = $1 AND league_id = $2",
             season, league_id,
         )
-        payload = formatter.chug_posted(poster_name, final_score, has_video)
+        payload = dispatcher.in_league(formatter.chug_posted(poster_name, final_score, has_video), league_id, league_wide=True)
         for row in owner_rows:
             owner_id = row["owner_id"]
             if owner_id == poster_owner_id:

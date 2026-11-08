@@ -455,6 +455,37 @@ async def share_to_league_chat(request: Request, pool=Depends(get_pool)):
     return {"conversation_id": conversation_id, "message_id": row["id"]}
 
 
+@router.post("/conversations/{conversation_id}/reply")
+async def reply_from_notification(conversation_id: int, request: Request, pool=Depends(get_pool)):
+    """The Reply button on a chat push (2026-11-08): sends without the
+    chat socket. Same insert, broadcast and push as a socket message, the
+    same block rule for DMs; plain text, and not in Commish Corner."""
+    payload = _require_session(request)
+    data = await request.json()
+    body = str((data or {}).get("body", "")).strip()
+    if not body or len(body) > MAX_MESSAGE_LENGTH:
+        raise HTTPException(status_code=400, detail="Message is empty or too long")
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        await _require_participant(conn, payload, conversation_id, owner_id)
+        conversation = await chat_queries.get_conversation_type_and_league(conn, conversation_id)
+        if conversation and conversation["type"] == "commish_corner":
+            raise HTTPException(status_code=403, detail="Announcements are written in the app")
+        participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
+        if conversation and conversation["type"] == "direct":
+            other_ids = [p for p in participant_ids if p != owner_id]
+            if other_ids and await chat_safety_queries.is_blocked_either_way(conn, owner_id, other_ids[0]):
+                raise HTTPException(status_code=403, detail="You can't message this person")
+        blockers = await chat_safety_queries.owners_blocking(conn, owner_id, participant_ids)
+        participant_ids = [p for p in participant_ids if p not in blockers]
+        owner_name = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
+        row = await chat_queries.insert_message(conn, conversation_id, owner_id, body, None, None, None)
+        message = await chat_domain.get_single_message(conn, row["id"], owner_id)
+    await manager.broadcast_to_owners(participant_ids, {"type": "message", "message": message})
+    await _push_notify_new_message(conversation_id, owner_id, owner_name or "Someone", body, None, [], participant_ids)
+    return {"conversation_id": conversation_id, "message_id": row["id"]}
+
+
 # Background conversions in flight, so they aren't garbage-collected
 # mid-run (asyncio only keeps weak references to tasks).
 _video_tasks: set[asyncio.Task] = set()
@@ -762,7 +793,11 @@ async def _push_notify_new_message(
             if reply_to_id is not None:
                 original = await chat_queries.get_message_owner_and_conversation(conn, reply_to_id)
                 reply_target_owner_id = original["owner_id"] if original else None
-            conversation_type = await chat_queries.get_conversation_type(conn, conversation_id)
+            conversation = await chat_queries.get_conversation_type_and_league(conn, conversation_id)
+            conversation_type = conversation["type"] if conversation else None
+            # A league's own rooms follow that league's level in Settings;
+            # DMs and group chats are between people, so they don't.
+            league_id = conversation["league_id"] if conversation and conversation_type not in ("direct", "group") else None
             # A tag in a Lounge's chat links to the room, not the chat.
             lounge_build = None
             if lounge_room is not None:
@@ -793,7 +828,10 @@ async def _push_notify_new_message(
                 # of the notify_league_chat category toggle.
                 category_allowed = conversation_type == "commish_corner" or prefs[category]
                 if prefs["push_enabled"] and category_allowed:
-                    await dispatcher.send_to_owner(conn, recipient_id, build(sender_name, body, conversation_id))
+                    push = dispatcher.in_league(
+                        build(sender_name, body, conversation_id), league_id, league_wide=category == "notify_league_chat",
+                    )
+                    await dispatcher.send_to_owner(conn, recipient_id, push)
     except Exception:
         logger.exception("Push notification for chat message in conversation_id=%s failed", conversation_id)
 

@@ -41,7 +41,9 @@ async def notify_party_started(
     season: int, league_id: int, host_owner_id: int, host_name: str, room_id: int, room_name: str, game_id: str | None
 ) -> None:
     try:
-        payload = formatter.watch_party_started(host_name, room_name, room_id, await _game_label(game_id))
+        payload = dispatcher.in_league(
+            formatter.watch_party_started(host_name, room_name, room_id, await _game_label(game_id)), league_id, league_wide=True,
+        )
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(

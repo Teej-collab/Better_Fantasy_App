@@ -41,12 +41,12 @@ async def claim_once(conn, key: str) -> bool:
     return row is not None
 
 
-async def _send(conn, owner_id: int | None, payload: dict, category: str) -> None:
+async def _send(conn, owner_id: int | None, payload: dict, category: str, league_id: int | None = None) -> None:
     if owner_id is None:
         return
     prefs = await preferences_queries.get_preferences(conn, owner_id)
     if prefs["push_enabled"] and prefs.get(category, True):
-        await dispatcher.send_to_owner(conn, owner_id, payload)
+        await dispatcher.send_to_owner(conn, owner_id, dispatcher.in_league(payload, league_id))
 
 
 # ---- Waivers ----------------------------------------------------------------
@@ -79,7 +79,7 @@ async def notify_waiver_results(conn, season: int, league_id: int, results: list
     for team_id, team in by_team.items():
         if not await claim_once(conn, f"waivers-{league_id}-{season}-{team_id}-{min(team['ids'])}"):
             continue
-        await _send(conn, team["owner_id"], formatter.waiver_results(team["won"], team["failed"]), "notify_fantasy_team")
+        await _send(conn, team["owner_id"], formatter.waiver_results(team["won"], team["failed"]), "notify_fantasy_team", league_id)
         sent += 1
     return sent
 
@@ -100,7 +100,7 @@ async def notify_matchup_finals(conn, season: int, week: int, league_id: int) ->
             await _send(
                 conn, me["owner_id"],
                 formatter.matchup_final(result, them["team_name"], me["score"], them["score"], me["record"], m["matchup_id"]),
-                "notify_fantasy_team",
+                "notify_fantasy_team", league_id,
             )
             sent += 1
     return sent
@@ -143,7 +143,7 @@ async def check_pregame_lineups(conn, season: int, week: int, league_id: int, no
                 await _send(
                     conn, side["owner_id"],
                     formatter.pregame_starter_out(p["player_name"], status, _kickoff_label(p["game_time"]), m["matchup_id"], key),
-                    "notify_injuries",
+                    "notify_injuries", league_id,
                 )
                 sent += 1
     return sent
@@ -211,6 +211,6 @@ async def check_close_games(conn, season: int, week: int, league_id: int, now: d
             else:
                 title = "🔥 Dead even"
                 body = f"Tied with {them['team_name']} — {_names(everyone)} decide it."
-            await _send(conn, me["owner_id"], formatter.close_game(title, body, m["matchup_id"]), "notify_fantasy_team")
+            await _send(conn, me["owner_id"], formatter.close_game(title, body, m["matchup_id"]), "notify_fantasy_team", league_id)
             sent += 1
     return sent

@@ -102,7 +102,9 @@ async def notify_inactive_starters(conn, season: int, week: int, espn_ids: list[
             continue
         prefs = await preferences_queries.get_preferences(conn, r["owner_id"])
         if prefs["push_enabled"] and prefs.get("notify_injuries", True):
-            await dispatcher.send_to_owner(conn, r["owner_id"], formatter.inactive_starter(r["full_name"], kickoff, key))
+            await dispatcher.send_to_owner(
+                conn, r["owner_id"], dispatcher.in_league(formatter.inactive_starter(r["full_name"], kickoff, key), r["league_id"]),
+            )
             sent += 1
     return sent
 

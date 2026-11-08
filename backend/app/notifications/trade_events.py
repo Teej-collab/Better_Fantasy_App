@@ -43,7 +43,8 @@ def _when(ts: datetime.datetime | None) -> str:
     return ts.astimezone(_CENTRAL).strftime("%a %-I:%M %p CT")
 
 
-async def _send(conn, owner_ids, payload: dict, *, league_wide: bool) -> None:
+async def _send(conn, owner_ids, payload: dict, *, league_wide: bool, league_id: int | None = None) -> None:
+    payload = dispatcher.in_league(payload, league_id, league_wide=league_wide)
     for owner_id in {o for o in owner_ids if o is not None}:
         prefs = await preferences_queries.get_preferences(conn, owner_id)
         if not prefs["push_enabled"] or (league_wide and not prefs["notify_league"]):
@@ -93,7 +94,7 @@ async def notify_trade_block(conn, league_id: int, season: int, team_id: int) ->
             "SELECT DISTINCT owner_id FROM teams_by_season WHERE league_id = $1 AND season = $2", league_id, season
         )
         others = [r["owner_id"] for r in rows if r["owner_id"] != team["owner_id"]]
-        await _send(conn, others, formatter.trade_block_listed(team["team_name"], names, team_id), league_wide=True)
+        await _send(conn, others, formatter.trade_block_listed(team["team_name"], names, team_id), league_wide=True, league_id=league_id)
     except Exception:
         logger.exception("Trade block push failed (team %s)", team_id)
 
@@ -104,7 +105,7 @@ async def notify_veto_reason(conn, trade: dict, reason: str) -> None:
     try:
         await _send(
             conn, [trade["proposing_owner_id"], trade["receiving_owner_id"]],
-            formatter.trade_update("🚫 Why your trade was vetoed", reason, trade["id"]), league_wide=False,
+            formatter.trade_update("🚫 Why your trade was vetoed", reason, trade["id"]), league_wide=False, league_id=trade["league_id"],
         )
     except Exception:
         logger.exception("Veto reason push failed (trade %s)", trade.get("id"))
@@ -130,41 +131,41 @@ async def notify_trade_event(conn, trade: dict | None, event: str, settings: dic
         if event == "accepted" and trade.get("tag_flags"):
             await _send(
                 conn, await _commissioner_owner_ids(conn, trade),
-                formatter.trade_update("🏷️ Franchise tag check", "; ".join(trade["tag_flags"]), tid), league_wide=False,
+                formatter.trade_update("🏷️ Franchise tag check", "; ".join(trade["tag_flags"]), tid), league_wide=False, league_id=trade["league_id"],
             )
 
         if event == "proposed":
             note = f" — “{trade['note']}”" if trade.get("note") else ""
-            await _send(conn, [receiver], formatter.trade_offer(trade["proposing_team_name"], summary + note, tid), league_wide=False)
+            await _send(conn, [receiver], formatter.trade_offer(trade["proposing_team_name"], summary + note, tid), league_wide=False, league_id=trade["league_id"])
         elif event == "rejected":
-            await _send(conn, [proposer], formatter.trade_update(f"❌ {trade['receiving_team_name']} declined your trade", summary, tid), league_wide=False)
+            await _send(conn, [proposer], formatter.trade_update(f"❌ {trade['receiving_team_name']} declined your trade", summary, tid), league_wide=False, league_id=trade["league_id"])
         elif event == "cancelled":
-            await _send(conn, [receiver], formatter.trade_update(f"{trade['proposing_team_name']} withdrew their offer", summary, tid), league_wide=False)
+            await _send(conn, [receiver], formatter.trade_update(f"{trade['proposing_team_name']} withdrew their offer", summary, tid), league_wide=False, league_id=trade["league_id"])
         elif event == "expired":
-            await _send(conn, [proposer], formatter.trade_update("⌛ Your trade offer expired", summary, tid), league_wide=False)
+            await _send(conn, [proposer], formatter.trade_update("⌛ Your trade offer expired", summary, tid), league_wide=False, league_id=trade["league_id"])
         elif event == "accepted" and status == "accepted":
-            await _send(conn, both, formatter.trade_update("✅ Trade processed", summary, tid), league_wide=False)
-            await _send(conn, await _league_owner_ids(conn, trade), formatter.trade_update("🔁 Trade completed", summary, tid), league_wide=True)
+            await _send(conn, both, formatter.trade_update("✅ Trade processed", summary, tid), league_wide=False, league_id=trade["league_id"])
+            await _send(conn, await _league_owner_ids(conn, trade), formatter.trade_update("🔁 Trade completed", summary, tid), league_wide=True, league_id=trade["league_id"])
         elif event == "accepted" and status == "in_review":
             ends = _when(trade.get("review_ends_at"))
-            await _send(conn, [proposer], formatter.trade_update(f"🤝 {trade['receiving_team_name']} accepted your trade", f"Under league review until {ends}. {summary}", tid), league_wide=False)
+            await _send(conn, [proposer], formatter.trade_update(f"🤝 {trade['receiving_team_name']} accepted your trade", f"Under league review until {ends}. {summary}", tid), league_wide=False, league_id=trade["league_id"])
             voting = settings is not None and settings.get("review_mode") == "league_vote"
             ask = "Vote to veto in Trades if it's unfair." if voting else "The commissioner can veto it until then."
             commissioners = await _commissioner_owner_ids(conn, trade)
             others = [o for o in await _league_owner_ids(conn, trade) if o not in commissioners]
-            await _send(conn, others, formatter.trade_update("⚖️ Trade under review", f"{summary}. Processes {ends}. {ask}", tid), league_wide=True)
-            await _send(conn, commissioners, formatter.trade_update("⚖️ Trade to review", f"{summary}. Processes {ends} unless you veto it.", tid), league_wide=False)
+            await _send(conn, others, formatter.trade_update("⚖️ Trade under review", f"{summary}. Processes {ends}. {ask}", tid), league_wide=True, league_id=trade["league_id"])
+            await _send(conn, commissioners, formatter.trade_update("⚖️ Trade to review", f"{summary}. Processes {ends} unless you veto it.", tid), league_wide=False, league_id=trade["league_id"])
         elif event == "accepted" and status == "awaiting_review":
-            await _send(conn, [proposer], formatter.trade_update(f"🤝 {trade['receiving_team_name']} accepted your trade", f"Waiting on commissioner approval. {summary}", tid), league_wide=False)
-            await _send(conn, await _commissioner_owner_ids(conn, trade), formatter.trade_update("⚖️ Trade needs your approval", summary, tid), league_wide=False)
+            await _send(conn, [proposer], formatter.trade_update(f"🤝 {trade['receiving_team_name']} accepted your trade", f"Waiting on commissioner approval. {summary}", tid), league_wide=False, league_id=trade["league_id"])
+            await _send(conn, await _commissioner_owner_ids(conn, trade), formatter.trade_update("⚖️ Trade needs your approval", summary, tid), league_wide=False, league_id=trade["league_id"])
         elif event == "vetoed":
-            await _send(conn, both, formatter.trade_update("🚫 Trade vetoed", summary, tid), league_wide=False)
-            await _send(conn, await _league_owner_ids(conn, trade), formatter.trade_update("🚫 Trade vetoed", summary, tid), league_wide=True)
+            await _send(conn, both, formatter.trade_update("🚫 Trade vetoed", summary, tid), league_wide=False, league_id=trade["league_id"])
+            await _send(conn, await _league_owner_ids(conn, trade), formatter.trade_update("🚫 Trade vetoed", summary, tid), league_wide=True, league_id=trade["league_id"])
         elif event == "processed":
-            await _send(conn, both, formatter.trade_update("✅ Trade processed", summary, tid), league_wide=False)
-            await _send(conn, await _league_owner_ids(conn, trade), formatter.trade_update("🔁 Trade completed", summary, tid), league_wide=True)
+            await _send(conn, both, formatter.trade_update("✅ Trade processed", summary, tid), league_wide=False, league_id=trade["league_id"])
+            await _send(conn, await _league_owner_ids(conn, trade), formatter.trade_update("🔁 Trade completed", summary, tid), league_wide=True, league_id=trade["league_id"])
         elif event == "failed":
-            await _send(conn, both, formatter.trade_update("⚠️ Trade couldn't go through", f"A player in it moved before it processed. {summary}", tid), league_wide=False)
+            await _send(conn, both, formatter.trade_update("⚠️ Trade couldn't go through", f"A player in it moved before it processed. {summary}", tid), league_wide=False, league_id=trade["league_id"])
     except Exception:
         logger.exception("Trade notification failed (trade_id=%s event=%s)", trade.get("id"), event)
 

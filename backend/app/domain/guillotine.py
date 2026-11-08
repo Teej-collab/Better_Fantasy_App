@@ -110,6 +110,7 @@ async def eliminate_for_week(conn, season: int, week: int, league_id: int) -> di
 
 
 async def _notify(conn, season: int, league_id: int, payload: dict) -> None:
+    payload = dispatcher.in_league(payload, league_id, league_wide=True)
     owners = await conn.fetch(
         "SELECT DISTINCT owner_id FROM teams_by_season WHERE season = $1 AND league_id = $2", season, league_id
     )

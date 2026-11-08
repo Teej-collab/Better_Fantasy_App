@@ -192,7 +192,7 @@ async def _announce(conn, ctx: dict, texts: list[str], index: int) -> None:
             {"type": "wheel_spin", "league_id": league_id, "season": season, "landed_index": index, "items": texts, "text": texts[index]},
         )
         spinner_owner = await resolve_owner_id(conn, ctx["payload"])
-        payload = formatter.punishment_wheel_result(season, texts[index])
+        payload = dispatcher.in_league(formatter.punishment_wheel_result(season, texts[index]), league_id, league_wide=True)
         for owner_id in owner_ids:
             if owner_id == spinner_owner:
                 continue

@@ -36,7 +36,7 @@ import { getIntroSoundMode, setIntroSoundMode, type IntroSoundMode } from '@/lib
 import { canUseLiveActivities, liveActivityEnabled, setLiveActivityEnabled } from '@/lib/liveActivity';
 import { registerForPush } from '@/lib/pushRegistration';
 import { queryClient, useFeedbackList, useHouseRules, useMe, useMySettings, useMyUsername, useOwners, usePreferences } from '@/lib/queries';
-import type { MySettings, OwnerPreferences, SundayMode } from '@/lib/types';
+import type { LeagueNotificationLevel, MySettings, OwnerPreferences, SundayMode } from '@/lib/types';
 
 // Ports of the web's components/settings/*Section.tsx.
 
@@ -654,11 +654,62 @@ function clockLabel(t: string): string {
   return `${hour}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
+// Settings > Notifications > Your leagues (2026-11-08): each league gets
+// everything, just your team, or muted. The draft clock always comes
+// through, and a muted league still fills your inbox.
+const LEAGUE_LEVELS: { key: LeagueNotificationLevel['level']; label: string }[] = [
+  { key: 'all', label: 'Everything' },
+  { key: 'mine', label: 'My team' },
+  { key: 'off', label: 'Muted' },
+];
+
+function LeagueLevels() {
+  const q = useQuery({ queryKey: ['notification-leagues'], queryFn: api.notificationLeagues });
+  const [error, setError] = useState<string | null>(null);
+  if (q.isPending) return <LoadingState />;
+  const leagues = q.data?.leagues ?? [];
+  async function set(leagueId: number, level: LeagueNotificationLevel['level']) {
+    setError(null);
+    void Haptics.selectionAsync();
+    const prev = q.data;
+    queryClient.setQueryData(['notification-leagues'], { leagues: leagues.map((l) => (l.league_id === leagueId ? { ...l, level } : l)) });
+    try {
+      queryClient.setQueryData(['notification-leagues'], await api.setNotificationLeague(leagueId, level));
+    } catch (e) {
+      queryClient.setQueryData(['notification-leagues'], prev);
+      setError(e instanceof Error ? e.message : "Couldn't save that.");
+    }
+  }
+  return (
+    <View style={styles.gap}>
+      <Header title="Your leagues" subtitle="How much each league can buzz you." />
+      {error && <Text style={styles.error}>{error}</Text>}
+      {leagues.length === 0 ? (
+        <Panel description="You're not in a league yet.">{null}</Panel>
+      ) : (
+        leagues.map((l) => (
+          <Panel key={l.league_id} title={l.name}>
+            <Segment options={LEAGUE_LEVELS} value={l.level} onChange={(v) => void set(l.league_id, v)} />
+            <Text style={styles.small}>
+              {l.level === 'all'
+                ? 'Everything you have switched on, from this league.'
+                : l.level === 'mine'
+                  ? 'Only what’s about your team: your matchup, your players, trades with you. No league chat, chugs, recaps or other people’s trades.'
+                  : 'Nothing buzzes except the draft clock. It all still lands in your inbox.'}
+            </Text>
+          </Panel>
+        ))
+      )}
+    </View>
+  );
+}
+
 export const NOTIFICATION_TUNES: Record<string, string> = {
   game: 'Game day alerts',
   messages: 'Messages',
   push: 'Push notifications',
   league: 'League & friends',
+  leagues: 'Your leagues',
   quiet: 'Quiet hours',
   lock: 'Live score on Lock Screen',
   reminders: 'Phone reminders',
@@ -731,6 +782,7 @@ export function NotificationSettings({ tune }: { tune?: string }) {
       </View>
     );
   }
+  if (tune === 'leagues') return <LeagueLevels />;
   if (tune === 'push') return <PushPanel on={prefs.push_enabled} />;
   if (tune === 'lock') return <LiveActivityPanel />;
   if (tune === 'reminders') return <PhoneReminders />;
@@ -822,6 +874,7 @@ export function NotificationSettings({ tune }: { tune?: string }) {
       <ListCard>
         <ListRow first label="Game day alerts" sub="Touchdowns, red zone, injuries, your matchup" value={`${gameOn} on`} onPress={() => openTune('notifications', 'game')} />
         <ListRow label="League & friends" sub="Trades, the draft, survivor, friends" value={`${leagueOn} on`} onPress={() => openTune('notifications', 'league')} />
+        <ListRow label="Your leagues" sub="Everything, just your team, or muted" onPress={() => openTune('notifications', 'leagues')} />
         <ListRow label="Messages" sub="DMs, league chat, mentions, replies" value={`${messagesOn} on`} onPress={() => openTune('notifications', 'messages')} />
         <ListRow label="Push notifications" sub="Alerts on this phone when the app's closed" value={prefs.push_enabled ? 'On' : 'Off'} onPress={() => openTune('notifications', 'push')} />
         <ListRow

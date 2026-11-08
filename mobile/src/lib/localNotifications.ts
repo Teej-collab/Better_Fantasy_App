@@ -138,7 +138,7 @@ export function setUpReminderHandling(): () => void {
       const { content, trigger } = r.notification.request;
       const payload = trigger && 'payload' in trigger ? (trigger.payload as Record<string, unknown> | null) : null;
       const data = ((payload?.data ?? content.data) ?? {}) as Record<string, unknown>;
-      void runNotificationAction(content.categoryIdentifier ?? (data.category as string | undefined), r.actionIdentifier, data);
+      void runNotificationAction(content.categoryIdentifier ?? (data.category as string | undefined), r.actionIdentifier, data, r.userText);
     }
     open(urlOf(r));
   };

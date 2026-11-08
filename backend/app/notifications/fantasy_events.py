@@ -145,14 +145,14 @@ async def _notify_touchdowns(conn, season: int, before: dict, after: dict) -> No
             continue
         await dispatcher.send_to_owner(
             conn, row["owner_id"],
-            formatter.fantasy_player_touchdown(
+            dispatcher.in_league(formatter.fantasy_player_touchdown(
                 row["player_name"], row["team_name"],
                 _td_kind(before.get("player_td_kinds", {}).get(pid), after.get("player_td_kinds", {}).get(pid)),
                 points_delta,
                 await _matchup_id_for_team(conn, season, week, row["team_id"]),
                 on_bench=row["lineup_slot"] in _BENCH_SLOTS,
                 tag=f"td-{pid}-{int(after_tds[pid])}",
-            ),
+            ), row["league_id"]),
         )
 
 
@@ -168,7 +168,7 @@ async def _notify_lead_changes(conn, before_matchups: dict, after_matchups: dict
             continue  # same leader as before this tick — no real change
 
         home_team = await conn.fetchrow(
-            "SELECT owner_id, team_name FROM teams_by_season WHERE id = $1", after["home_team_id"]
+            "SELECT owner_id, team_name, league_id FROM teams_by_season WHERE id = $1", after["home_team_id"]
         )
         away_team = await conn.fetchrow(
             "SELECT owner_id, team_name FROM teams_by_season WHERE id = $1", after["away_team_id"]
@@ -182,9 +182,9 @@ async def _notify_lead_changes(conn, before_matchups: dict, after_matchups: dict
             if prefs["push_enabled"] and prefs["notify_fantasy_team"]:
                 await dispatcher.send_to_owner(
                     conn, side_team["owner_id"],
-                    formatter.fantasy_matchup_lead_change(
+                    dispatcher.in_league(formatter.fantasy_matchup_lead_change(
                         now_leading, other_team["team_name"], mine, theirs, matchup_id
-                    ),
+                    ), home_team["league_id"]),
                 )
 
 
@@ -231,7 +231,7 @@ async def notify_red_zone(conn, season: int, week: int | None, games: list[dict]
             return
         rows = await conn.fetch(
             """
-            SELECT p.pro_team, p.full_name AS player_name, t.owner_id, cr.team_id
+            SELECT p.pro_team, p.full_name AS player_name, t.owner_id, cr.team_id, t.league_id
             FROM current_rosters cr
             JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
             JOIN teams_by_season t ON t.id = cr.team_id
@@ -243,7 +243,7 @@ async def notify_red_zone(conn, season: int, week: int | None, games: list[dict]
         )
         grouped: dict[tuple, dict] = {}
         for r in rows:
-            entry = grouped.setdefault((r["owner_id"], r["team_id"], r["pro_team"]), {"names": []})
+            entry = grouped.setdefault((r["owner_id"], r["team_id"], r["pro_team"]), {"names": [], "league_id": r["league_id"]})
             entry["names"].append(r["player_name"])
         for (owner_id, team_id, pro_team), entry in grouped.items():
             prefs = await preferences_queries.get_preferences(conn, owner_id)
@@ -251,9 +251,9 @@ async def notify_red_zone(conn, season: int, week: int | None, games: list[dict]
                 continue
             await dispatcher.send_to_owner(
                 conn, owner_id,
-                formatter.fantasy_red_zone(
+                dispatcher.in_league(formatter.fantasy_red_zone(
                     pro_team, entry["names"], await _matchup_id_for_team(conn, season, week, team_id)
-                ),
+                ), entry["league_id"]),
             )
     except Exception:
         logger.exception("Red zone push failed for season=%s", season)

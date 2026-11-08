@@ -69,7 +69,7 @@ async def nudge_keepers(request: Request):
         sender = await conn.fetchval(
             "SELECT COALESCE(goes_by, display_name) FROM owners WHERE owner_id = $1", owner_id
         )
-        push = formatter.keeper_nudge(sender or "Your league")
+        push = dispatcher.in_league(formatter.keeper_nudge(sender or "Your league"), league_id)
         for target in targets:
             prefs = await preferences_queries.get_preferences(conn, target)
             if prefs["push_enabled"]:

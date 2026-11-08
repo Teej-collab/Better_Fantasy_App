@@ -26,7 +26,7 @@ def _side(team_id, owner_id, name, score, roster, record="4-1"):
 def sent(monkeypatch):
     out = []
 
-    async def fake_send(conn, owner_id, payload, category):
+    async def fake_send(conn, owner_id, payload, category, league_id=None):
         out.append((owner_id, payload, category))
 
     monkeypatch.setattr(game_alerts, "_send", fake_send)

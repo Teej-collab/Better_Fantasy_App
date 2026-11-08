@@ -30,7 +30,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_TIMEZONE = "America/Chicago"
 
-_ALWAYS_SEND = {
+ALWAYS_SEND = {
     "test",
     "draft_starting_soon",
     "draft_room_open",
@@ -101,7 +101,7 @@ def quiet_until(prefs: dict, now: datetime.datetime) -> datetime.datetime | None
 def decide(prefs: dict, payload: dict, now: datetime.datetime) -> tuple[str, datetime.datetime | None]:
     """(SEND | DEFER | DROP, send_after) for this push right now."""
     type_ = (payload.get("data") or {}).get("type")
-    if type_ in _ALWAYS_SEND:
+    if type_ in ALWAYS_SEND:
         return SEND, None
     until = quiet_until(prefs, now)
     if until is None:

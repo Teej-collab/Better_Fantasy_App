@@ -158,3 +158,57 @@ async def test_a_survivor_reminder_waits_for_quiet_hours_to_end(pool, monkeypatc
         assert not [r for r in await survivor.due_reminders(conn, TEST_SEASON, can_send=can_send) if r["pool_id"] == made["id"]]
         quiet["on"] = False
         assert [r for r in await survivor.due_reminders(conn, TEST_SEASON, can_send=can_send) if r["pool_id"] == made["id"]]
+
+
+async def test_a_league_set_to_just_my_team_or_muted(pool, monkeypatch):
+    owner_id = await _seed_owner(pool, "levels")
+    _no_devices(monkeypatch)
+    delivered = []
+
+    async def capture(conn, oid):
+        delivered.append(oid)
+        return []
+
+    monkeypatch.setattr(dispatcher.queries, "list_active_subscriptions_for_owner", capture)
+    async with pool.acquire() as conn:
+        league_id = await conn.fetchval(
+            "INSERT INTO leagues (name, created_by_user_id, invite_code) "
+            "VALUES ('Test Levels League', (SELECT id FROM users LIMIT 1), 'TSTLVL') RETURNING id"
+        )
+        try:
+            chatter = dispatcher.in_league(formatter.chug_posted("Sam", 8.5, False), league_id, league_wide=True)
+            mine = dispatcher.in_league(formatter.matchup_final("win", "Team B", 110.0, 90.0, "5-4", 3), league_id)
+            await conn.execute("INSERT INTO league_notification_levels (owner_id, league_id, level) VALUES ($1, $2, 'mine')", owner_id, league_id)
+            await dispatcher.send_to_owner(conn, owner_id, chatter, now=NOON)
+            await dispatcher.send_to_owner(conn, owner_id, mine, now=NOON)
+            assert len(delivered) == 1
+            await conn.execute("UPDATE league_notification_levels SET level = 'off' WHERE owner_id = $1", owner_id)
+            await dispatcher.send_to_owner(conn, owner_id, mine, now=NOON)
+            # Muted, but the draft clock still reaches you.
+            await dispatcher.send_to_owner(conn, owner_id, dispatcher.in_league(formatter.draft_on_the_clock(1, 1, 60), league_id), now=NOON)
+            assert len(delivered) == 2
+            # Everything still lands in the inbox.
+            assert {r["type"] for r in await _inbox(conn, owner_id)} == {"chug_posted", "matchup_final", "draft_on_the_clock"}
+        finally:
+            await conn.execute("DELETE FROM league_notification_levels WHERE league_id = $1", league_id)
+            await conn.execute("DELETE FROM leagues WHERE id = $1", league_id)
+
+
+async def test_reply_from_a_chat_push(pool, monkeypatch):
+    from app.queries import chat as chat_queries
+    from tests.test_chat import _SESSION_SECRET, _session_cookie
+    from tests.test_chat import _seed_owner as seed_chat_owner
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a, b = await seed_chat_owner(pool, "reply-a"), await seed_chat_owner(pool, "reply-b")
+    async with pool.acquire() as conn:
+        conversation_id = await chat_queries.get_or_create_direct_conversation(conn, a, b)
+    push = formatter.chat_direct_message("A", "you up?", conversation_id)
+    assert push["data"]["category"] == "chat_message" and push["data"]["conversation_id"] == conversation_id
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, b))
+        sent = await client.post(f"/chat/conversations/{conversation_id}/reply", json={"body": "always"})
+        assert sent.status_code == 200, sent.text
+        assert (await client.post(f"/chat/conversations/{conversation_id}/reply", json={"body": "  "})).status_code == 400
+    async with pool.acquire() as conn:
+        assert await conn.fetchval("SELECT body FROM messages WHERE id = $1", sent.json()["message_id"]) == "always"

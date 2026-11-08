@@ -7,7 +7,7 @@ next open the admin dashboard.
 Recipients are everyone app/auth/league_context.py's is_site_admin
 would let into /admin (League #1's commissioner, or users.is_admin),
 on every device they've registered for push. The health alerts are in
-quiet_hours._ALWAYS_SEND, so they arrive regardless of quiet hours;
+quiet_hours.ALWAYS_SEND, so they arrive regardless of quiet hours;
 feedback is held until quiet hours end instead.
 
 Each alert is throttled so a bad game day is a few pings, not dozens:
