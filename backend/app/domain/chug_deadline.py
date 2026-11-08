@@ -89,3 +89,26 @@ def deadline_from_week_games(games: list[dict]) -> datetime | None:
         if kickoff.weekday() == 0:
             mondays.append(kickoff)
     return max(mondays) if mondays else None
+
+
+def week_deadline(games: list[dict]) -> datetime | None:
+    """When a specific week's chugs are due, from that week's own games:
+    its Monday night kickoff, else 8:15 PM ET on the Monday after its
+    first game. What settlement checks (chug_standing.
+    ensure_chug_deadline_settled) — never today's date, which can't tell
+    which week it's asked about (2026-11-08, real incident: from the
+    Tuesday flip on, is_past_mnf_deadline answered for the Monday that
+    had just passed, so the daily sync settled the new week's deadline,
+    doubling everyone who owed six days early)."""
+    monday = deadline_from_week_games(games)
+    if monday is not None:
+        return monday
+    kickoffs: list[datetime] = []
+    for g in games:
+        try:
+            kickoffs.append(datetime.fromisoformat((g.get("date") or "").replace("Z", "+00:00")).astimezone(_ET))
+        except ValueError:
+            continue
+    if not kickoffs:
+        return None
+    return datetime.combine(_relevant_monday(min(kickoffs).date()), _FALLBACK_KICKOFF_ET, tzinfo=_ET)

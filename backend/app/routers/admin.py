@@ -16,6 +16,7 @@ match everything else rather than staying on the old stopgap
 indefinitely.
 """
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -28,7 +29,9 @@ from app.auth.session import decode_session_token, get_session_token
 from app.config import DEFAULT_LEAGUE_ID, _require
 from app import ai_usage
 from app.db import get_pool
+from app.domain import chug_standing
 from app.domain.bye_weeks import sync_bye_weeks
+from app.domain.chug_deadline import week_deadline
 from app.domain.playoff_exceptions import PlayoffError
 from app.domain.playoffs import generate_playoff_bracket, resolve_ready_playoff_matchups
 from app.domain.player_projections import sync_projected_points, sync_weekly_projections
@@ -36,7 +39,7 @@ from app.domain.waivers import process_expired_waivers
 from app.domain.weekly_stats import compute_and_store_week
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_single_week
 from app.providers.espn.adapter import ESPNProvider
-from app.providers.nfl_scoreboard import get_real_current_week
+from app.providers.nfl_scoreboard import get_real_current_week, get_week_scoreboard
 from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
@@ -901,4 +904,45 @@ async def correct_notifications(request: Request, body: CorrectionRequest):
         "dry_run": body.dry_run,
         "recipients": [{"owner_id": r["owner_id"], "was": r["title"]} for r in rows],
         "devices_reached": sent,
+    }
+
+
+class ReopenDeadlineRequest(BaseModel):
+    week: int = Field(ge=1, le=22)
+    dry_run: bool = True
+
+
+@router.post("/chug/reopen-deadline")
+async def reopen_chug_deadline(request: Request, body: ReopenDeadlineRequest):
+    """A chug deadline settled early (2026-11-08: Week 9's, the Tuesday
+    after Week 8's Monday night) is undone in every chug league, so its
+    real Monday night kickoff settles it. Refused once that kickoff has
+    passed. Dry run by default: lists each settlement and when it ran."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+    deadline = week_deadline(await get_week_scoreboard(week=body.week, year=season))
+    if deadline is None:
+        raise HTTPException(status_code=400, detail=f"No games found for week {body.week}")
+    if datetime.now(timezone.utc) >= deadline:
+        raise HTTPException(status_code=409, detail=f"Week {body.week}'s deadline ({deadline.isoformat()}) has passed")
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT s.league_id, s.owner_id, o.display_name, s.action, s.owed_before, s.owed_after, s.settled_at
+            FROM chug_deadline_settlements s JOIN owners o ON o.owner_id = s.owner_id
+            WHERE s.season = $1 AND s.week = $2 ORDER BY s.league_id, s.settled_at
+            """,
+            season, body.week,
+        )
+        if not body.dry_run:
+            async with conn.transaction():
+                for league_id in sorted({r["league_id"] for r in rows}):
+                    await chug_standing.reopen_deadline(conn, season, body.week, league_id)
+    return {
+        "dry_run": body.dry_run,
+        "deadline": deadline.isoformat(),
+        "settlements": [{**dict(r), "settled_at": r["settled_at"].isoformat() if r["settled_at"] else None} for r in rows],
     }

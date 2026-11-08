@@ -46,7 +46,7 @@ from app.domain.weekly_team_stats import (
 )
 from app.config import DEFAULT_LEAGUE_ID
 from app.providers.base import FantasyProvider
-from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week
+from app.providers.nfl_scoreboard import get_real_current_week, get_week_scoreboard
 from app.queries import league as league_queries
 from app.queries import roster_history as roster_history_queries
 
@@ -156,7 +156,8 @@ async def run_full_sync(
 
     if current_week:
         try:
-            games = await get_nfl_scoreboard()
+            # That week's own games: its deadline is its own Monday night.
+            games = await get_week_scoreboard(week=current_week, year=end_season)
             settled = await ensure_chug_deadline_settled(pool, end_season, current_week, games, league_id=league_id)
             results.setdefault(end_season, {})["chug_deadline_settlement"] = {
                 "status": "success", "count": settled,
@@ -212,12 +213,12 @@ async def run_live_sync(
     # app/scheduler.py) — including, notably, right around a real Monday
     # night kickoff — so this is exactly when a just-crossed deadline
     # needs to be caught promptly rather than waiting for the next daily
-    # full sync. get_nfl_scoreboard() here is a second real ESPN call
+    # full sync. get_week_scoreboard() here is a second real ESPN call
     # (the scheduler's own gate already made one to decide to run at
     # all), accepted for the same reason as everywhere else this session:
     # it's the public, unauthenticated endpoint, not the private one.
     try:
-        games = await get_nfl_scoreboard()
+        games = await get_week_scoreboard(week=week, year=season)
         settled = await ensure_chug_deadline_settled(pool, season, week, games, league_id=league_id)
         results["chug_deadline_settlement"] = {"status": "success", "count": settled}
     except Exception as e:

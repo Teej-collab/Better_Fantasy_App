@@ -35,7 +35,7 @@ import logging
 from datetime import datetime
 
 from app.config import DEFAULT_LEAGUE_ID
-from app.domain.chug_deadline import is_past_mnf_deadline
+from app.domain.chug_deadline import week_deadline
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +223,8 @@ async def ensure_chug_deadline_settled(
     and then settles, exactly once. now is test-only — every real
     caller (app/providers/sync.py) leaves it as None (real wall-clock
     time)."""
-    if not is_past_mnf_deadline(games, now):
+    deadline = week_deadline(games)
+    if deadline is None or (now or datetime.now(deadline.tzinfo)) <= deadline:
         return 0
     async with pool.acquire() as conn:
         await accrue_weekly_debt(conn, season, week, league_id)
@@ -326,6 +327,48 @@ async def apply_correction(
     )
     await _log_adjustment(conn, season, owner_id, league_id, "correction", applied, recorded_by_user_id, note)
     return applied
+
+
+async def reopen_deadline(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> list[dict]:
+    """Undoes a deadline settled before its time (2026-11-08: the daily
+    sync settled Week 9's on the Tuesday after Week 8's Monday night, see
+    chug_deadline.week_deadline). Each settlement is reversed — a
+    doubling taken back, a fine turned back into the chugs it was — and
+    deleted, so the real deadline settles it again. Only for a deadline
+    still to come (the caller checks)."""
+    rows = await conn.fetch(
+        "SELECT owner_id, action, owed_before, owed_after FROM chug_deadline_settlements "
+        "WHERE season = $1 AND week = $2 AND league_id = $3",
+        season, week, league_id,
+    )
+    for r in rows:
+        if r["action"] == "doubled":
+            await conn.execute(
+                """
+                UPDATE chug_standing SET
+                    outstanding_owed = GREATEST(outstanding_owed - $3, 0),
+                    consecutive_missed_weeks = GREATEST(consecutive_missed_weeks - 1, 0),
+                    updated_at = now()
+                WHERE season = $1 AND owner_id = $2 AND league_id = $4
+                """,
+                season, r["owner_id"], r["owed_after"] - r["owed_before"], league_id,
+            )
+        elif r["action"] == "fined":
+            await conn.execute(
+                """
+                UPDATE chug_standing SET
+                    outstanding_owed = outstanding_owed + $3,
+                    fined_owed = GREATEST(fined_owed - $3, 0),
+                    consecutive_missed_weeks = $5,
+                    updated_at = now()
+                WHERE season = $1 AND owner_id = $2 AND league_id = $4
+                """,
+                season, r["owner_id"], r["owed_before"], league_id, MAX_CONSECUTIVE_DOUBLINGS - 1,
+            )
+    await conn.execute(
+        "DELETE FROM chug_deadline_settlements WHERE season = $1 AND week = $2 AND league_id = $3", season, week, league_id
+    )
+    return [dict(r) for r in rows]
 
 
 async def waive_deadline_doubling(conn, season: int, week: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:

@@ -335,3 +335,39 @@ async def test_settlement_with_only_this_weeks_debt_is_no_debt(pool):
     standing = await _standing(pool, owner_id)
     assert standing["outstanding_owed"] == 2
     assert standing["consecutive_missed_weeks"] == 0
+
+
+async def test_next_weeks_deadline_isnt_settled_the_tuesday_after_this_ones(pool):
+    """2026-11-08: from the Tuesday flip on, the daily sync asked about
+    the new week, and the calendar answered with the Monday just past."""
+    from datetime import timedelta
+
+    owner_id = await _seed_owner(pool, "early")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO chug_debts (season, week, owner_id, chugs_owed) VALUES ($1, 1, $2, 2)", TEST_SEASON, owner_id)
+        await accrue_weekly_debt(conn, TEST_SEASON, 1)
+    # Week 2: Thursday Aug 27 through Monday Aug 31. It's Tuesday Aug 25.
+    week2 = [{"date": "2026-08-28T00:15Z"}, {"date": "2026-08-30T17:00Z"}, {"date": "2026-09-01T00:15Z"}]
+    tuesday = datetime(2026, 8, 25, 15, 0, tzinfo=ET)
+    assert await ensure_chug_deadline_settled(pool, TEST_SEASON, 2, week2, now=tuesday) == 0
+    assert (await _standing(pool, owner_id))["outstanding_owed"] == 2
+    after = datetime(2026, 8, 31, 20, 16, tzinfo=ET) + timedelta(minutes=1)
+    assert await ensure_chug_deadline_settled(pool, TEST_SEASON, 2, week2, now=after) >= 1
+    assert (await _standing(pool, owner_id))["outstanding_owed"] == 4
+
+
+async def test_reopen_takes_back_an_early_doubling(pool):
+    from app.domain.chug_standing import reopen_deadline
+
+    owner_id = await _seed_owner(pool, "reopen")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO chug_debts (season, week, owner_id, chugs_owed) VALUES ($1, 1, $2, 2)", TEST_SEASON, owner_id)
+        await accrue_weekly_debt(conn, TEST_SEASON, 1)
+        await settle_deadline_for_week(conn, TEST_SEASON, 2)
+        assert (await _standing(pool, owner_id))["outstanding_owed"] == 4
+        await reopen_deadline(conn, TEST_SEASON, 2)
+        assert await conn.fetchval(
+            "SELECT count(*) FROM chug_deadline_settlements WHERE season = $1 AND week = 2 AND owner_id = $2", TEST_SEASON, owner_id
+        ) == 0
+    standing = await _standing(pool, owner_id)
+    assert (standing["outstanding_owed"], standing["consecutive_missed_weeks"]) == (2, 0)
