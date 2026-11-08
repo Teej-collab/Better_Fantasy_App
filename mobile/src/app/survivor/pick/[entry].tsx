@@ -117,7 +117,7 @@ export default function SurvivorPickScreen() {
         </View>
 
         {out && (
-          <EliteCard tone="orange" style={styles.gap}>
+          <EliteCard tone="orange" style={[styles.pad, styles.gap]}>
             <Text style={styles.outTitle}>You&apos;re out (week {board.eliminated_week})</Text>
             {board.can_buy_back ? (
               <Pressable onPress={() => void buyBack()} style={styles.solid} accessibilityRole="button">
@@ -367,7 +367,7 @@ function Planner({ entryId }: { entryId: number }) {
         </View>
       </ScrollView>
       {keys.length > 0 && (
-        <EliteCard tone="green" style={styles.gap6}>
+        <EliteCard tone="green" style={[styles.pad, styles.gap6]}>
           <Text style={styles.planTitle}>YOUR PATH · {keys.length} picks</Text>
           <Text style={styles.muted}>
             {keys
@@ -385,6 +385,7 @@ function Planner({ entryId }: { entryId: number }) {
 }
 
 const styles = StyleSheet.create({
+  pad: { padding: 16 },
   screen: { flex: 1, backgroundColor: Elite.deep },
   content: { padding: Spacing.lg, gap: Spacing.md, paddingBottom: 160 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },

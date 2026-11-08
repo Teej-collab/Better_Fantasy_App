@@ -76,7 +76,7 @@ export default function SurvivorHubScreen() {
       )}
 
       {hub.pools.length === 0 && (
-        <EliteCard>
+        <EliteCard style={styles.pad}>
           <Text style={styles.emptyTitle}>No pools yet</Text>
           <Text style={styles.muted}>Pick one NFL team to win each week. Lose and you&apos;re out, and you can only use each team once. Start a pool or join one with its code.</Text>
         </EliteCard>
@@ -87,7 +87,7 @@ export default function SurvivorHubScreen() {
       ))}
 
       {showJoin ? (
-        <EliteCard style={styles.joinCard}>
+        <EliteCard style={[styles.pad, styles.joinCard]}>
           <Text style={styles.label}>JOIN WITH A CODE</Text>
           <TextInput
             value={code}
@@ -130,7 +130,7 @@ function PoolCard({ pool, joining, onJoin }: { pool: SurvivorPoolSummary; joinin
   const label = mine.length === 0 ? 'JOIN' : mine.length > 1 ? `${mine.filter((m) => m.alive).length}/${mine.length}` : alive ? 'ALIVE' : 'OUT';
   return (
     <Pressable onPress={() => router.push(`/survivor/${pool.id}` as Href)} accessibilityRole="button" accessibilityLabel={`${pool.name}, ${pool.alive} of ${pool.entries} alive`}>
-      <EliteCard tone={alive && mine.some((m) => m.needs_pick) ? 'green' : 'plain'} style={[styles.card, mine.length > 0 && !alive && styles.cardOut]}>
+      <EliteCard tone={alive && mine.some((m) => m.needs_pick) ? 'green' : 'plain'} style={[styles.pad, styles.card, mine.length > 0 && !alive && styles.cardOut]}>
         <View style={styles.cardHead}>
           <StatusHex label={label} alive={alive || mine.length === 0} />
           <View style={styles.flex}>
@@ -194,6 +194,7 @@ function PoolCard({ pool, joining, onJoin }: { pool: SurvivorPoolSummary; joinin
 }
 
 const styles = StyleSheet.create({
+  pad: { padding: 16 },
   screen: { flex: 1, backgroundColor: Elite.deep },
   content: { padding: Spacing.lg, gap: Spacing.md, paddingBottom: 80 },
   banner: { padding: 12, borderRadius: 12, backgroundColor: 'rgba(255,122,26,0.12)', borderWidth: 1, borderColor: 'rgba(255,122,26,0.45)' },

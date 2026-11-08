@@ -82,13 +82,13 @@ export default function SurvivorPoolScreen() {
       </View>
       {pool.prize_note ? <Text style={styles.prize}>{pool.prize_note}</Text> : null}
       {field.winners.length > 0 && (
-        <EliteCard tone="green">
+        <EliteCard tone="green" style={styles.pad}>
           <Text style={styles.winner}>{field.winners.length === 1 ? `${field.winners[0]} is the last one standing` : `${field.winners.join(' and ')} split it`}</Text>
         </EliteCard>
       )}
 
       {pool.mine.length > 0 && (
-        <EliteCard style={styles.gap}>
+        <EliteCard style={[styles.pad, styles.gap]}>
           <EliteLabel>YOUR {pool.mine.length > 1 ? 'ENTRIES' : 'ENTRY'}</EliteLabel>
           {pool.mine.map((m) => (
             <View key={m.entry_id} style={styles.entryRow}>
@@ -112,7 +112,7 @@ export default function SurvivorPoolScreen() {
       )}
 
       {lastPopular && (
-        <EliteCard style={styles.gap}>
+        <EliteCard style={[styles.pad, styles.gap]}>
           <EliteLabel>WEEK {lastPopular.week} PICKS</EliteLabel>
           {lastPopular.teams.slice(0, 5).map((t) => {
             const total = lastPopular.teams.reduce((n, x) => n + x.count, 0) || 1;
@@ -150,7 +150,7 @@ export default function SurvivorPoolScreen() {
         <FieldRow key={r.entry_id} row={r} weeks={shownWeeks} lives={pool.lives} />
       ))}
 
-      <EliteCard style={styles.gap}>
+      <EliteCard style={[styles.pad, styles.gap]}>
         <EliteLabel>INVITE</EliteLabel>
         <Text style={styles.muted}>{pool.league_id ? `Anyone in ${pool.league_name ?? 'the league'} can join from their Survivor page, or with this code.` : 'Anyone with this code can join.'}</Text>
         <View style={styles.codeRow}>
@@ -210,6 +210,7 @@ function PickCell({ picks }: { picks: SurvivorPickView[] }) {
 }
 
 const styles = StyleSheet.create({
+  pad: { padding: 16 },
   screen: { flex: 1, backgroundColor: Elite.deep },
   content: { padding: Spacing.lg, gap: Spacing.md, paddingBottom: 80 },
   head: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
