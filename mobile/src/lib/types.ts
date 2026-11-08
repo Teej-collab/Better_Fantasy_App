@@ -825,6 +825,10 @@ export type OwnerPreferences = {
   notify_fantasy_team: boolean;
   notify_league: boolean;
   notify_watch_parties: boolean;
+  notify_trades: boolean;
+  notify_survivor: boolean;
+  notify_friends: boolean;
+  notify_draft: boolean;
   ai_training_opt_out: boolean;
   // False until the one-time "AI learning from chat" notice is answered
   // (shown before your first chat send, same as the web's).
@@ -1987,4 +1991,18 @@ export type TrendingPlayers = {
   window: TrendingWindow;
   leagues_tracked: number;
   players: TrendingPlayer[];
+};
+
+// One row of the notification inbox (GET /notifications, 2026-11-08):
+// a push we sent, held or dropped, kept 30 days. `data` is the push's
+// own data (type, url, and for the ones with buttons, their ids).
+export type InboxNotification = {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  url: string;
+  data: { type?: string; url?: string; category?: string; trade_id?: number; entry_id?: number; user_id?: number; [key: string]: unknown };
+  created_at: string;
+  read: boolean;
 };

@@ -45,6 +45,7 @@ from app.routers import (
     push,
     settings,
     survivor,
+    notifications as notifications_router,
     system,
     trades,
     waitlist,
@@ -209,6 +210,7 @@ app.include_router(friends.router)
 app.include_router(war_room.router)
 app.include_router(kitty.router)
 app.include_router(survivor.router)
+app.include_router(notifications_router.router)
 
 
 @app.get("/health")

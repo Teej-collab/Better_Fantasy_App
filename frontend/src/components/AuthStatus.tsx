@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AccountMenu, type Me } from "@/components/AccountMenu";
+import { InboxBell } from "@/components/InboxBell";
 
 /**
  * Client component, not a server component like the rest of this app —
@@ -43,5 +44,10 @@ export function AuthStatus() {
     );
   }
 
-  return <AccountMenu me={me} />;
+  return (
+    <>
+      <InboxBell />
+      <AccountMenu me={me} />
+    </>
+  );
 }

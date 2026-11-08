@@ -125,6 +125,7 @@ import type {
   TrendingPlayers,
   TrendingSource,
   TrendingWindow,
+  InboxNotification,
 } from '@/lib/types';
 import type { FormatOptions, LeagueFormat } from '@/lib/leagueFormat';
 import type { PreviewPlayer, ScoringCatalog } from '@/lib/scoringCatalog';
@@ -632,6 +633,13 @@ export const api = {
     request<SurvivorBoard>(`/survivor/entries/${entryId}/picks`, { method: 'PUT', body: JSON.stringify({ teams }) }),
   survivorPlanner: (entryId: number) => request<SurvivorPlanner>(`/survivor/entries/${entryId}/planner`),
   survivorBuyBack: (entryId: number) => request<{ ok: boolean }>(`/survivor/entries/${entryId}/buyback`, { method: 'POST' }),
+  survivorBestPick: (entryId: number) =>
+    request<{ teams: string[]; week: number; pool_id: number }>(`/survivor/entries/${entryId}/best-pick`, { method: 'POST' }),
+  // The notification inbox (2026-11-08).
+  notifications: () => request<{ notifications: InboxNotification[]; unread: number }>('/notifications'),
+  notificationsUnread: () => request<{ unread: number }>('/notifications/unread'),
+  markNotificationsRead: (ids?: number[]) =>
+    request<{ unread: number }>('/notifications/read', { method: 'POST', body: JSON.stringify(ids ? { ids } : {}) }),
   addKittyEntry: (entry: { owner_id: number | null; amount: number; reason: string }) =>
     request<Kitty>('/league/kitty', { method: 'POST', body: JSON.stringify(entry) }),
   setKittyPaid: (id: number, paid: boolean) => request<Kitty>(`/league/kitty/${id}/paid`, { method: 'POST', body: JSON.stringify({ paid }) }),

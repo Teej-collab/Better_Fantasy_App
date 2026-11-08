@@ -36,6 +36,21 @@ from app.queries import push_subscriptions as queries
 logger = logging.getLogger(__name__)
 
 _PERMANENT_FAILURE_STATUS = {404, 410}
+# Kinds of push whose switch is checked here rather than by each sender
+# (2026-11-08): they came after Settings > Notifications was laid out.
+_MUTE_PREF = {
+    "trade": "notify_trades",
+    "survivor_pick_needed": "notify_survivor",
+    "friend": "notify_friends",
+    "lounge": "notify_friends",
+    **dict.fromkeys(
+        ("draft_starting_soon", "draft_room_open", "draft_live", "draft_on_the_clock", "keeper_deadline_approaching", "keeper_nudge"),
+        "notify_draft",
+    ),
+}
+# How long the notification inbox keeps things.
+INBOX_DAYS = 30
+_NOT_KEPT = {"test", "chat_direct_message", "chat_league_message"}
 # More held pushes than this for one owner go out as a single summary
 # when quiet hours end, instead of a burst of separate buzzes.
 _MAX_HELD_PUSHES = 3
@@ -122,6 +137,57 @@ async def _with_app_badges(conn, registrations, payload: dict) -> list[tuple]:
     ]
 
 
+def _type(payload: dict) -> str | None:
+    return (payload.get("data") or {}).get("type")
+
+
+async def _muted(conn, owner_id: int, payload: dict) -> bool:
+    pref = _MUTE_PREF.get(_type(payload))
+    return pref is not None and not (await preferences_queries.get_preferences(conn, owner_id))[pref]
+
+
+async def record(conn, payload: dict, *, owner_ids: list[int] = (), user_id: int | None = None) -> None:
+    """Keeps the push in the notification inbox (GET /notifications) for
+    each recipient, whether or not it reached a device. A tagged push
+    replaces that recipient's earlier one with the same tag, unread
+    again. Tests and admin alerts aren't kept, and neither are plain
+    chat messages: the chat list already is their inbox (a mention or a
+    reply to you is kept)."""
+    type_ = _type(payload) or ""
+    if type_ in _NOT_KEPT or type_.startswith("admin_") or not (owner_ids or user_id):
+        return
+    column, ids = ("owner_id", list(owner_ids)) if owner_ids else ("user_id", [user_id])
+    try:
+        await conn.execute(
+            f"""
+            INSERT INTO notifications ({column}, type, title, body, url, tag, data)
+            SELECT r, $2, $3, $4, $5, $6, $7::jsonb FROM unnest($1::int[]) AS r
+            ON CONFLICT ({column}, tag) WHERE {column} IS NOT NULL AND tag IS NOT NULL DO UPDATE
+            SET type = EXCLUDED.type, title = EXCLUDED.title, body = EXCLUDED.body, url = EXCLUDED.url,
+                data = EXCLUDED.data, created_at = now(), read_at = NULL
+            """,
+            ids, type_, payload.get("title") or "", payload.get("body") or "", payload.get("url") or "/",
+            payload.get("tag"), json.dumps(payload.get("data") or {}),
+        )
+    except Exception:
+        # The inbox must never stop the push itself.
+        logger.warning("Couldn't keep a %s notification in the inbox", type_, exc_info=True)
+
+
+async def prune_inbox(conn) -> None:
+    await conn.execute("DELETE FROM notifications WHERE created_at < now() - make_interval(days => $1)", INBOX_DAYS)
+
+
+def _expired(payload: dict, now: datetime.datetime) -> bool:
+    expires = (payload.get("data") or {}).get("expires")
+    if not expires:
+        return False
+    try:
+        return datetime.datetime.fromisoformat(expires) <= now
+    except ValueError:
+        return False
+
+
 async def _quiet_hours_allow(conn, owner_id: int, payload: dict, now: datetime.datetime) -> bool:
     """True if the push can go out now. Otherwise it's held for later
     (deferred_notifications) or dropped, per quiet_hours.decide."""
@@ -135,13 +201,18 @@ async def _quiet_hours_allow(conn, owner_id: int, payload: dict, now: datetime.d
     return action == quiet_hours.SEND
 
 
-async def send_to_owner(conn, owner_id: int, payload: dict, now: datetime.datetime | None = None) -> int:
+async def send_to_owner(conn, owner_id: int, payload: dict, now: datetime.datetime | None = None, *, keep: bool = True) -> int:
     """Sends to every active device the owner has registered — a
     notification is per-owner, not per-device; each of their devices
     gets its own independent push, across BOTH the web (VAPID) and
     native (APNs/FCM) channels. Returns how many actually delivered
-    (0 if quiet hours held or dropped it)."""
+    (0 if quiet hours held or dropped it, or its switch is off). `keep`
+    puts it in the inbox; a held push going out later already is."""
     now = now or datetime.datetime.now(datetime.timezone.utc)
+    if await _muted(conn, owner_id, payload):
+        return 0
+    if keep:
+        await record(conn, payload, owner_ids=[owner_id])
     if not await _quiet_hours_allow(conn, owner_id, payload, now):
         return 0
     subs = await queries.list_active_subscriptions_for_owner(conn, owner_id)
@@ -164,6 +235,7 @@ async def send_to_user(conn, user_id: int, payload: dict) -> int:
     owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", user_id)
     if owner_id is not None:
         return await send_to_owner(conn, owner_id, payload)
+    await record(conn, payload, user_id=user_id)
     delivered = 0
     for row in await conn.fetch("SELECT * FROM user_push_tokens WHERE user_id = $1 AND active", user_id):
         try:
@@ -200,6 +272,8 @@ async def send_to_owners(conn, owner_ids: list[int], payload: dict) -> int:
     than one per owner (see queries.list_active_subscriptions_for_owners
     and native_queries.list_active_registrations_for_owners)."""
     now = datetime.datetime.now(datetime.timezone.utc)
+    owner_ids = [o for o in owner_ids if not await _muted(conn, o, payload)]
+    await record(conn, payload, owner_ids=owner_ids)
     owner_ids = [o for o in owner_ids if await _quiet_hours_allow(conn, o, payload, now)]
     if not owner_ids:
         return 0
@@ -221,8 +295,9 @@ async def flush_deferred(conn, now: datetime.datetime | None = None) -> int:
     into a loop; each send still goes back through send_to_owner, so an
     owner who has since widened their quiet hours gets it held again.
     A newer push about the same thing (same tag) replaces an older one,
-    and more than _MAX_HELD_PUSHES collapse into one summary. Returns
-    how many pushes delivered."""
+    one that's expired by now (a survivor pick that already locked) is
+    skipped, and more than _MAX_HELD_PUSHES collapse into one summary.
+    Returns how many pushes delivered."""
     now = now or datetime.datetime.now(datetime.timezone.utc)
     rows = await conn.fetch(
         "DELETE FROM deferred_notifications WHERE send_after <= $1 RETURNING id, owner_id, payload",
@@ -231,6 +306,8 @@ async def flush_deferred(conn, now: datetime.datetime | None = None) -> int:
     by_owner: dict[int, dict[str, dict]] = {}
     for row in sorted(rows, key=lambda r: r["id"]):
         payload = json.loads(row["payload"])
+        if _expired(payload, now):
+            continue
         by_owner.setdefault(row["owner_id"], {})[payload.get("tag") or f"id-{row['id']}"] = payload
     delivered = 0
     for owner_id, held in by_owner.items():
@@ -238,5 +315,5 @@ async def flush_deferred(conn, now: datetime.datetime | None = None) -> int:
         if len(payloads) > _MAX_HELD_PUSHES:
             payloads = [formatter.held_player_updates(payloads)]
         for payload in payloads:
-            delivered += await send_to_owner(conn, owner_id, payload, now=now)
+            delivered += await send_to_owner(conn, owner_id, payload, now=now, keep=False)
     return delivered

@@ -52,16 +52,19 @@ export function TabHeader() {
           <Path d="M6 9l6 6 6-6" />
         </Svg>
       </Pressable>
-      <Pressable
-        onPress={() => {
-          haptics.tap();
-          setMenuOpen(true);
-        }}
-        style={[styles.avatar, { borderColor: accent }]}
-        accessibilityRole="button"
-        accessibilityLabel="Account menu">
-        <Text style={styles.avatarText}>{initials}</Text>
-      </Pressable>
+      <View style={styles.right}>
+        <InboxBell />
+        <Pressable
+          onPress={() => {
+            haptics.tap();
+            setMenuOpen(true);
+          }}
+          style={[styles.avatar, { borderColor: accent }]}
+          accessibilityRole="button"
+          accessibilityLabel="Account menu">
+          <Text style={styles.avatarText}>{initials}</Text>
+        </Pressable>
+      </View>
       <AccountMenu
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -70,6 +73,32 @@ export function TabHeader() {
         isSiteOwner={!!me?.is_site_owner}
       />
     </View>
+  );
+}
+
+// The notification inbox's bell (2026-11-08), with what's unread.
+function InboxBell() {
+  const unread = useQuery({ queryKey: ['inbox-unread'], queryFn: api.notificationsUnread, refetchInterval: 60_000 }).data?.unread ?? 0;
+  return (
+    <Pressable
+      onPress={() => {
+        haptics.tap();
+        router.push('/inbox' as Href);
+      }}
+      hitSlop={6}
+      style={styles.bell}
+      accessibilityRole="button"
+      accessibilityLabel={unread ? `Notifications, ${unread} unread` : 'Notifications'}>
+      <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={Colors.text} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <Path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+        <Path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+      </Svg>
+      {unread > 0 && (
+        <View style={styles.bellBadge}>
+          <Text style={styles.bellBadgeText}>{unread > 99 ? '99+' : unread}</Text>
+        </View>
+      )}
+    </Pressable>
   );
 }
 
@@ -176,6 +205,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(18,21,29,0.9)',
   },
   leagueName: { color: Colors.text, fontFamily: Fonts.display, fontSize: 13, letterSpacing: 0.5, textTransform: 'uppercase', flexShrink: 1 },
+  right: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  bell: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  bellBadge: { position: 'absolute', top: 0, right: -4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: '#ff3b5c', alignItems: 'center', justifyContent: 'center' },
+  bellBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   avatar: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(18,21,29,0.9)' },
   avatarText: { color: Colors.text, fontSize: 12, fontWeight: '800' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'flex-end', paddingHorizontal: Spacing.lg },

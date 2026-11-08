@@ -20,7 +20,9 @@ _BODY_PREVIEW_LENGTH = 120
 _ADMIN_ERROR_BODY_LENGTH = 240
 
 
-def _payload(title: str, body: str, url: str, type_: str, tag: str | None = None) -> dict:
+def _payload(
+    title: str, body: str, url: str, type_: str, tag: str | None = None, *, category: str | None = None, extra: dict | None = None
+) -> dict:
     """Every notification goes through here so the shape never drifts.
     `url` is repeated inside `data` because that's where the service
     worker's notificationclick handler (frontend/public/sw.js) and the
@@ -28,10 +30,16 @@ def _payload(title: str, body: str, url: str, type_: str, tag: str | None = None
     a top-level url alone used to be dropped on the web, so every tap
     opened the homepage. `tag` lets a newer notification replace an
     older one about the same thing (a lead flipping back and forth, a
-    team re-entering the red zone) instead of stacking up."""
-    data = {"type": type_, "url": url}
+    team re-entering the red zone) instead of stacking up. `category`
+    (2026-11-08) is the iPhone's set of buttons on the notification
+    (mobile/src/lib/notificationActions.ts), and `extra` the ids those
+    buttons act on, plus `expires` (ISO time) for a push that's useless
+    after a point, so quiet hours don't deliver it late."""
+    data = {"type": type_, "url": url, **(extra or {})}
     if tag:
         data["tag"] = tag
+    if category:
+        data["category"] = category
     return {
         "title": title,
         "body": body,
@@ -120,13 +128,15 @@ def draft_starting_soon(minutes: int) -> dict:
     return _payload("🏈 Draft starting soon", f"The draft starts in {minutes} minutes — get in the room.", "/draft", "draft_starting_soon")
 
 
-def survivor_pick_needed(pool_name: str, week: int, hours: int, pool_id: int) -> dict:
+def survivor_pick_needed(pool_name: str, week: int, hours: int, pool_id: int, entry_id: int | None = None, lock=None) -> dict:
     return _payload(
         "🛡️ Survivor pick needed",
         f"You haven't picked for week {week} in {pool_name}. Picks lock in about {hours} hour{'s' if hours != 1 else ''}.",
         f"/survivor/{pool_id}",
         "survivor_pick_needed",
         tag=f"survivor-{pool_id}-{week}",
+        category="survivor_pick" if entry_id else None,
+        extra={"entry_id": entry_id, **({"expires": lock.isoformat()} if lock else {})} if entry_id else None,
     )
 
 
@@ -445,7 +455,10 @@ def _trade_tag(trade_id: int) -> str:
 
 
 def trade_offer(from_team: str, summary: str, trade_id: int) -> dict:
-    return _payload(f"🤝 Trade offer from {from_team}", summary, "/trades", "trade", _trade_tag(trade_id))
+    return _payload(
+        f"🤝 Trade offer from {from_team}", summary, "/trades", "trade", _trade_tag(trade_id),
+        category="trade_offer", extra={"trade_id": trade_id},
+    )
 
 
 def trade_block_listed(team_name: str, player_names: list[str], team_id: int) -> dict:
@@ -482,7 +495,10 @@ def guillotine_cut(team_name: str, week: int, points: float, survivors: int) -> 
 
 def friend_request(name: str, user_id: int) -> dict:
     """Someone sent you a friend request (friends, 2026-10-26)."""
-    return _payload(f"👋 {name} wants to be friends", "Open Friends to accept.", "/friends", "friend", tag=f"friend-{user_id}")
+    return _payload(
+        f"👋 {name} wants to be friends", "Open Friends to accept.", "/friends", "friend", tag=f"friend-{user_id}",
+        category="friend_request", extra={"user_id": user_id},
+    )
 
 
 def friend_accepted(name: str, user_id: int) -> dict:

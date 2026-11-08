@@ -259,6 +259,31 @@ async def put_picks(entry_id: int, body: PicksBody, request: Request):
         }
 
 
+@router.post("/entries/{entry_id}/best-pick")
+async def best_pick(entry_id: int, request: Request):
+    """The reminder's "Pick best odds" button (2026-11-08): fills this
+    week's open slots the way the auto-pick would. Picks already made stay."""
+    payload = _require_session(request)
+    season = _season()
+    week = await survivor.current_week(season)
+    now = datetime.now(UTC)
+    sched = await survivor.week_schedule(season, week)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            entry, p, picks = await _entry_context(conn, entry_id, payload["user_id"])
+            chances = await survivor.win_chances(conn, season, week, sched)
+            new = survivor.best_picks(sched, chances, picks, week, survivor.slots(p, week), now)
+            if not new:
+                raise HTTPException(status_code=409, detail="Nothing left to pick this week")
+            kept = [pk["team"] for pk in picks if pk["week"] == week and pk["team"]]
+            try:
+                await survivor.set_picks(conn, p, entry, season, week, kept + [t for _, t in new], now)
+            except survivor.PickError as error:
+                raise HTTPException(status_code=409, detail=str(error)) from error
+    return {"teams": [t for _, t in new], "week": week, "pool_id": p["id"]}
+
+
 @router.get("/entries/{entry_id}/planner")
 async def get_planner(entry_id: int, request: Request):
     payload = _require_session(request)

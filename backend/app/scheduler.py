@@ -743,21 +743,34 @@ async def _run_projection_engine_job():
 
 async def _run_survivor_job():
     from app.domain import survivor
-    from app.notifications import dispatcher, formatter
+    from app.notifications import dispatcher, formatter, quiet_hours
     from app.queries import owner_preferences as preferences_queries
 
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     async with pool.acquire() as conn:
         results = await survivor.run(conn, season)
-        reminders = await survivor.due_reminders(conn, season)
+        now = datetime.now(timezone.utc)
+
+        async def outside_quiet_hours(user_id: int) -> bool:
+            # Someone in quiet hours gets the reminder once they end, if
+            # the window's still open and they still haven't picked.
+            owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", user_id)
+            if owner_id is None:
+                return True
+            return quiet_hours.quiet_until(await preferences_queries.get_preferences(conn, owner_id), now) is None
+
+        reminders = await survivor.due_reminders(conn, season, now, can_send=outside_quiet_hours)
         for r in reminders:
             # A team's own push switch applies; an account with no team
             # (only in survivor pools) gets it on the phones it registered.
             owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", r["user_id"])
             if owner_id is not None and not (await preferences_queries.get_preferences(conn, owner_id))["push_enabled"]:
                 continue
-            await dispatcher.send_to_user(conn, r["user_id"], formatter.survivor_pick_needed(r["pool_name"], r["week"], r["hours"], r["pool_id"]))
+            await dispatcher.send_to_user(
+                conn, r["user_id"],
+                formatter.survivor_pick_needed(r["pool_name"], r["week"], r["hours"], r["pool_id"], r["entry_id"], r["lock"]),
+            )
     if any(results.values()) or reminders:
         logger.info("Survivor job: %s, %s reminders", results, len(reminders))
     record_job_run("survivor")
@@ -1169,6 +1182,7 @@ async def _run_deferred_push_job():
     pool = await get_pool()
     async with pool.acquire() as conn:
         delivered = await dispatcher.flush_deferred(conn)
+        await dispatcher.prune_inbox(conn)
     if delivered:
         logger.info("Sent %d push(es) held through quiet hours", delivered)
 

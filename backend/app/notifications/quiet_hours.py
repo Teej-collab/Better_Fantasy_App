@@ -11,9 +11,15 @@ depends on its type (the `data.type` every formatter sets):
   keeper deadlines — missing "you're on the clock" means an auto-pick,
   so a draft the league scheduled at night still reaches everyone.
 - Held until quiet hours end: injury status changes and player news.
-  An overnight downgrade is still worth knowing when you wake up.
+  An overnight downgrade is still worth knowing when you wake up. Also
+  (2026-11-08) anything waiting on you: a trade offer, a friend request,
+  a survivor pick, a starter who's out. Those used to be dropped, so a
+  3 AM trade offer never reached your phone at all. A held push whose
+  data.expires has passed by morning (a survivor pick that locked) is
+  skipped instead (dispatcher.flush_deferred).
 - Dropped: everything else. A touchdown, a lead change, or a chat
-  message is stale by morning and already visible in the app.
+  message is stale by morning and already visible in the app (and in
+  the notification inbox).
 
 Times are read in the owner's own timezone (owner_preferences.
 timezone, set from their device), falling back to the league's home
@@ -39,7 +45,12 @@ _ALWAYS_SEND = {
     "admin_security",
 }
 # The recap and new feedback stay worth reading in the morning.
-_HOLD_UNTIL_MORNING = {"injury_update", "player_news", "weekly_recap", "admin_feedback", "waiver_results", "matchup_final"}
+_HOLD_UNTIL_MORNING = {
+    "injury_update", "player_news", "weekly_recap", "admin_feedback", "waiver_results", "matchup_final",
+    # Waiting on you (2026-11-08).
+    "trade", "join_request", "friend", "keeper_nudge", "commish_lineup", "survivor_pick_needed",
+    "pregame_lineup", "inactive_starter", "guillotine_cut", "punishment_wheel",
+}
 
 SEND = "send"
 DEFER = "defer"

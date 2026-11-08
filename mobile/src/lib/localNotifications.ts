@@ -4,6 +4,8 @@ import { router, type Href } from 'expo-router';
 
 import type { Reminder, ReminderCategory } from '@/lib/reminders';
 import { markOpenedByLink } from '@/lib/freshStart';
+import { registerNotificationCategories, runNotificationAction } from '@/lib/notificationActions';
+import { queryClient } from '@/lib/queries';
 
 // Schedules lib/reminders.ts's reminders as local notifications. Native
 // (expo-notifications) and, like sharing, only loaded where the build has
@@ -110,7 +112,11 @@ export function setUpReminderHandling(): () => void {
   const n = load();
   if (!n) return () => {};
   n.setNotificationHandler({
-    handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
+    handleNotification: async () => {
+      // A push that arrives with the app open is also new in the inbox.
+      void queryClient.invalidateQueries({ queryKey: ['inbox-unread'] });
+      return { shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false };
+    },
   });
   const open = (url: unknown) => {
     if (typeof url === 'string' && url.startsWith('/')) {
@@ -126,13 +132,24 @@ export function setUpReminderHandling(): () => void {
     const payload = trigger && 'payload' in trigger ? (trigger.payload as Record<string, unknown> | null) : null;
     return content.data?.url ?? payload?.url;
   };
+  // A button on the push (lib/notificationActions.ts) does its thing first.
+  const respond = (r: import('expo-notifications').NotificationResponse) => {
+    if (r.actionIdentifier !== n.DEFAULT_ACTION_IDENTIFIER) {
+      const { content, trigger } = r.notification.request;
+      const payload = trigger && 'payload' in trigger ? (trigger.payload as Record<string, unknown> | null) : null;
+      const data = ((payload?.data ?? content.data) ?? {}) as Record<string, unknown>;
+      void runNotificationAction(content.categoryIdentifier ?? (data.category as string | undefined), r.actionIdentifier, data);
+    }
+    open(urlOf(r));
+  };
+  registerNotificationCategories(n);
   const initial = n.getLastNotificationResponse();
   if (initial) {
-    open(urlOf(initial));
+    respond(initial);
     // Handled — so a later launch doesn't open it again.
     n.clearLastNotificationResponse();
   }
-  const sub = n.addNotificationResponseReceivedListener((r) => open(urlOf(r)));
+  const sub = n.addNotificationResponseReceivedListener(respond);
   return () => sub.remove();
 }
 

@@ -50,8 +50,17 @@ const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description
   { key: "notify_red_zone", label: "Red Zone", description: "An NFL team with one of your starters gets inside the 20." },
   { key: "notify_injuries", label: "Injuries", description: "One of your players is added to the injury report, upgraded, downgraded, cleared, or gets hurt in a game." },
   { key: "notify_player_news", label: "Player News", description: "Any other news about one of your players, like practice reports. Can get chatty — turn it off if it does." },
-  { key: "notify_fantasy_team", label: "Lead Changes", description: "You take the lead in your matchup, or lose it." },
-  { key: "notify_league", label: "League Activity", description: "Someone in your league posts a graded chug." },
+  { key: "notify_fantasy_team", label: "My Matchup & Waivers", description: "Lead changes, a close game coming down to the wire, your final result, and what you won (or missed) on waivers." },
+];
+
+// Everything that isn't game day or chat (2026-11-08): the kinds added
+// after this page was laid out, which had no switch of their own.
+const LEAGUE_TOGGLES: { key: keyof OwnerPreferences; label: string; description: string }[] = [
+  { key: "notify_trades", label: "Trades", description: "Offers to you, every step of your trades, and players going on the trade block." },
+  { key: "notify_draft", label: "Draft & keepers", description: "The draft room opening, the draft starting, you're on the clock, and keeper deadlines. Off means you can miss your pick." },
+  { key: "notify_survivor", label: "Survivor pools", description: "A reminder before picks lock when you haven't picked yet." },
+  { key: "notify_friends", label: "Friends & Lounge", description: "Friend requests, and friends inviting you to their Lounge." },
+  { key: "notify_league", label: "League Activity", description: "Graded chugs, the weekly recap, the guillotine and the punishment wheel." },
   { key: "notify_watch_parties", label: "Watch Parties", description: "Someone in your league starts a watch party, or invites you to a private room." },
 ];
 
@@ -379,10 +388,29 @@ export function NotificationsSection() {
         </div>
       </section>
 
+      <section className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+        <h2 className="text-sm font-semibold tracking-wide uppercase">League &amp; Friends</h2>
+        <p className="mb-2 text-xs text-black/50 dark:text-white/50">
+          {prefs.push_enabled ? "Trades, the draft, survivor pools, friends and your league." : "Turn on push notifications above to receive these."}
+        </p>
+        <div className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+          {LEAGUE_TOGGLES.map((t) => (
+            <ToggleRow
+              key={t.key}
+              label={t.label}
+              description={t.description}
+              checked={Boolean(prefs[t.key])}
+              disabled={!prefs.push_enabled}
+              onChange={(checked) => patch({ [t.key]: checked })}
+            />
+          ))}
+        </div>
+      </section>
+
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <ToggleRow
           label="Quiet Hours"
-          description="Silences notifications overnight. Injury alerts and player news wait until quiet hours end; draft alerts still come through."
+          description="Silences notifications overnight. Anything waiting on you (a trade offer, a survivor pick, an injured starter) and injury news arrive when quiet hours end; draft alerts still come through. Everything else is in your inbox."
           checked={prefs.quiet_hours_enabled}
           onChange={(checked) => patch({ quiet_hours_enabled: checked })}
         />

@@ -591,7 +591,16 @@ const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description
     label: 'My Matchup & Waivers',
     description: 'Lead changes, a close game coming down to the wire, your final result, and what you won (or missed) on waivers.',
   },
-  { key: 'notify_league', label: 'League Activity', description: 'Someone in your league posts a graded chug.' },
+];
+
+// Everything that isn't game day or chat (2026-11-08): the kinds added
+// after this page was laid out, which had no switch of their own.
+const LEAGUE_TOGGLES: { key: keyof OwnerPreferences; label: string; description: string }[] = [
+  { key: 'notify_trades', label: 'Trades', description: 'Offers to you, every step of your trades, and players going on the trade block.' },
+  { key: 'notify_draft', label: 'Draft & keepers', description: "The draft room opening, the draft starting, you're on the clock, and keeper deadlines. Off means you can miss your pick." },
+  { key: 'notify_survivor', label: 'Survivor pools', description: "A reminder before picks lock when you haven't picked yet." },
+  { key: 'notify_friends', label: 'Friends & Lounge', description: 'Friend requests, and friends inviting you to their Lounge.' },
+  { key: 'notify_league', label: 'League Activity', description: 'Graded chugs, the weekly recap, the guillotine and the punishment wheel.' },
   { key: 'notify_watch_parties', label: 'Watch Parties', description: 'Someone in your league starts a watch party, or invites you to a private room.' },
 ];
 
@@ -649,6 +658,7 @@ export const NOTIFICATION_TUNES: Record<string, string> = {
   game: 'Game day alerts',
   messages: 'Messages',
   push: 'Push notifications',
+  league: 'League & friends',
   quiet: 'Quiet hours',
   lock: 'Live score on Lock Screen',
   reminders: 'Phone reminders',
@@ -695,6 +705,19 @@ export function NotificationSettings({ tune }: { tune?: string }) {
       </View>
     );
   }
+  if (tune === 'league') {
+    return (
+      <View style={styles.gap}>
+        <Header title="League & friends" subtitle="Trades, the draft, survivor pools, friends and your league." saved={saved} />
+        {error && <Text style={styles.error}>{error}</Text>}
+        <Panel description={prefs.push_enabled ? undefined : 'Turn on push notifications first to get these.'}>
+          {LEAGUE_TOGGLES.map((t, i) => (
+            <ToggleRow key={t.key} divided={i > 0} label={t.label} description={t.description} value={Boolean(prefs[t.key])} disabled={!prefs.push_enabled} onChange={(v) => patch({ [t.key]: v })} />
+          ))}
+        </Panel>
+      </View>
+    );
+  }
   if (tune === 'messages') {
     return (
       <View style={styles.gap}>
@@ -719,7 +742,7 @@ export function NotificationSettings({ tune }: { tune?: string }) {
         <Panel>
           <ToggleRow
             label="Quiet Hours"
-            description="Silences notifications overnight. Injury alerts and player news wait until quiet hours end; draft alerts still come through."
+            description="Silences notifications overnight. Anything waiting on you (a trade offer, a survivor pick, an injured starter) and injury news arrive when quiet hours end; draft alerts still come through. Everything else is in your inbox."
             value={prefs.quiet_hours_enabled}
             onChange={(v) => patch({ quiet_hours_enabled: v })}
           />
@@ -765,6 +788,7 @@ export function NotificationSettings({ tune }: { tune?: string }) {
 
   const gameOn = FANTASY_TOGGLES.filter((t) => prefs[t.key]).length;
   const messagesOn = MESSAGE_TOGGLES.filter((t) => prefs[t.key]).length;
+  const leagueOn = LEAGUE_TOGGLES.filter((t) => prefs[t.key]).length;
   const remindersOn = reminders ? REMINDER_TOGGLES.filter((t) => reminders[t.key]).length : null;
 
   return (
@@ -797,6 +821,7 @@ export function NotificationSettings({ tune }: { tune?: string }) {
       <Text style={styles.fineTune}>CUSTOMIZE</Text>
       <ListCard>
         <ListRow first label="Game day alerts" sub="Touchdowns, red zone, injuries, your matchup" value={`${gameOn} on`} onPress={() => openTune('notifications', 'game')} />
+        <ListRow label="League & friends" sub="Trades, the draft, survivor, friends" value={`${leagueOn} on`} onPress={() => openTune('notifications', 'league')} />
         <ListRow label="Messages" sub="DMs, league chat, mentions, replies" value={`${messagesOn} on`} onPress={() => openTune('notifications', 'messages')} />
         <ListRow label="Push notifications" sub="Alerts on this phone when the app's closed" value={prefs.push_enabled ? 'On' : 'Off'} onPress={() => openTune('notifications', 'push')} />
         <ListRow

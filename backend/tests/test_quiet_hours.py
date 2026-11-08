@@ -113,7 +113,7 @@ async def test_flush_deferred_sends_once_quiet_hours_end_and_collapses_a_pile(po
     owner_id = await _seed_owner(pool, "flush", quiet_hours_enabled=True)
     sent = []
 
-    async def _fake_deliver(conn, oid, payload, now=None):
+    async def _fake_deliver(conn, oid, payload, now=None, keep=True):
         sent.append(payload)
         return 1
 

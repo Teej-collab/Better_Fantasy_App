@@ -290,6 +290,10 @@ class PreferencesPatch(BaseModel):
     notify_fantasy_team: bool | None = None
     notify_league: bool | None = None
     notify_watch_parties: bool | None = None
+    notify_trades: bool | None = None
+    notify_survivor: bool | None = None
+    notify_friends: bool | None = None
+    notify_draft: bool | None = None
     accent_color: str | None = None
     your_week_color: str | None = None
     border_glow_color: str | None = None

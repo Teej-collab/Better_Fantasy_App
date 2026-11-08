@@ -16,6 +16,9 @@
         "NSCameraUsageDescription": "The Weekend uses your camera for photos in league chat, scanning invite QR codes, and video in the Lounge."
       },
       "usesAppleSignIn": true,
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
+      },
       "config": {
         "usesNonExemptEncryption": false
       },

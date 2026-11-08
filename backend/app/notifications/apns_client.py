@@ -57,6 +57,12 @@ def _reset_client_for_tests() -> None:
     _sandbox_client = None
 
 
+# Pushes about a deadline you'd lose something by missing.
+TIME_SENSITIVE = {
+    "draft_on_the_clock", "draft_starting_soon", "draft_live", "keeper_deadline_approaching", "survivor_pick_needed",
+}
+
+
 async def send_apns(push_token: str, payload: dict) -> tuple[bool, bool]:
     """Returns (delivered, permanently_gone). payload is the shared
     {title, body, icon, badge, url, data} shape from
@@ -81,12 +87,27 @@ async def send_apns(push_token: str, payload: dict) -> tuple[bool, bool]:
     }
     if payload.get("app_badge") is not None:
         message["aps"]["badge"] = payload["app_badge"]
-    result = await _get_client().send_notification(NotificationRequest(device_token=push_token, message=message))
+    data = payload.get("data") or {}
+    # Buttons on the notification (mobile/src/lib/notificationActions.ts).
+    if data.get("category"):
+        message["aps"]["category"] = data["category"]
+    # A deadline breaks through Focus (needs the app's time-sensitive
+    # entitlement; older builds just show it normally).
+    if data.get("type") in TIME_SENSITIVE:
+        message["aps"]["interruption-level"] = "time-sensitive"
+    # The tag is how a newer push about the same thing (a lead flipping
+    # back) replaces the older one; iOS does that by collapse id, which
+    # Apple caps at 64 bytes.
+    tag = payload.get("tag")
+    collapse = tag if tag and len(tag.encode()) <= 64 else None
+    result = await _get_client().send_notification(
+        NotificationRequest(device_token=push_token, message=message, collapse_key=collapse)
+    )
     if result.is_successful:
         return True, False
     if result.description == "BadDeviceToken":
         result = await _get_client(sandbox=True).send_notification(
-            NotificationRequest(device_token=push_token, message=message)
+            NotificationRequest(device_token=push_token, message=message, collapse_key=collapse)
         )
         if result.is_successful:
             return True, False

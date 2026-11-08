@@ -233,6 +233,7 @@ function RootStack() {
           <Stack.Screen name="draft-queue" options={{ title: 'Your Queue', headerBackTitle: 'War Room' }} />
           <Stack.Screen name="mock-draft" options={{ title: 'Mock Draft', headerBackTitle: 'War Room' }} />
           <Stack.Screen name="kitty" options={{ title: 'League Kitty', headerBackTitle: 'Back' }} />
+          <Stack.Screen name="inbox" options={{ title: 'Notifications', headerBackTitle: 'Back' }} />
           <Stack.Screen name="leagues" options={{ title: 'Leagues' }} />
           <Stack.Screen name="whats-new" options={{ title: "What's New", headerBackTitle: 'Back' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings', headerBackTitle: 'Back' }} />

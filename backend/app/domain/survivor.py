@@ -444,6 +444,27 @@ async def refresh_entry(conn, pool: dict, entry_id: int) -> None:
         await conn.execute("UPDATE survivor_entries SET eliminated_week = $2 WHERE id = $1", entry_id, out)
 
 
+def best_picks(sched: dict, chances: dict, picks: list[dict], week: int, need: int, now: datetime) -> list[tuple[int, str]]:
+    """[(slot, team)] filling the week's open slots with the biggest
+    favorites the entry hasn't used and whose games haven't started, never
+    two in one game. The auto-pick and the reminder's "Pick best odds"."""
+    have = [p for p in picks if p["week"] == week]
+    used = {p["team"] for p in picks if p["team"]}
+    games_taken = {sched[p["team"]]["game"] for p in have if p["team"] in sched}
+    options = sorted(
+        (t for t, g in sched.items() if t not in used and not locked(g, now) and g["game"] not in games_taken),
+        key=lambda t: -(chances.get(t) or 0),
+    )
+    out = []
+    for slot in [s for s in range(1, need + 1) if s not in {p["slot"] for p in have}]:
+        pick = next((t for t in options if sched[t]["game"] not in games_taken), None)
+        if pick is None:
+            break
+        games_taken.add(sched[pick]["game"])
+        out.append((slot, pick))
+    return out
+
+
 async def run(conn, season: int, now: datetime | None = None) -> dict:
     """Grade finished games, make missed picks, and score weeks that are
     over. Returns counts, for the log."""
@@ -502,17 +523,7 @@ async def run(conn, season: int, now: datetime | None = None) -> dict:
                 if pool["missed_pick"] == "auto" and deadline and now >= deadline - AUTO_LEAD and not over:
                     if chances is None:
                         chances = await win_chances(conn, season, w, sched)
-                    used = {p["team"] for p in picks if p["team"]}
-                    games_taken = {sched[p["team"]]["game"] for p in have if p["team"] in sched}
-                    options = sorted(
-                        (t for t, g in sched.items() if t not in used and not locked(g, now) and g["game"] not in games_taken),
-                        key=lambda t: -(chances.get(t) or 0),
-                    )
-                    for slot in free:
-                        pick = next((t for t in options if sched[t]["game"] not in games_taken), None)
-                        if pick is None:
-                            break
-                        games_taken.add(sched[pick]["game"])
+                    for slot, pick in best_picks(sched, chances, picks, w, need, now):
                         await conn.execute(
                             "INSERT INTO survivor_picks (entry_id, week, slot, team, kickoff, auto) VALUES ($1, $2, $3, $4, $5, TRUE)",
                             entry["id"], w, slot, pick, sched[pick]["kickoff"],
@@ -532,11 +543,13 @@ async def run(conn, season: int, now: datetime | None = None) -> dict:
     return {"graded": graded, "auto": auto, "missed": missed}
 
 
-async def due_reminders(conn, season: int, now: datetime | None = None) -> list[dict]:
-    """[{user_id, entry_id, pool_id, pool_name, week, kind, hours}] for
-    alive entries still missing a pick inside a reminder window (3 hours
-    before the week's first kickoff, 2 before the Sunday deadline),
-    each once. Marks them sent."""
+async def due_reminders(conn, season: int, now: datetime | None = None, can_send=None) -> list[dict]:
+    """[{user_id, entry_id, pool_id, pool_name, week, kind, hours, lock}]
+    for alive entries still missing a pick inside a reminder window (3
+    hours before the week's first kickoff, 2 before the Sunday deadline),
+    each once. Marks them sent. `can_send(user_id)`, when given, can say
+    not yet (quiet hours): that one isn't marked, so a later run still
+    reminds them if the window is open and they still haven't picked."""
     now = now or datetime.now(UTC)
     week = await current_week(season)
     sched = await week_schedule(season, week)
@@ -565,6 +578,8 @@ async def due_reminders(conn, season: int, now: datetime | None = None) -> list[
         for r in rows:
             if r["picked"] >= slots(dict(r), week):
                 continue
+            if can_send is not None and r["entry_id"] not in reminded and not await can_send(r["user_id"]):
+                continue
             await conn.execute(
                 "INSERT INTO survivor_reminders (entry_id, week, kind) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
                 r["entry_id"], week, kind,
@@ -574,6 +589,6 @@ async def due_reminders(conn, season: int, now: datetime | None = None) -> list[
             reminded.add(r["entry_id"])
             out.append({
                 "user_id": r["user_id"], "entry_id": r["entry_id"], "pool_id": r["pool_id"], "pool_name": r["pool_name"],
-                "week": week, "kind": kind, "hours": max(1, round((at - now).total_seconds() / 3600)),
+                "week": week, "kind": kind, "hours": max(1, round((at - now).total_seconds() / 3600)), "lock": at,
             })
     return out

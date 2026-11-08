@@ -107,6 +107,12 @@ _DEFAULT_PREFERENCES = {
     # Someone starts a watch party, or invites you to a private room
     # (migration b5e1d7a3c9f2, app/notifications/watch_party_events.py).
     "notify_watch_parties": True,
+    # Kinds of push added after the rest (migration c2d4e6f8a0b3),
+    # checked in one place: app/notifications/dispatcher.py's _MUTE_PREF.
+    "notify_trades": True,
+    "notify_survivor": True,
+    "notify_friends": True,
+    "notify_draft": True,
     # Consent for a not-yet-built feature (AI learning to shit-talk from
     # real chat messages, migration 6ed29b9f0609) — opt-OUT model, so
     # the default is False (opted in). ai_training_notice_seen tracks
