@@ -83,12 +83,29 @@ const LEAGUE_LEVELS: { key: LeagueNotificationLevel["level"]; label: string }[] 
 function LeagueLevels() {
   const [leagues, setLeagues] = useState<LeagueNotificationLevel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
+  const [loadFailed, setLoadFailed] = useState(false);
+  const load = () =>
     inboxApi.leagues().then(
-      (r) => setLeagues(r.leagues),
-      () => setLeagues([]),
+      (r) => {
+        setLoadFailed(false);
+        setLeagues(r.leagues);
+      },
+      () => setLoadFailed(true),
     );
+  useEffect(() => {
+    void load();
   }, []);
+  if (loadFailed && !leagues) {
+    // A failed load isn't "no leagues".
+    return (
+      <section className="neon-panel flex items-center justify-between gap-3 rounded-xl bg-black/[0.015] p-5 text-sm dark:bg-white/[0.03]">
+        <span>Couldn&apos;t load your leagues.</span>
+        <button type="button" onClick={() => void load()} className="text-xs font-semibold text-[var(--wl-accent)]">
+          Try again
+        </button>
+      </section>
+    );
+  }
   if (!leagues || leagues.length === 0) return null;
 
   async function set(leagueId: number, level: LeagueNotificationLevel["level"]) {

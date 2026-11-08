@@ -667,7 +667,9 @@ function LeagueLevels() {
   const q = useQuery({ queryKey: ['notification-leagues'], queryFn: api.notificationLeagues });
   const [error, setError] = useState<string | null>(null);
   if (q.isPending) return <LoadingState />;
-  const leagues = q.data?.leagues ?? [];
+  // A failed load isn't "no leagues".
+  if (!q.data) return <MessageState message="Couldn't load your leagues." actionLabel="Try again" onAction={() => void q.refetch()} />;
+  const leagues = q.data.leagues;
   async function set(leagueId: number, level: LeagueNotificationLevel['level']) {
     setError(null);
     void Haptics.selectionAsync();
