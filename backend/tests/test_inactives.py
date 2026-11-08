@@ -46,11 +46,38 @@ async def test_only_starters_once_and_not_after_a_listed_out_alert(monkeypatch):
     monkeypatch.setattr(inactives.dispatcher, "send_to_owner", fake_send)
     monkeypatch.setattr(inactives.preferences_queries, "get_preferences", prefs)
     rows = [
-        {"team_id": 1, "lineup_slot": "WR", "owner_id": 11, "league_id": 1, "full_name": "Puka Nacua", "sleeper_player_id": "p1"},
-        {"team_id": 2, "lineup_slot": "BE", "owner_id": 22, "league_id": 1, "full_name": "Puka Nacua", "sleeper_player_id": "p1"},
-        {"team_id": 3, "lineup_slot": "RB", "owner_id": 33, "league_id": 1, "full_name": "Already Out", "sleeper_player_id": "p2"},
+        {"team_id": 1, "lineup_slot": "WR", "owner_id": 11, "league_id": 1, "full_name": "Puka Nacua", "sleeper_player_id": "p1", "injury_status": "Questionable"},
+        {"team_id": 2, "lineup_slot": "BE", "owner_id": 22, "league_id": 1, "full_name": "Puka Nacua", "sleeper_player_id": "p1", "injury_status": "Questionable"},
+        {"team_id": 3, "lineup_slot": "RB", "owner_id": 33, "league_id": 1, "full_name": "Already Out", "sleeper_player_id": "p2", "injury_status": "Out"},
+        {"team_id": 4, "lineup_slot": "RB", "owner_id": 44, "league_id": 1, "full_name": "Breece Hall", "sleeper_player_id": "p3", "injury_status": None},
     ]
     conn = FakeConn(rows, existing_keys={"pregame-1-2026-6-3-p2"})
     await inactives.notify_inactive_starters(conn, 2026, 6, [101, 102], "1:00 PM ET")
     await inactives.notify_inactive_starters(conn, 2026, 6, [101, 102], "1:00 PM ET")
     assert [(o, p["title"]) for o, p in sent] == [(11, "🚫 Puka Nacua is INACTIVE")]
+
+
+class FakeResponse:
+    def __init__(self, body):
+        self.body = body
+
+    def json(self):
+        return self.body
+
+
+class FakeClient:
+    def __init__(self, rosters):
+        self.rosters = rosters
+
+    async def get(self, url):
+        if url.endswith("/competitors"):
+            return FakeResponse({"items": [{"$ref": f"https://x/competitors/{team}?lang=en"} for team in self.rosters]})
+        team = url.split("/")[-2]
+        return FakeResponse({"entries": [{"playerId": pid, "didNotPlay": True} for pid in self.rosters[team]]})
+
+
+async def test_a_list_longer_than_a_real_one_is_ignored():
+    client = FakeClient({"12": list(range(1, 7)), "20": list(range(100, 112))})
+    ids, full_teams = await inactives.fetch_inactive_espn_ids(client, "401873045")
+    assert ids == list(range(1, 7))
+    assert full_teams == 1

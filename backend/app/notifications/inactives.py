@@ -15,6 +15,13 @@ looks at a game that's underway).
 Each player alerts once per team per week (notification_once), and not
 at all when the pre-kickoff "listed Out" alert already went out for him
 (app/notifications/game_alerts.py).
+
+Before the real lists post, ESPN's roster can mark a dozen players
+didNotPlay (2026-11-08: Breece Hall, Garrett Wilson and Cade Klubnik
+among 12 Jets, 98 minutes before kickoff, all of them playing). So a
+team's list longer than a real one is ignored, and only a starter who
+was already on the injury report (Questionable, Doubtful…) alerts: a
+healthy starter scratched is rare, and exactly what that noise looks like.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -34,6 +41,9 @@ WINDOW_AFTER = timedelta(minutes=10)
 # A team's real inactive list is several players; fewer usually means
 # ESPN hasn't posted it yet, so keep polling that game.
 FULL_LIST = 3
+# Game day is 48 active of a 53-man roster plus up to two practice-squad
+# call-ups, so a real list is about 7. Longer is ESPN's placeholder data.
+MAX_LIST = 9
 
 _done_games: set[str] = set()
 
@@ -71,6 +81,9 @@ async def fetch_inactive_espn_ids(client: httpx.AsyncClient, event_id: str) -> t
             continue
         roster = (await client.get(f"{ref}/roster")).json()
         team_inactive = [int(e["playerId"]) for e in roster.get("entries", []) if e.get("didNotPlay") is True and e.get("playerId")]
+        if len(team_inactive) > MAX_LIST:
+            logger.info("Inactives: ignoring %d didNotPlay for %s (not a real list yet)", len(team_inactive), ref)
+            continue
         if len(team_inactive) >= FULL_LIST:
             full_teams += 1
         inactive += team_inactive
@@ -82,7 +95,7 @@ async def notify_inactive_starters(conn, season: int, week: int, espn_ids: list[
         return 0
     rows = await conn.fetch(
         """
-        SELECT cr.team_id, cr.lineup_slot, t.owner_id, t.league_id, p.full_name, p.sleeper_player_id
+        SELECT cr.team_id, cr.lineup_slot, t.owner_id, t.league_id, p.full_name, p.sleeper_player_id, p.injury_status
         FROM players p
         JOIN current_rosters cr ON cr.sleeper_player_id = p.sleeper_player_id AND cr.season = $1
         JOIN teams_by_season t ON t.id = cr.team_id
@@ -94,6 +107,8 @@ async def notify_inactive_starters(conn, season: int, week: int, espn_ids: list[
     for r in rows:
         if r["lineup_slot"] in BENCHED or r["owner_id"] is None:
             continue
+        if not r["injury_status"]:
+            continue  # healthy all week: more likely ESPN noise than a scratch
         pregame_key = f"pregame-{r['league_id']}-{season}-{week}-{r['team_id']}-{r['sleeper_player_id']}"
         if await conn.fetchval("SELECT 1 FROM notification_once WHERE key = $1", pregame_key):
             continue  # already told "he's listed Out"
