@@ -33,6 +33,22 @@ export default function SurvivorPoolScreen() {
     .slice(-4);
   const lastPopular = [...field.popularity].reverse().find((w) => w.week < pool.week) ?? field.popularity.at(-1) ?? null;
 
+  const invite = (
+        <EliteCard style={[styles.pad, styles.gap]}>
+          <EliteLabel>INVITE</EliteLabel>
+          <Text style={styles.muted}>{pool.league_id ? `Anyone in ${pool.league_name ?? 'the league'} can join from their Survivor page, or with this code.` : 'Anyone with this code can join.'}</Text>
+          <View style={styles.codeRow}>
+            <Text style={styles.code}>{pool.join_code}</Text>
+            <Pressable
+              onPress={() => void Share.share({ message: `Join my survivor pool "${pool.name}" on The Weekend with code ${pool.join_code}` })}
+              style={styles.outline}
+              accessibilityRole="button">
+              <Text style={styles.outlineText}>Share</Text>
+            </Pressable>
+          </View>
+        </EliteCard>
+  );
+
   async function addEntry() {
     setAdding(true);
     try {
@@ -81,6 +97,7 @@ export default function SurvivorPoolScreen() {
         </View>
       </View>
       {pool.prize_note ? <Text style={styles.prize}>{pool.prize_note}</Text> : null}
+      {field.rows.length <= 1 && invite}
       {field.winners.length > 0 && (
         <EliteCard tone="green" style={styles.pad}>
           <Text style={styles.winner}>{field.winners.length === 1 ? `${field.winners[0]} is the last one standing` : `${field.winners.join(' and ')} split it`}</Text>
@@ -150,19 +167,7 @@ export default function SurvivorPoolScreen() {
         <FieldRow key={r.entry_id} row={r} weeks={shownWeeks} lives={pool.lives} />
       ))}
 
-      <EliteCard style={[styles.pad, styles.gap]}>
-        <EliteLabel>INVITE</EliteLabel>
-        <Text style={styles.muted}>{pool.league_id ? `Anyone in ${pool.league_name ?? 'the league'} can join from their Survivor page, or with this code.` : 'Anyone with this code can join.'}</Text>
-        <View style={styles.codeRow}>
-          <Text style={styles.code}>{pool.join_code}</Text>
-          <Pressable
-            onPress={() => void Share.share({ message: `Join my survivor pool "${pool.name}" on The Weekend with code ${pool.join_code}` })}
-            style={styles.outline}
-            accessibilityRole="button">
-            <Text style={styles.outlineText}>Share</Text>
-          </Pressable>
-        </View>
-      </EliteCard>
+      {field.rows.length > 1 && invite}
     </ScrollView>
   );
 }

@@ -16,7 +16,7 @@ type BoardTeam = SurvivorBoardTeam & { kickoff: string | null };
  * week-by-week planner underneath. Same rules as the app: each pick
  * locks at its own kickoff and other people's picks show once it starts.
  */
-export function SurvivorPoolRoom({ poolId, entryId }: { poolId: number; entryId: number | null }) {
+export function SurvivorPoolRoom({ poolId, entryId, justCreated = false }: { poolId: number; entryId: number | null; justCreated?: boolean }) {
   const [pool, setPool] = useState<SurvivorPoolDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [entry, setEntry] = useState<number | null>(entryId);
@@ -68,6 +68,23 @@ export function SurvivorPoolRoom({ poolId, entryId }: { poolId: number; entryId:
           </nav>
         )}
       </div>
+
+      {(justCreated || field.rows.length <= 1) && (
+        <EliteCard tone="green" className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <span className="flex flex-col">
+            <span className="text-sm font-bold">{justCreated ? "Pool created. Send this code to anyone you want in:" : "Send this code to anyone you want in:"}</span>
+            <span className={`${ANTON} text-4xl tracking-[6px]`}>{pool.join_code}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard?.writeText(`Join my survivor pool "${pool.name}" on The Weekend with code ${pool.join_code}`)}
+            className="min-h-10 rounded-full px-5 text-sm font-extrabold"
+            style={{ background: ELITE.green, color: ELITE.deep }}
+          >
+            Copy invite
+          </button>
+        </EliteCard>
+      )}
 
       {field.winners.length > 0 && (
         <EliteCard tone="green" className="p-4 text-lg font-extrabold" style={{ color: ELITE.green }}>

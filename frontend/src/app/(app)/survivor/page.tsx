@@ -28,6 +28,11 @@ export default function SurvivorHubPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh().catch(() => setError("Couldn't load your pools. Are you signed in?"));
   }, [refresh]);
+  useEffect(() => {
+    // Straight from Create a League's "Just a survivor pool".
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (new URLSearchParams(window.location.search).get("create")) setCreating(true);
+  }, []);
 
   async function join(body: { code?: string; pool_id?: number }) {
     setBusy(true);
@@ -79,7 +84,7 @@ export default function SurvivorHubPage() {
       </div>
 
       {creating ? (
-        <CreatePool hub={hub} onCancel={() => setCreating(false)} onCreated={(id) => router.push(`/survivor/${id}`)} />
+        <CreatePool hub={hub} onCancel={() => setCreating(false)} onCreated={(id) => router.push(`/survivor/${id}?created=1`)} />
       ) : (
         <div className="flex flex-wrap gap-3">
           <button

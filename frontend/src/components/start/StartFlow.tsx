@@ -673,6 +673,7 @@ export function StartFlow({
           <Option on={source === "sleeper"} onClick={() => setSource("sleeper")} icon={<DownloadIcon />} color="#38bdf8" title="Sleeper" text="Paste your league link. No sign-in." />
           <Option on={false} onClick={() => {}} disabled icon={<DownloadIcon />} color="#a78bfa" title="Yahoo" text="Coming soon." />
           <Option on={source === "fresh"} onClick={() => setSource("fresh")} icon={<PlusIcon />} color="var(--wl-accent)" title="Starting a new league" text="Draft here with good defaults. Tweak anything later." />
+          <Option on={false} onClick={() => router.push("/survivor?create=1")} icon={<PlusIcon />} color="#39ff14" title="Just a survivor pool" text="No league needed. Make a pool and get a code to send out." />
         </div>
         {source === "fresh" && (
           <label className={styles.label}>

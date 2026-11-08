@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, Stack, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 
 import { ANTON, Elite } from '@/components/elite/Elite';
 import { Text } from '@/components/Text';
@@ -89,6 +89,11 @@ export default function NewSurvivorPoolScreen() {
       haptics.success();
       await queryClient.invalidateQueries({ queryKey: ['survivor-pools'] });
       router.replace(`/survivor/${res.id}` as Href);
+      const poolName = name.trim() || (leagueChosen && league ? `${league.name} Survivor` : 'Survivor Pool');
+      Alert.alert('Pool created', `Your code is ${res.join_code}. Send it to anyone you want in the pool.`, [
+        { text: 'Done', style: 'cancel' },
+        { text: 'Share code', onPress: () => void Share.share({ message: `Join my survivor pool "${poolName}" on The Weekend with code ${res.join_code}` }) },
+      ]);
     } catch (e) {
       haptics.error();
       Alert.alert("Couldn't create the pool", e instanceof Error ? e.message : 'Try again.');

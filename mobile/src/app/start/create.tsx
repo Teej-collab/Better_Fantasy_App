@@ -425,6 +425,14 @@ export default function CreateScreen() {
         <OptionCard on={source === 'sleeper'} onPress={() => setSource('sleeper')} icon="download" color="#38bdf8" title="Sleeper" text="Paste your league link. No sign-in." />
         <OptionCard on={false} onPress={() => {}} disabled icon="download" color="#a78bfa" title="Yahoo" text="Coming soon." />
         <OptionCard on={source === 'fresh'} onPress={() => setSource('fresh')} icon="plus" color={Colors.accent} title="Starting a new league" text="Draft here with good defaults. Tweak anything later." />
+        <OptionCard
+          on={false}
+          onPress={() => router.push('/survivor/new' as Href)}
+          icon="plus"
+          color="#39ff14"
+          title="Just a survivor pool"
+          text="No league needed. Make a pool and get a code to send out."
+        />
       </View>
       {source === 'fresh' && (
         <Field {...nameField.field} label="League name" value={name} onChangeText={setName} maxLength={40} placeholder="Sunday Scaries" style={styles.bigField} />
