@@ -156,3 +156,49 @@ async def get_doubled_weeks_by_owner(conn, season: int, league_id: int = DEFAULT
             {"week": r["week"], "owed_before": r["owed_before"], "owed_after": r["owed_after"]}
         )
     return by_owner
+
+
+async def get_chug_cheers(conn, chug_ids: list[int]) -> dict[int, list[dict]]:
+    """Who cheered each chug, oldest first — for GET /chug/feed."""
+    rows = await conn.fetch(
+        """
+        SELECT cc.chug_id, cc.owner_id, owners.display_name
+        FROM chug_cheers cc
+        JOIN owners ON owners.owner_id = cc.owner_id
+        WHERE cc.chug_id = ANY($1::int[])
+        ORDER BY cc.created_at
+        """,
+        chug_ids,
+    )
+    cheers: dict[int, list[dict]] = {}
+    for r in rows:
+        cheers.setdefault(r["chug_id"], []).append({"owner_id": r["owner_id"], "name": r["display_name"]})
+    return cheers
+
+
+async def get_chug_for_cheers(conn, chug_id: int, league_id: int):
+    """The chug's poster and season, scoped to league_id like
+    get_chug_video_key."""
+    return await conn.fetchrow(
+        """
+        SELECT cs.id, cs.season, owners.owner_id
+        FROM chug_scores cs
+        JOIN owners ON owners.discord_user_id = cs.discord_user_id
+        WHERE cs.id = $1 AND cs.league_id = $2
+        """,
+        chug_id, league_id,
+    )
+
+
+async def toggle_chug_cheers(conn, chug_id: int, owner_id: int) -> bool:
+    """Adds the owner's cheers, or takes it back if they'd already
+    cheered. True when it's now cheered."""
+    removed = await conn.fetchval(
+        "DELETE FROM chug_cheers WHERE chug_id = $1 AND owner_id = $2 RETURNING 1", chug_id, owner_id
+    )
+    if removed:
+        return False
+    await conn.execute(
+        "INSERT INTO chug_cheers (chug_id, owner_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", chug_id, owner_id
+    )
+    return True

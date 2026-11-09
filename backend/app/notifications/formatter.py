@@ -194,6 +194,13 @@ def chug_posted(owner_name: str, final_score: float, has_video: bool) -> dict:
     return _payload("🍺 New Chug Posted", body, "/chug", "chug_posted")
 
 
+def chug_cheered(owner_name: str, chug_id: int) -> dict:
+    """To the chugger when someone cheers their chug (POST
+    /chug/{id}/cheers). Tagged per chug so a run of cheers replaces
+    itself instead of stacking."""
+    return _payload("🍻 Cheers!", f"{owner_name} cheered your chug.", "/chug", "chug_cheered", f"chug-cheers-{chug_id}")
+
+
 _TD_KIND_LABEL = {"rush_td": "Rushing TD", "rec_td": "Receiving TD", "pass_td": "Passing TD"}
 
 

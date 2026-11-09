@@ -39,3 +39,15 @@ async def notify_chug_posted(
             "Chug-posted push notification failed (season=%s league_id=%s poster_owner_id=%s)",
             season, league_id, poster_owner_id,
         )
+
+
+async def notify_chug_cheered(conn, league_id: int, chug_id: int, chugger_owner_id: int, cheerer_name: str) -> None:
+    """Tells the chugger someone cheered their chug. About them, not
+    league chatter, so not league_wide."""
+    try:
+        prefs = await preferences_queries.get_preferences(conn, chugger_owner_id)
+        if prefs["push_enabled"]:
+            payload = dispatcher.in_league(formatter.chug_cheered(cheerer_name, chug_id), league_id)
+            await dispatcher.send_to_owner(conn, chugger_owner_id, payload)
+    except Exception:
+        logger.exception("Chug-cheered push failed (chug_id=%s owner_id=%s)", chug_id, chugger_owner_id)

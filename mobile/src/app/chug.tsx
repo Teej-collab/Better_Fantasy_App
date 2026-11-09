@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { ActionSheetIOS, Alert, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { ChugBreakdown } from '@/components/ChugBreakdown';
+import { ChugCheers } from '@/components/ChugCheers';
 import { ANTON, Elite, EliteCard, EliteChips, EliteLabel, eliteText, EliteTitle, Hex, SATISFY } from '@/components/elite/Elite';
 import { ChugVideo } from '@/components/home/FeedCards';
 import { ShareableCard } from '@/components/ShareableCard';
@@ -520,7 +521,7 @@ function ChugCard({ chug, lit }: { chug: ChugFeedEntry; lit: boolean }) {
             </Pressable>
           )}
         </>
-      )}
+      )}      <ChugCheers chug={chug} />
     </EliteCard>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { getChugVideoUrl, type ChugFeedEntry } from "@/lib/api";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+import { ChugCheers } from "@/components/ChugCheers";
 
 // One chug's row: collapsed to a single compact line by default (owner,
 // week, grade) — tapping it expands a capped-height video player below,
@@ -91,6 +92,7 @@ function ChugCard({ chug }: { chug: ChugFeedEntry }) {
           )}
         </div>
       )}
+      <ChugCheers chug={chug} className="px-4 pb-3" />
     </li>
   );
 }

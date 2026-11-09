@@ -760,6 +760,11 @@ export type ChugFeedEntry = {
   has_video: boolean;
   roast: string | null;
   hype_detail?: ChugHypeDetail | null;
+  // Who cheered it (oldest first), whether you did, and whether it's
+  // your own chug (no Cheers button on your own).
+  cheers?: { owner_id: number; name: string }[];
+  cheered?: boolean;
+  mine?: boolean;
 };
 
 export type LeagueActivityItem =

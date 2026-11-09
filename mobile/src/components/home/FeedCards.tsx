@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { ChugCheers } from '@/components/ChugCheers';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
@@ -81,6 +82,7 @@ function ChugRow({ chug, divided }: { chug: ChugFeedEntry; divided: boolean }) {
           )}
         </View>
       )}
+      <ChugCheers chug={chug} compact />
     </View>
   );
 }

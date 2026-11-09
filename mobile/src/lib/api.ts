@@ -429,6 +429,8 @@ export const api = {
     request<{ season: number; owners: Record<string, ChugLedgerEvent[]> }>(season !== undefined ? `/chug/ledger?season=${season}` : '/chug/ledger'),
   chugFeed: (season?: number) =>
     request<{ chugs: ChugFeedEntry[] }>(season !== undefined ? `/chug/feed?season=${season}` : '/chug/feed'),
+  toggleChugCheers: (chugId: number) =>
+    request<{ cheered: boolean; cheers: { owner_id: number; name: string }[] }>(`/chug/${chugId}/cheers`, { method: 'POST' }),
   chugSeasons: () => request<{ seasons: number[] }>('/chug/seasons'),
   // No season = all-time.
   chugLeaderboard: (season?: number) =>

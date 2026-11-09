@@ -25,6 +25,7 @@ from app.auth.league_context import (
     require_active_league_id,
     require_league_access,
     is_site_admin,
+    optional_session_payload,
     require_league_commissioner,
     resolve_owner_id,
 )
@@ -45,7 +46,7 @@ from app.domain.chug_standing import (
     undo_week,
     waive_deadline_doubling,
 )
-from app.notifications.chug_events import notify_chug_posted
+from app.notifications.chug_events import notify_chug_cheered, notify_chug_posted
 from app.providers import chug_storage
 from app.providers.chug_analyzer_bridge import run_chug_analysis
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_week_scoreboard
@@ -117,16 +118,20 @@ async def chug_ledger(
 
 @router.get("/feed")
 async def chug_feed(
-    season: int | None = None, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+    request: Request, season: int | None = None, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
 ):
     """Individual graded chugs, newest first — the "Recent Chugs" list,
     distinct from /chug/leaderboard's per-owner season totals. Videos
     aren't included directly (has_video just says whether one exists);
     a viewer fetches a playable URL per-chug from GET /chug/{id}/video
     only once they actually open it, so this stays cheap regardless of
-    how many chugs have video."""
+    how many chugs have video. `cheers` is who cheered it and
+    `cheered` whether the viewer did, `mine` whether it's theirs."""
+    payload = optional_session_payload(request)
     async with pool.acquire() as conn:
         rows = await chug_queries.list_recent_chugs(conn, league_id, season)
+        cheers = await chug_queries.get_chug_cheers(conn, [r["id"] for r in rows])
+        viewer = await resolve_owner_id(conn, payload) if payload else None
     return {
         "chugs": [
             {
@@ -139,10 +144,38 @@ async def chug_feed(
                 "has_video": r["has_video"],
                 "roast": r["roast"],
                 "hype_detail": json.loads(r["hype_detail"]) if r["hype_detail"] else None,
+                "cheers": cheers.get(r["id"], []),
+                "cheered": any(c["owner_id"] == viewer for c in cheers.get(r["id"], [])),
+                "mine": r["owner_id"] == viewer,
             }
             for r in rows
         ]
     }
+
+
+@router.post("/{chug_id}/cheers")
+async def cheer_chug(chug_id: int, request: Request, pool=Depends(get_pool)):
+    """Toggles the viewer's Cheers on someone else's chug — we watched
+    it, we liked it (2026-11-09). The first cheers tells the chugger."""
+    payload = _decode_session(get_session_token(request))
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            raise HTTPException(status_code=403, detail="You're not on a team in this league")
+        chug = await chug_queries.get_chug_for_cheers(conn, chug_id, league_id)
+        if chug is None:
+            raise HTTPException(status_code=404, detail="Chug not found")
+        if chug["owner_id"] == owner_id:
+            raise HTTPException(status_code=400, detail="You can't cheers your own chug")
+        cheered = await chug_queries.toggle_chug_cheers(conn, chug_id, owner_id)
+        cheers = (await chug_queries.get_chug_cheers(conn, [chug_id])).get(chug_id, [])
+        if cheered:
+            name = next((c["name"] for c in cheers if c["owner_id"] == owner_id), "Someone")
+            await notify_chug_cheered(conn, league_id, chug_id, chug["owner_id"], name)
+    return {"cheered": cheered, "cheers": cheers}
 
 
 @router.get("/{chug_id}/video")

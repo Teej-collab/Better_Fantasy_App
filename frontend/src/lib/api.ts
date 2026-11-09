@@ -1335,6 +1335,11 @@ export type ChugFeedEntry = {
   // The content-based hype grade's breakdown (backend app/domain/
   // chug_hype.py); null on older chugs and any that couldn't be graded.
   hype_detail?: { self_roast: number; comedy: number; commitment: number; verdict: string | null; quote: string | null } | null;
+  // Who cheered it (oldest first), whether you did, and whether it's
+  // your own chug (no Cheers button on your own).
+  cheers?: { owner_id: number; name: string }[];
+  cheered?: boolean;
+  mine?: boolean;
 };
 
 // Individual graded chugs, newest first — distinct from
@@ -1394,6 +1399,15 @@ export function getLeagueActivity(season: number, sessionCookie: string | undefi
 // points straight at the bucket (not this app), is short-lived, and is
 // itself gated server-side on real league membership; the frontend
 // only needs to fetch it once per playback, not on every page load.
+export async function toggleChugCheers(chugId: number): Promise<{ cheered: boolean; cheers: { owner_id: number; name: string }[] }> {
+  const res = await fetch(`/api/backend/chug/${chugId}/cheers`, { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Couldn't cheers (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function getChugVideoUrl(chugId: number): Promise<{ url: string; expires_in: number }> {
   const res = await fetch(`/api/backend/chug/${chugId}/video`, { cache: "no-store" });
   if (!res.ok) {

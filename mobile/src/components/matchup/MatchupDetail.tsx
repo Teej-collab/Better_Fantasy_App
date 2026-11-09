@@ -182,12 +182,21 @@ function LiveProjection({ live, pregame, small }: { live: number; pregame: numbe
   );
 }
 
+// Sized by digit count, not adjustsFontSizeToFit: with no floor, iOS
+// sometimes measured the score before the tile had its width and shrank
+// it to a speck that never grew back (a manager caught it several times,
+// 2026-11-08).
+function ledSize(text: string) {
+  return text.length <= 5 ? null : { fontSize: 38, lineHeight: 54 };
+}
+
 function ScoreTile({ side, opponent, mine }: { side: MatchupContextSide; opponent: MatchupContextSide; mine: boolean }) {
   const leading = side.score !== null && opponent.score !== null && side.score > opponent.score;
+  const score = side.score !== null ? side.score.toFixed(1) : '0.0';
   return (
     <View style={[styles.scoreTile, { borderColor: leading ? 'rgba(57,255,20,0.35)' : mine ? 'rgba(255,122,26,0.35)' : Elite.line }]}>
-      <Text style={[styles.led, leading ? styles.ledLead : mine ? styles.ledMine : null]} numberOfLines={1} adjustsFontSizeToFit>
-        {side.score !== null ? side.score.toFixed(1) : '0.0'}
+      <Text style={[styles.led, ledSize(score), leading ? styles.ledLead : mine ? styles.ledMine : null]} numberOfLines={1}>
+        {score}
       </Text>
       {side.projected_total !== null && <LiveProjection live={side.projected_total} pregame={side.pregame_projected_total} />}
     </View>

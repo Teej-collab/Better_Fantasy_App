@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getChugVideoUrl, type ChugFeedEntry } from "@/lib/api";
 import { ANTON, ELITE, EliteCard, EliteLabel, Hex, SATISFY } from "@/components/elite/Elite";
 import { ReadMore } from "@/components/elite/ReadMore";
+import { ChugCheers } from "@/components/ChugCheers";
 
 // The Chug Board's live parts (elite pass, 2026-10-31): what you owe as
 // a lit cell with the countdown to Monday Night kickoff, and the recent
@@ -164,6 +165,7 @@ function ChugCard({ chug, lit }: { chug: ChugFeedEntry; lit: boolean }) {
         )}
         {chug.hype_detail && <HypeBars detail={chug.hype_detail} />}
         {chug.roast && <ReadMore text={chug.roast} more="Read the whole roast" className="text-sm leading-relaxed text-[#f5f4ec]/85" />}
+        <ChugCheers chug={chug} />
       </EliteCard>
     </li>
   );
