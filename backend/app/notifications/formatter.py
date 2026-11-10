@@ -233,7 +233,10 @@ def fantasy_player_touchdown(
     )
 
 
-def fantasy_red_zone(pro_team: str, player_names: list[str], matchup_id: int | None) -> dict:
+def fantasy_red_zone(pro_team: str, player_names: list[str], matchup_id: int | None, game_id: str | None = None) -> dict:
+    """Opens that game's Gamecast, where the drive is happening (a
+    manager asked, 2026-11-08), falling back to the matchup when the
+    game couldn't be found."""
     if len(player_names) == 1:
         who = f"{player_names[0]} is"
     elif len(player_names) == 2:
@@ -243,7 +246,7 @@ def fantasy_red_zone(pro_team: str, player_names: list[str], matchup_id: int | N
     return _payload(
         f"🚨 Red Zone · {pro_team}",
         f"{who} inside the 20. Touchdown watch.",
-        _matchup_url(matchup_id), "fantasy_red_zone", f"red-zone-{pro_team}",
+        f"/gamecast/{game_id}" if game_id else _matchup_url(matchup_id), "fantasy_red_zone", f"red-zone-{pro_team}",
     )
 
 

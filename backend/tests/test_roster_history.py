@@ -200,6 +200,31 @@ async def test_freezing_the_week_keeps_its_lineup_and_opens_next_weeks(pool):
     assert week7 == {"test-rh-f1": "BE", "test-rh-f2": "RB"}
 
 
+async def test_weeks_after_the_lineup_week_read_the_live_roster(pool):
+    """A player dropped after the week froze is gone from next week AND
+    every week after it, not carried forward from the frozen snapshot
+    (a manager dropped Dobbins and still saw him in later weeks,
+    2026-11-05)."""
+    from app.queries.league import freeze_current_week_lineups
+
+    team_id = await _seed_team(pool, 42)
+    async with pool.acquire() as conn:
+        await _add_player(conn, "test-rh-d1", "Keeper", team_id, "RB")
+        await _add_player(conn, "test-rh-d2", "Dropped", team_id, "BE")
+        await _set_week(conn, 6)
+        await snapshot_week(conn, TEST_SEASON, 6)
+        await freeze_current_week_lineups(conn, TEST_SEASON, 6)
+
+        await conn.execute(
+            "DELETE FROM current_rosters WHERE season = $1 AND sleeper_player_id = 'test-rh-d2'", TEST_SEASON
+        )
+        weeks = {
+            w: {r["player_id"] for r in await get_roster_for_week(conn, TEST_SEASON, team_id, w)} for w in (6, 7, 8, 10)
+        }
+    assert weeks[6] == {"test-rh-d1", "test-rh-d2"}
+    assert weeks[7] == weeks[8] == weeks[10] == {"test-rh-d1"}
+
+
 async def test_freeze_only_applies_to_the_current_week(pool):
     from app.queries.league import freeze_current_week_lineups, get_lineup_week
 

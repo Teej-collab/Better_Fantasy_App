@@ -26,6 +26,7 @@ import logging
 import time
 
 from app.domain import live_activity
+from app.gamecast.providers import get_nfl_data_provider
 from app.notifications import dispatcher, formatter
 from app.queries import owner_preferences as preferences_queries
 
@@ -221,6 +222,23 @@ def red_zone_entries(games: list[dict], now: float | None = None) -> list[str]:
     return entered
 
 
+async def _gamecast_ids(teams: list[str]) -> dict[str, str]:
+    """Each team's live Gamecast game id, from whichever provider Gamecast
+    runs on (its ids aren't always the scoreboard's ESPN ids). Empty if
+    the provider can't be reached; the push then opens the matchup."""
+    try:
+        live = await get_nfl_data_provider().list_live_games()
+    except Exception:
+        logger.warning("Couldn't list Gamecast games for red zone links", exc_info=True)
+        return {}
+    ids = {}
+    for g in live:
+        for team in (g.home_team.abbr, g.away_team.abbr):
+            if team in teams:
+                ids[team] = g.game_id
+    return ids
+
+
 async def notify_red_zone(conn, season: int, week: int | None, games: list[dict]) -> None:
     """One push per owner per team that just entered the red zone,
     naming that owner's own STARTERS on it (bench players can't score
@@ -241,6 +259,7 @@ async def notify_red_zone(conn, season: int, week: int | None, games: list[dict]
             """,
             season, entered, list(_RED_ZONE_POSITIONS),
         )
+        game_ids = await _gamecast_ids(entered) if rows else {}
         grouped: dict[tuple, dict] = {}
         for r in rows:
             entry = grouped.setdefault((r["owner_id"], r["team_id"], r["pro_team"]), {"names": [], "league_id": r["league_id"]})
@@ -252,7 +271,7 @@ async def notify_red_zone(conn, season: int, week: int | None, games: list[dict]
             await dispatcher.send_to_owner(
                 conn, owner_id,
                 dispatcher.in_league(formatter.fantasy_red_zone(
-                    pro_team, entry["names"], await _matchup_id_for_team(conn, season, week, team_id)
+                    pro_team, entry["names"], await _matchup_id_for_team(conn, season, week, team_id), game_ids.get(pro_team)
                 ), entry["league_id"]),
             )
     except Exception:

@@ -225,6 +225,35 @@ def test_touchdown_copy_names_the_kind_points_and_matchup():
     assert no_matchup["url"] == "/team"
 
 
+def test_red_zone_opens_the_games_gamecast():
+    from app.notifications import formatter
+
+    assert formatter.fantasy_red_zone("KC", ["P"], 12, "401772936")["url"] == "/gamecast/401772936"
+    # Gamecast couldn't find the game: the matchup instead.
+    assert formatter.fantasy_red_zone("KC", ["P"], 12)["url"] == "/matchups/12"
+
+
+async def test_gamecast_ids_maps_each_team_to_its_live_game(monkeypatch):
+    from types import SimpleNamespace
+
+    def game(gid, home, away):
+        return SimpleNamespace(game_id=gid, home_team=SimpleNamespace(abbr=home), away_team=SimpleNamespace(abbr=away))
+
+    class FakeProvider:
+        async def list_live_games(self):
+            return [game("g1", "KC", "BUF"), game("g2", "DAL", "PHI")]
+
+    monkeypatch.setattr(fantasy_events, "get_nfl_data_provider", lambda: FakeProvider())
+    assert await fantasy_events._gamecast_ids(["KC", "PHI"]) == {"KC": "g1", "PHI": "g2"}
+
+    class DownProvider:
+        async def list_live_games(self):
+            raise RuntimeError("down")
+
+    monkeypatch.setattr(fantasy_events, "get_nfl_data_provider", lambda: DownProvider())
+    assert await fantasy_events._gamecast_ids(["KC"]) == {}
+
+
 def test_red_zone_entries_fires_once_per_entry_with_a_cooldown():
     fantasy_events._reset_red_zone_state_for_tests()
     live_rz = [{"state": "in", "is_redzone": True, "possession_team_abbr": "KC"}]

@@ -559,11 +559,17 @@ async def get_current_rosters(conn, season: int, team_ids: list[int], week: int)
 # 2026-09: this is what fixes /teams/{id}/roster — see
 # app/routers/league.py — from reading the wrong (ESPN's own,
 # disconnected) league's roster for every week it shows.
-async def get_roster_for_week(conn, season: int, team_id: int, week: int):
+def _reads_live_roster(week: int, lineup_week: int | None) -> bool:
     # The live lineup is the lineup week's (the current week until its
     # last game ends, then the next one); a frozen current week reads
-    # its final snapshot like any past week.
-    if week == await get_lineup_week(conn, season):
+    # its final snapshot like any past week. Weeks after the lineup week
+    # have no snapshot of their own, and carrying the frozen one forward
+    # kept a player dropped since then in every later week (2026-11-05).
+    return lineup_week is not None and week >= lineup_week
+
+
+async def get_roster_for_week(conn, season: int, team_id: int, week: int):
+    if _reads_live_roster(week, await get_lineup_week(conn, season)):
         return await get_current_roster(conn, season, team_id, week)
     return await _get_past_roster(conn, season, team_id, week)
 
@@ -586,7 +592,7 @@ async def get_rosters_for_week(conn, season: int, team_ids: list[int], week: int
     roster_history, but look up the current week once, not per team."""
     if not team_ids:
         return {}
-    if week == await get_lineup_week(conn, season):
+    if _reads_live_roster(week, await get_lineup_week(conn, season)):
         return await get_current_rosters(conn, season, team_ids, week)
     return {tid: await _get_past_roster(conn, season, tid, week) for tid in team_ids}
 
