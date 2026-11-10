@@ -19,6 +19,11 @@ push_enabled plus their own preference:
   projections; notify_in_game_injuries pushes each new state once,
   using live_injury_status.notified_state as the marker.
 
+Each run also writes every feed player's designation onto
+players.injury_status (apply_statuses), the column the app shows. That
+used to come only from the Sleeper pull, so a Wednesday "Questionable"
+took hours to appear; the watch runs every 15 minutes (2026-11-10).
+
 The very first watch run (empty player_injury_status) only records the
 feed, so turning this on doesn't push every existing injury at once.
 A player seen for the first time later (a new injury, or a player newly
@@ -90,6 +95,38 @@ def parse_injury_feed(feed: dict) -> list[dict]:
     return list(by_player.values())
 
 
+# ESPN's designations in Sleeper's spelling, the one players.injury_status
+# uses. Active clears it. Anything else ESPN sends (a suspension) is left
+# to the Sleeper pull.
+_SLEEPER_STATUS = {
+    "Active": None, "Questionable": "Questionable", "Doubtful": "Doubtful",
+    "Out": "Out", "Injured Reserve": "IR",
+}
+
+
+async def apply_statuses(conn, entries: list[dict], sleeper_by_espn: dict[int, str]) -> int:
+    """Writes each feed player's designation onto players.injury_status,
+    only where it differs. Returns how many players changed."""
+    ids, statuses = [], []
+    for entry in entries:
+        sleeper_id = sleeper_by_espn.get(entry["espn_player_id"])
+        if sleeper_id is None or entry["status"] not in _SLEEPER_STATUS:
+            continue
+        ids.append(sleeper_id)
+        statuses.append(_SLEEPER_STATUS[entry["status"]])
+    if not ids:
+        return 0
+    result = await conn.execute(
+        """
+        UPDATE players p SET injury_status = v.status, updated_at = now()
+        FROM unnest($1::text[], $2::text[]) AS v(sleeper_player_id, status)
+        WHERE p.sleeper_player_id = v.sleeper_player_id AND p.injury_status IS DISTINCT FROM v.status
+        """,
+        ids, statuses,
+    )
+    return int(result.split()[-1])
+
+
 def classify(previous: dict | None, current: dict, now: datetime.datetime) -> tuple[str, str] | None:
     """What an owner should hear about this feed entry, as
     (kind, direction) — kind "injury" with direction new/upgrade/
@@ -152,6 +189,7 @@ async def run_injury_watch(conn, season: int, feed: dict, now: datetime.datetime
         [e["espn_player_id"] for e in entries],
     )
     sleeper_by_espn = {r["espn_player_id"]: r["sleeper_player_id"] for r in rows}
+    statuses_updated = await apply_statuses(conn, entries, sleeper_by_espn)
     previous = {
         r["sleeper_player_id"]: dict(r)
         for r in await conn.fetch("SELECT sleeper_player_id, status, news_id, news_at FROM player_injury_status")
@@ -206,7 +244,7 @@ async def run_injury_watch(conn, season: int, feed: dict, now: datetime.datetime
                 sent += 1
             except Exception:
                 logger.exception("Injury alert failed (player=%s owner=%s)", sleeper_id, owner["owner_id"])
-    return {"feed_players": len(entries), "changed": len(changed), "alerts": len(alerts), "pushes": sent, "seeded": seeding}
+    return {"feed_players": len(entries), "statuses_updated": statuses_updated, "changed": len(changed), "alerts": len(alerts), "pushes": sent, "seeded": seeding}
 
 
 async def notify_in_game_injuries(conn, season: int, week: int) -> int:

@@ -9,7 +9,9 @@ Sleeper's docs (docs.sleeper.com) are explicit that /v1/players/nfl is a
 ~5MB payload meant to be fetched **at most once per day** and cached —
 this module is deliberately a single unauthenticated GET with no
 per-request usage anywhere in the app; only app/providers/sleeper/ingest.py
-(via the daily scheduler job or a manual admin trigger) ever calls it.
+(via the scheduler job or a manual admin trigger) ever calls it. The
+scheduler pulls it four times a day (commissioner's choice, 2026-11-10,
+so traded players change teams the same day) — don't add more.
 Never call fetch_all_players() from a request handler.
 """
 import requests

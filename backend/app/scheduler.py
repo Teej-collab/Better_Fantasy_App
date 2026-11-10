@@ -64,11 +64,13 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   change as fast as live sync itself runs (60s default), so polling
   faster than that would just recompute identical numbers.
 - Sleeper player sync (ENABLE_SLEEPER_PLAYER_SYNC_SCHEDULER): refreshes
-  the `players` table from Sleeper's free player API once a day, at a
-  fixed 7:00 PM Central (a cron time, so deploys don't reset it) —
-  Sleeper's own docs require at most one pull a day, so this interval
-  is a hard ceiling, not a tuning knob (see app/providers/sleeper/
-  client.py). There's also a manual POST /admin/players/sync trigger
+  the `players` table from Sleeper's free player API four times a day,
+  at 8 AM, noon, 4 PM and 7 PM Central (cron times, so deploys don't
+  reset them). Sleeper's docs ask for at most one pull a day; the
+  commissioner chose four (2026-11-10) so a traded or signed player's
+  new team shows within hours. Don't go past that (see app/providers/
+  sleeper/client.py). Injury statuses move faster than this, from the
+  injury watch below. There's also a manual POST /admin/players/sync trigger
   for the first-ever ingestion so it doesn't have to wait on a cron
   tick.
 - ADP snapshots (ENABLE_ADP_SNAPSHOT_SCHEDULER, 2026-10-27): once a day
@@ -158,12 +160,13 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   pick" pushes 3 hours before the week's first kickoff and 2 before the
   Sunday deadline (app/domain/survivor.py).
 - Injury alerts (ENABLE_INJURY_ALERTS_SCHEDULER, 2026-09-27): checks
-  ESPN's injuries feed every 2 hours (INJURY_WATCH_EVERY_HOURS) and
-  pushes status changes and news for rostered players
-  (app/notifications/injury_events.py). A cron schedule on odd hours
-  at :45 Central, not interval(), for the same deploy-reset reason as
-  the Sleeper sync below — and 11:45 AM lands after Sunday's inactives
-  for the noon games are announced. Also sends pushes held through an
+  ESPN's injuries feed every 15 minutes (INJURY_WATCH_EVERY_MINUTES;
+  every 2 hours until 2026-11-10) and pushes status changes and news
+  for rostered players (app/notifications/injury_events.py). It also
+  writes each player's designation onto players.injury_status, so the
+  app shows a new Questionable or Out within minutes instead of at the
+  next Sleeper pull. A cron schedule, not interval(), for the same
+  deploy-reset reason as the Sleeper sync. Also sends pushes held through an
   owner's quiet hours, every 5 minutes. In-game injury alerts ride the
   weekly compute job instead, right after it records them.
 """
@@ -1404,15 +1407,17 @@ def start_scheduler():
         # never ran, leaving injury statuses days stale (real report,
         # 2026-09-23: a player upgraded Out -> Doubtful still read Out).
         # 7 PM Central (commissioner's choice, 2026-09-23) catches the
-        # day's practice reports and IR placements the same evening,
-        # instead of the next morning. Still once a day — Sleeper's
-        # own limit for this endpoint (app/providers/sleeper/client.py).
-        # America/Chicago follows CST/CDT automatically.
+        # day's practice reports and IR placements the same evening;
+        # 8 AM, noon and 4 PM added 2026-11-10 so trades and signings
+        # change a player's team the same day. Four is the ceiling —
+        # Sleeper asks for one pull a day of this endpoint
+        # (app/providers/sleeper/client.py). America/Chicago follows
+        # CST/CDT automatically.
         _scheduler.add_job(
-            _run_sleeper_player_sync_job, "cron", hour=19, minute=0,
+            _run_sleeper_player_sync_job, "cron", hour="8,12,16,19", minute=0,
             timezone="America/Chicago", id="sleeper_player_sync",
         )
-        logger.info("Sleeper player sync scheduler started (daily at 7:00 PM Central)")
+        logger.info("Sleeper player sync scheduler started (8 AM, noon, 4 PM and 7 PM Central)")
         started_any = True
 
     if os.getenv("ENABLE_PROJECTION_ENGINE_SCHEDULER", "").lower() in ("1", "true", "yes"):
@@ -1494,13 +1499,15 @@ def start_scheduler():
         started_any = True
 
     if os.getenv("ENABLE_INJURY_ALERTS_SCHEDULER", "").lower() in ("1", "true", "yes"):
-        every_hours = int(os.getenv("INJURY_WATCH_EVERY_HOURS", "2"))
+        # One small public ESPN call a run, so every 15 minutes is cheap;
+        # quiet hours still hold the overnight pushes until morning.
+        every_minutes = int(os.getenv("INJURY_WATCH_EVERY_MINUTES", "15"))
         _scheduler.add_job(
-            _run_injury_watch_job, "cron", hour=f"1-23/{every_hours}", minute=45,
-            timezone="America/Chicago", id="injury_watch",
+            _run_injury_watch_job, "cron", minute=f"*/{every_minutes}",
+            timezone="America/Chicago", id="injury_watch", max_instances=1, coalesce=True,
         )
         _scheduler.add_job(_run_deferred_push_job, "interval", minutes=5, id="deferred_pushes")
-        logger.info("Injury alerts scheduler started (every %d hours at :45 Central)", every_hours)
+        logger.info("Injury alerts scheduler started (every %d minutes)", every_minutes)
         started_any = True
 
     if os.getenv("ENABLE_HEALTH_WATCH_SCHEDULER", "").lower() in ("1", "true", "yes"):

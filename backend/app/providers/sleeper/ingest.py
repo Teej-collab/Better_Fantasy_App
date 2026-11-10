@@ -132,8 +132,8 @@ def _stringify(value) -> str | None:
 
 async def sync_players(pool) -> int:
     """Fetches, filters, and upserts the full Sleeper player universe.
-    Returns the number of rows written. Never call more than once a
-    day — see client.py's module docstring."""
+    Returns the number of rows written. Only the scheduler's four
+    daily runs and the admin trigger call this — see client.py."""
     raw_players = fetch_all_players()
     season = int(os.getenv("ACTIVE_SEASON", "0") or 0)
     try:

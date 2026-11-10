@@ -138,6 +138,21 @@ async def test_watch_pushes_a_downgrade_to_the_owner_even_on_the_bench(pool, mon
     assert sent[0][1]["data"]["type"] == "injury_update"
 
 
+async def test_watch_writes_the_designation_the_app_shows(pool, monkeypatch):
+    await _seed(pool, "status", 710005, "test-inj-5", 990000005)
+    _capture(monkeypatch)
+    await _clear_watch_state(pool)
+
+    async with pool.acquire() as conn:
+        await injury_events.run_injury_watch(conn, TEST_SEASON, _feed(_entry(990000005, "Injured Reserve", "a", 5)), now=NOW)
+        on_ir = await conn.fetchval("SELECT injury_status FROM players WHERE sleeper_player_id = 'test-inj-5'")
+        await injury_events.run_injury_watch(conn, TEST_SEASON, _feed(_entry(990000005, "Active", "b", 1)), now=NOW)
+        cleared = await conn.fetchval("SELECT injury_status FROM players WHERE sleeper_player_id = 'test-inj-5'")
+
+    assert on_ir == "IR"
+    assert cleared is None
+
+
 async def test_watch_respects_the_news_and_injury_toggles(pool, monkeypatch):
     owner_id, _ = await _seed(pool, "toggles", 710003, "test-inj-2", 990000003)
     sent = _capture(monkeypatch)
