@@ -198,10 +198,10 @@ async def run_injury_watch(conn, season: int, feed: dict, now: datetime.datetime
                 if kind == "injury":
                     payload = formatter.injury_update(
                         owner["player_name"], direction, entry["status"], prev["status"] if prev else None,
-                        entry["injury"], entry["detail"], tag=f"injury-{sleeper_id}",
+                        entry["injury"], entry["detail"], tag=f"injury-{sleeper_id}", sleeper_id=sleeper_id,
                     )
                 else:
-                    payload = formatter.player_news(owner["player_name"], entry["detail"], tag=f"news-{sleeper_id}")
+                    payload = formatter.player_news(owner["player_name"], entry["detail"], tag=f"news-{sleeper_id}", sleeper_id=sleeper_id)
                 await dispatcher.send_to_owner(conn, owner["owner_id"], payload, now=now)
                 sent += 1
             except Exception:

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ELITE, EliteCard, EliteTitle } from "@/components/elite/Elite";
 import { announceUnread, inboxApi, type ChugsOwed, type InboxNotification } from "@/lib/inboxApi";
+import { getMyLeagues } from "@/lib/leaguesApi";
 
 /**
  * The notification inbox (2026-11-08): everything we've pushed you in the
@@ -79,6 +80,10 @@ export default function NotificationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [chugs, setChugs] = useState<ChugsOwed[]>([]);
+  const [activeLeagueId, setActiveLeagueId] = useState<number | null>(null);
+  useEffect(() => {
+    getMyLeagues().then(({ activeLeagueId }) => setActiveLeagueId(activeLeagueId), () => {});
+  }, []);
 
   const refresh = useCallback(async () => {
     const r = await inboxApi.list();
@@ -103,7 +108,12 @@ export default function NotificationsPage() {
 
   function open(n: InboxNotification) {
     if (!n.read) void markRead([n.id]);
-    router.push(n.url);
+    // From another league: /open switches to it first (a full load, since
+    // it's a route handler, not a page).
+    const league = n.data.league_id;
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- /open is a route handler that redirects
+    if (typeof league === "number" && league !== activeLeagueId) window.location.assign(`/open?league=${league}&to=${encodeURIComponent(n.url)}`);
+    else router.push(n.url);
   }
 
   async function act(n: InboxNotification, action: string) {

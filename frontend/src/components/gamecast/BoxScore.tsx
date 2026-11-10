@@ -17,7 +17,9 @@ const OPPONENT = "#60a5fa";
  * same fantasy-impact data as the Fantasy Impact panel; a name opens the
  * player's card.
  */
-export function BoxScore({ game, beta = false }: { game: LiveGame; beta?: boolean }) {
+// focusPlayerId: the player Gamecast was opened for (?player=) — their
+// team's tab opens and their rows are lit.
+export function BoxScore({ game, beta = false, focusPlayerId = null }: { game: LiveGame; beta?: boolean; focusPlayerId?: string | null }) {
   const [box, setBox] = useState<GamecastBoxScore | null>(null);
   const [mine, setMine] = useState<Set<string>>(new Set());
   const [theirs, setTheirs] = useState<Set<string>>(new Set());
@@ -42,9 +44,11 @@ export function BoxScore({ game, beta = false }: { game: LiveGame; beta?: boolea
 
   if (!box || box.teams.length === 0 || box.teams.every((t) => t.categories.length === 0)) return null;
 
-  // Opens on the team with your players in it, else the away team.
+  // Opens on the focused player's team, else the one with your players
+  // in it, else the away team.
+  const withFocus = focusPlayerId ? box.teams.findIndex((t) => t.categories.some((c) => c.athletes.some((a) => a.player_id === focusPlayerId))) : -1;
   const withMine = box.teams.findIndex((t) => t.categories.some((c) => c.athletes.some((a) => a.player_id && mine.has(a.player_id))));
-  const shown = box.teams[teamIndex ?? Math.max(0, withMine)] ?? box.teams[0];
+  const shown = box.teams[teamIndex ?? (withFocus >= 0 ? withFocus : Math.max(0, withMine))] ?? box.teams[0];
 
   return (
     <div
@@ -100,7 +104,10 @@ export function BoxScore({ game, beta = false }: { game: LiveGame; beta?: boolea
                 {category.athletes.map((a, row) => {
                   const bar = a.player_id && mine.has(a.player_id) ? MINE : a.player_id && theirs.has(a.player_id) ? OPPONENT : "transparent";
                   return (
-                    <tr key={a.espn_id ?? row} className={row % 2 === 0 ? "bg-black/[0.02] dark:bg-white/[0.03]" : ""}>
+                    <tr
+                      key={a.espn_id ?? row}
+                      className={focusPlayerId && a.player_id === focusPlayerId ? "bg-emerald-400/15" : row % 2 === 0 ? "bg-black/[0.02] dark:bg-white/[0.03]" : ""}
+                    >
                       <td className="py-1.5 pr-2 whitespace-nowrap" style={{ boxShadow: `inset 3px 0 0 ${bar}` }}>
                         <span className="pl-2.5">
                           {a.player_id ? (

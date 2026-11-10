@@ -406,7 +406,8 @@ async def request_join(body: RequestJoinBody, request: Request):
                 existing["league_id"],
             )
         ]
-        push = formatter.join_request(who or "Someone", existing["name"])
+        # Tagged with the league so the tap switches to it first.
+        push = dispatcher.in_league(formatter.join_request(who or "Someone", existing["name"]), existing["league_id"])
         for owner in owners:
             await dispatcher.send_to_owner(conn, owner, push)
     return {"sent": True, "league": existing["name"], "commissioner": existing["commissioner"]}

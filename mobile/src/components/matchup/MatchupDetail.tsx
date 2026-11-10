@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -27,7 +28,7 @@ import {
   type ComparisonRow,
 } from '@/lib/matchups';
 import { nflTeamName, sleeperHeadshotUrl, teamLogoUrl } from '@/lib/nflTeams';
-import { openPlayer, useMe, useScoringRates } from '@/lib/queries';
+import { openPlayer, useGamecastIdFinder, useMe, useScoringRates } from '@/lib/queries';
 import { starterSortIndex } from '@/lib/rosterSlots';
 import type { MatchupContextSide, RosterPlayer, WeekMatchupContextItem } from '@/lib/types';
 
@@ -264,12 +265,24 @@ function Rows({ rows, onBreakdown, bench: isBench }: { rows: ComparisonRow[]; on
   );
 }
 
+// The player's Gamecast, once their game has kicked off (2026-11-10):
+// their stat line and plays live, focused on them. Null before kickoff,
+// on a bye, or when the game isn't on Gamecast; the name then opens the
+// player card. next_opponent is "vs KC" at home, "@ KC" away.
+function useGamecastFor(player: RosterPlayer | null): string | null {
+  const find = useGamecastIdFinder();
+  if (!player?.pro_team || !player.next_opponent || (player.game_status !== 'in_progress' && player.game_status !== 'final')) return null;
+  const [where, opponent] = player.next_opponent.split(' ');
+  return where === 'vs' ? find(player.pro_team, opponent) : find(opponent, player.pro_team);
+}
+
 // One side of a lineup row, like the web's PlayerCell: name (tap for the
-// player card) with team logo and injury tags, the stat line once they've
+// player's Gamecast once their game starts, else the player card) with team logo and injury tags, the stat line once they've
 // played (else team, opponent, kickoff and matchup rank), and points
 // (tap for the breakdown) over the projection. A live dot while they're
 // playing; red-zone players get an RZ tag.
 function PlayerCell({ player, onBreakdown, right, winning }: { player: RosterPlayer | null; onBreakdown: (p: RosterPlayer) => void; right?: boolean; winning?: boolean }) {
+  const gamecastId = useGamecastFor(player);
   if (!player) return <View style={styles.cell} />;
   const logo = teamLogoUrl(player.pro_team);
   const statLine = formatStatLine(player.raw_stats);
@@ -282,7 +295,15 @@ function PlayerCell({ player, onBreakdown, right, winning }: { player: RosterPla
 
   return (
     <View style={[styles.cell, align, player.on_offense && !player.is_redzone && styles.onOffense]}>
-      <Pressable disabled={!canOpen} onPress={() => openPlayer(player.player_id)} style={align}>
+      <Pressable
+        disabled={!canOpen}
+        onPress={() =>
+          gamecastId
+            ? router.push({ pathname: '/gamecast/[id]', params: { id: gamecastId, player: String(player.player_id) } })
+            : openPlayer(player.player_id)
+        }
+        accessibilityHint={gamecastId ? 'Opens their game in Gamecast' : undefined}
+        style={align}>
         <View style={[styles.nameLine, right && styles.reverse]}>
           <Text style={[styles.playerName, right && styles.textRight]} numberOfLines={1}>
             {displayName(player)}

@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { ChugBreakdown } from '@/components/ChugBreakdown';
@@ -24,6 +24,10 @@ import type { ChugFeedEntry, ChugLeaderboardRow, ChugUploadResult, ChugLedgerEve
 // owed chugs as cells, and each chug's score in a hex with its quote.
 export default function ChugScreen() {
   const me = useMe().data;
+  // ?chug= (a chug's push) opens on that chug.
+  const focusId = Number(useLocalSearchParams<{ chug?: string }>().chug) || null;
+  const scrollRef = useRef<ScrollView>(null);
+  const chugsY = useRef(0);
   const seasons = useChugSeasons().data ?? [];
   const [season, setSeason] = useState<number | undefined>(undefined);
   const leaderboard = useChugLeaderboard(season);
@@ -46,6 +50,7 @@ export default function ChugScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
@@ -97,7 +102,16 @@ export default function ChugScreen() {
         )}
       </View>
 
-      {(feed.data?.length ?? 0) > 0 && <RecentChugs chugs={feed.data!} />}
+      {(feed.data?.length ?? 0) > 0 && (
+        <View onLayout={(e) => (chugsY.current = e.nativeEvent.layout.y)}>
+          <RecentChugs
+            chugs={feed.data!}
+            focusId={focusId}
+            // After this layout pass, so the section's own position is in.
+            onFocusLayout={(y) => setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(chugsY.current + y - 12, 0), animated: true }), 50)}
+          />
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -426,15 +440,29 @@ function LeaderboardRow(props: { row: ChugLeaderboardRow; divided: boolean; isCo
 // ChugFeed.
 const CHUGS_SHOWN = 4;
 
-function RecentChugs({ chugs }: { chugs: ChugFeedEntry[] }) {
-  const [all, setAll] = useState(false);
+function RecentChugs(props: { chugs: ChugFeedEntry[]; focusId: number | null; onFocusLayout: (y: number) => void }) {
+  const { chugs, focusId } = props;
+  const [all, setAll] = useState(() => chugs.findIndex((c) => c.id === focusId) >= CHUGS_SHOWN);
+  const scrolled = useRef(false);
   const shown = all ? chugs : chugs.slice(0, CHUGS_SHOWN);
   const best = Math.max(...chugs.map((c) => c.final_score));
   return (
     <View style={styles.section}>
       <EliteLabel>RECENT CHUGS</EliteLabel>
       {shown.map((c) => (
-        <ChugCard key={c.id} chug={c} lit={c.final_score === best} />
+        <View
+          key={c.id}
+          onLayout={
+            c.id === focusId
+              ? (e) => {
+                  if (scrolled.current) return;
+                  scrolled.current = true;
+                  props.onFocusLayout(e.nativeEvent.layout.y);
+                }
+              : undefined
+          }>
+          <ChugCard chug={c} lit={c.final_score === best} focused={c.id === focusId} />
+        </View>
       ))}
       {chugs.length > CHUGS_SHOWN && (
         <Pressable
@@ -455,7 +483,7 @@ function RecentChugs({ chugs }: { chugs: ChugFeedEntry[] }) {
 // One graded chug: its score in a cell, the quote, the hype grade and the
 // roast. Play opens the video (a short-lived signed URL from GET
 // /chug/{id}/video).
-function ChugCard({ chug, lit }: { chug: ChugFeedEntry; lit: boolean }) {
+function ChugCard({ chug, lit, focused }: { chug: ChugFeedEntry; lit: boolean; focused?: boolean }) {
   const [open, setOpen] = useState(false);
   const [readAll, setReadAll] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
@@ -478,7 +506,7 @@ function ChugCard({ chug, lit }: { chug: ChugFeedEntry; lit: boolean }) {
 
   const color = lit ? Elite.green : 'rgba(245,244,236,0.4)';
   return (
-    <EliteCard tone={lit ? 'green' : 'plain'} style={styles.chug}>
+    <EliteCard tone={focused ? 'orange' : lit ? 'green' : 'plain'} style={styles.chug}>
       <View style={styles.chugTop}>
         <Hex width={56} color={color} fill={lit ? '#0f1a12' : Elite.cell} glow={lit}>
           <Text style={[styles.scoreText, { color: lit ? Elite.green : Elite.cream }]}>{chug.final_score}</Text>

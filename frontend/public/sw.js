@@ -120,9 +120,18 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+// A push from a league carries its id: /open (src/app/open/route.ts)
+// switches to that league before the page, so a push from your other
+// league doesn't open under this one (2026-11-10).
+function notificationHref(data) {
+  const url = (data && data.url) || "/";
+  const league = data && data.league_id;
+  return league ? `/open?league=${encodeURIComponent(league)}&to=${encodeURIComponent(url)}` : url;
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/";
+  const url = notificationHref(event.notification.data);
   const targetUrl = new URL(url, self.location.origin);
 
   event.waitUntil(

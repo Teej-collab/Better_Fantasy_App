@@ -14,6 +14,7 @@ import { PlayByPlay } from "@/components/gamecast/PlayByPlay";
 import { ScoringSummary } from "@/components/gamecast/ScoringSummary";
 import { FantasyImpact } from "@/components/gamecast/FantasyImpact";
 import { BoxScore } from "@/components/gamecast/BoxScore";
+import { FocusPlayer } from "@/components/gamecast/FocusPlayer";
 import { DriveChart } from "@/components/gamecast/DriveChart";
 import { GamecastBets } from "@/components/bets/GamecastBets";
 import { startVisibleInterval } from "@/lib/visibleInterval";
@@ -37,10 +38,13 @@ export function GamecastShell({
   initialGame,
   isSignedIn,
   beta = false,
+  focusPlayerId = null,
 }: {
   gameId: string;
   initialGame: LiveGame;
   isSignedIn: boolean;
+  // ?player= (a player tapped in the matchup): that player goes up top.
+  focusPlayerId?: string | null;
   // Settings > Labs > "Try the new look" — threaded into each child
   // instead of forking this component, since it owns the live
   // WebSocket connection/reconnect lifecycle (see this file's own
@@ -150,6 +154,7 @@ export function GamecastShell({
   return (
     <div className="flex flex-col gap-4">
       <GameHeader game={game} connected={connected || !isLiveStatus} updatedSecondsAgo={updatedSecondsAgo} beta={beta} />
+      {focusPlayerId && <FocusPlayer playerId={focusPlayerId} game={game} />}
 
       <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2 sm:items-start">
         {/* Last Play sits directly under the field graphic, in the same
@@ -167,7 +172,7 @@ export function GamecastShell({
       </div>
       {isSignedIn && <GamecastBets gameId={gameId} live={game.status === "in_progress" || game.status === "halftime"} />}
 
-      {game.status !== "scheduled" && <BoxScore game={game} beta={beta} />}
+      {game.status !== "scheduled" && <BoxScore game={game} beta={beta} focusPlayerId={focusPlayerId} />}
       <DriveChart game={game} beta={beta} />
 
       <PlayByPlay game={game} beta={beta} />

@@ -19,8 +19,15 @@ export async function generateMetadata({
   return { title: `${game.away_team.abbr} @ ${game.home_team.abbr} — Gamecast — The Weekend` };
 }
 
-export default async function GamecastPage({ params }: { params: Promise<{ gameId: string }> }) {
+export default async function GamecastPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ gameId: string }>;
+  searchParams: Promise<{ player?: string }>;
+}) {
   const { gameId } = await params;
+  const { player } = await searchParams;
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
 
@@ -89,6 +96,7 @@ export default async function GamecastPage({ params }: { params: Promise<{ gameI
         initialGame={game}
         isSignedIn={me !== null}
         beta={Boolean(myPreferences?.beta_layout)}
+        focusPlayerId={player ?? null}
       />
     </div>
   );

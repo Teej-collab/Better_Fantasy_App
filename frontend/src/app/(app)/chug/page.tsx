@@ -22,9 +22,9 @@ const PIPS_SHOWN = 8;
 export default async function ChugLeaderboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ season?: string }>;
+  searchParams: Promise<{ season?: string; chug?: string }>;
 }) {
-  const { season: seasonParam } = await searchParams;
+  const { season: seasonParam, chug: chugParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : undefined;
 
   const cookieStore = await cookies();
@@ -167,7 +167,7 @@ export default async function ChugLeaderboardPage({
         )}
       </section>
 
-      <EliteChugFeed chugs={chugs} />
+      <EliteChugFeed chugs={chugs} focusId={Number(chugParam) || null} />
     </div>
   );
 }

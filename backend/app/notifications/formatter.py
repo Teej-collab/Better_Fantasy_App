@@ -168,7 +168,7 @@ def join_request(who: str, league_name: str) -> dict:
     return _payload(
         "👋 Someone wants in",
         f"{who} tried to bring {league_name} onto The Weekend. It's already here: send them your invite from League › Invite friends.",
-        "/leagues",
+        "/commissioner/members",
         "join_request",
     )
 
@@ -181,7 +181,12 @@ def draft_on_the_clock(round_num: int, pick_number: int, seconds: int) -> dict:
     return _payload("🏈 You're on the clock", f"Round {round_num}, pick {pick_number} — you have {seconds} seconds to pick.", "/draft", "draft_on_the_clock")
 
 
-def chug_posted(owner_name: str, final_score: float, has_video: bool) -> dict:
+def chug_url(chug_id: int | None) -> str:
+    # The Chug page opens on that chug (?chug=).
+    return f"/chug?chug={chug_id}" if chug_id else "/chug"
+
+
+def chug_posted(owner_name: str, final_score: float, has_video: bool, chug_id: int | None = None) -> dict:
     """League-wide (notify_league — see app/queries/owner_preferences.py),
     sent to every other owner in the league once a real graded chug is
     recorded (app/routers/chug.py's upload endpoint). has_video controls
@@ -191,14 +196,14 @@ def chug_posted(owner_name: str, final_score: float, has_video: bool) -> dict:
     nothing to watch."""
     body = f"{owner_name} just posted a {final_score:g}/10 chug"
     body += " — go watch it." if has_video else "."
-    return _payload("🍺 New Chug Posted", body, "/chug", "chug_posted")
+    return _payload("🍺 New Chug Posted", body, chug_url(chug_id), "chug_posted")
 
 
 def chug_cheered(owner_name: str, chug_id: int) -> dict:
     """To the chugger when someone cheers their chug (POST
     /chug/{id}/cheers). Tagged per chug so a run of cheers replaces
     itself instead of stacking."""
-    return _payload("🍻 Cheers!", f"{owner_name} cheered your chug.", "/chug", "chug_cheered", f"chug-cheers-{chug_id}")
+    return _payload("🍻 Cheers!", f"{owner_name} cheered your chug.", chug_url(chug_id), "chug_cheered", f"chug-cheers-{chug_id}")
 
 
 _TD_KIND_LABEL = {"rush_td": "Rushing TD", "rec_td": "Receiving TD", "pass_td": "Passing TD"}
@@ -268,7 +273,12 @@ def fantasy_matchup_lead_change(
 
 
 # Injury alerts and player news (app/notifications/injury_events.py).
-# Both open My Team, where the injury badge and the start/sit call live.
+# Both open that player's card over My Team (?card=, 2026-11-10); the
+# lineup is a tap back.
+
+def player_card_url(sleeper_id: str | None) -> str:
+    return f"/team?card={sleeper_id}" if sleeper_id else "/team"
+
 
 def _with_detail(lead: str, detail: str | None) -> str:
     if not detail:
@@ -278,7 +288,7 @@ def _with_detail(lead: str, detail: str | None) -> str:
 
 def injury_update(
     player_name: str, direction: str, status: str, previous: str | None,
-    injury: str | None, detail: str | None, tag: str,
+    injury: str | None, detail: str | None, tag: str, sleeper_id: str | None = None,
 ) -> dict:
     """direction: "new", "downgrade", "upgrade", or "cleared"."""
     what = f"({injury.lower()})" if injury else ""
@@ -297,11 +307,11 @@ def injury_update(
     else:
         title = f"🩹 {player_name} listed {status} {what}".rstrip()
         lead = ""
-    return _payload(title, _with_detail(lead, detail) or "Check your lineup.", "/team", "injury_update", tag)
+    return _payload(title, _with_detail(lead, detail) or "Check your lineup.", player_card_url(sleeper_id), "injury_update", tag)
 
 
-def player_news(player_name: str, detail: str, tag: str) -> dict:
-    return _payload(f"📰 {player_name}", _preview(detail), "/team", "player_news", tag)
+def player_news(player_name: str, detail: str, tag: str, sleeper_id: str | None = None) -> dict:
+    return _payload(f"📰 {player_name}", _preview(detail), player_card_url(sleeper_id), "player_news", tag)
 
 
 def injury_in_game(player_name: str, state: str, matchup_id: int | None, tag: str) -> dict:
@@ -524,9 +534,14 @@ def _trade_tag(trade_id: int) -> str:
     return f"trade-{trade_id}"
 
 
+def _trade_url(trade_id: int) -> str:
+    # Opens the one trade (the app's trade/[id], the web's ?trade=).
+    return f"/trades?trade={trade_id}"
+
+
 def trade_offer(from_team: str, summary: str, trade_id: int) -> dict:
     return _payload(
-        f"🤝 Trade offer from {from_team}", summary, "/trades", "trade", _trade_tag(trade_id),
+        f"🤝 Trade offer from {from_team}", summary, _trade_url(trade_id), "trade", _trade_tag(trade_id),
         category="trade_offer", extra={"trade_id": trade_id},
     )
 
@@ -548,7 +563,7 @@ def trade_block_listed(team_name: str, player_names: list[str], team_id: int) ->
 def trade_update(title: str, body: str, trade_id: int) -> dict:
     """Every later step of a trade (accepted, under review, vetoed,
     processed…) — same tag, so each replaces the last on the lock screen."""
-    return _payload(title, body, "/trades", "trade", _trade_tag(trade_id))
+    return _payload(title, body, _trade_url(trade_id), "trade", _trade_tag(trade_id))
 
 
 def guillotine_cut(team_name: str, week: int, points: float, survivors: int) -> dict:

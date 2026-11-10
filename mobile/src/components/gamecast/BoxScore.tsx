@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Text';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { openPlayer } from '@/lib/queries';
 import type { BoxScoreCategory, FantasyImpact, GamecastBoxScore } from '@/lib/types';
 
@@ -26,21 +26,26 @@ const COLUMNS: Record<string, string[]> = {
 };
 const OPPONENT = '#60a5fa';
 
-function columnsFor(category: BoxScoreCategory): number[] {
+export function columnsFor(category: BoxScoreCategory): number[] {
   const wanted = COLUMNS[category.key] ?? [];
   const picked = wanted.map((label) => category.labels.indexOf(label)).filter((i) => i >= 0);
   return picked.length ? picked : category.labels.slice(0, 4).map((_, i) => i);
 }
 
-export function BoxScore({ box, impact, accent }: { box: GamecastBoxScore; impact: FantasyImpact | undefined; accent: string }) {
+// focusId: the player Gamecast was opened for (from the matchup): their
+// team's tab opens and their rows are lit.
+export function BoxScore(props: { box: GamecastBoxScore; impact: FantasyImpact | undefined; accent: string; focusId?: string | null }) {
+  const { box, impact, accent, focusId } = props;
   const [teamIndex, setTeamIndex] = useState<number | null>(null);
   const mine = new Set((impact?.your_players ?? []).map((p) => String(p.player_id)));
   const theirs = new Set((impact?.opponent_players ?? []).map((p) => String(p.player_id)));
   if (box.teams.length === 0 || box.teams.every((t) => t.categories.length === 0)) return null;
 
-  // Opens on the team with your players in it, else the away team.
+  // Opens on the focused player's team, else the one with your players
+  // in it, else the away team.
+  const withFocus = focusId ? box.teams.findIndex((t) => t.categories.some((c) => c.athletes.some((a) => a.player_id === focusId))) : -1;
   const withMine = box.teams.findIndex((t) => t.categories.some((c) => c.athletes.some((a) => a.player_id && mine.has(a.player_id))));
-  const shown = box.teams[teamIndex ?? Math.max(0, withMine)] ?? box.teams[0];
+  const shown = box.teams[teamIndex ?? (withFocus >= 0 ? withFocus : Math.max(0, withMine))] ?? box.teams[0];
 
   return (
     <View style={styles.card}>
@@ -93,7 +98,12 @@ export function BoxScore({ box, impact, accent }: { box: GamecastBoxScore; impac
                   onPress={() => openPlayer(a.player_id)}
                   accessibilityRole={a.player_id ? 'button' : undefined}
                   accessibilityLabel={`${a.name ?? ''}${a.position ? `, ${a.position}` : ''}: ${columns.map((i) => `${category.labels[i]} ${a.stats[i] ?? '–'}`).join(', ')}`}
-                  style={({ pressed }) => [styles.row, rowIndex % 2 === 0 && styles.striped, pressed && styles.pressed]}>
+                  style={({ pressed }) => [
+                    styles.row,
+                    rowIndex % 2 === 0 && styles.striped,
+                    focusId && a.player_id === focusId && { backgroundColor: withAlpha(accent, 0.16) },
+                    pressed && styles.pressed,
+                  ]}>
                   <View style={[styles.bar, bar ? { backgroundColor: bar } : null]} />
                   <Text style={styles.nameCell} numberOfLines={1}>
                     <Text style={styles.name}>{a.short_name ?? a.name ?? '—'}</Text>

@@ -19,14 +19,15 @@ logger = logging.getLogger(__name__)
 
 
 async def notify_chug_posted(
-    conn, season: int, league_id: int, poster_owner_id: int, poster_name: str, final_score: float, has_video: bool
+    conn, season: int, league_id: int, poster_owner_id: int, poster_name: str, final_score: float, has_video: bool,
+    chug_id: int | None = None,
 ) -> None:
     try:
         owner_rows = await conn.fetch(
             "SELECT DISTINCT owner_id FROM teams_by_season WHERE season = $1 AND league_id = $2",
             season, league_id,
         )
-        payload = dispatcher.in_league(formatter.chug_posted(poster_name, final_score, has_video), league_id, league_wide=True)
+        payload = dispatcher.in_league(formatter.chug_posted(poster_name, final_score, has_video, chug_id), league_id, league_wide=True)
         for row in owner_rows:
             owner_id = row["owner_id"]
             if owner_id == poster_owner_id:

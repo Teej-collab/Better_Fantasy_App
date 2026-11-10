@@ -96,7 +96,7 @@ function HypeBars({ detail }: { detail: { self_roast: number; comedy: number; co
   );
 }
 
-function ChugCard({ chug, lit }: { chug: ChugFeedEntry; lit: boolean }) {
+function ChugCard({ chug, lit, focused }: { chug: ChugFeedEntry; lit: boolean; focused?: boolean }) {
   const [open, setOpen] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
@@ -119,8 +119,8 @@ function ChugCard({ chug, lit }: { chug: ChugFeedEntry; lit: boolean }) {
 
   const color = lit ? ELITE.green : "rgba(245,244,236,.4)";
   return (
-    <li>
-      <EliteCard tone={lit ? "green" : "plain"} className="flex flex-col gap-3 p-4">
+    <li id={`chug-${chug.id}`} className="scroll-mt-24">
+      <EliteCard tone={focused ? "orange" : lit ? "green" : "plain"} className="flex flex-col gap-3 p-4">
         <div className="flex items-center gap-3">
           <Hex size={58} color={color} fill={lit ? "#0f1a12" : ELITE.cell} glow={lit}>
             <span className={`${ANTON} text-xl`} style={{ color: lit ? ELITE.green : ELITE.cream }}>
@@ -173,8 +173,12 @@ function ChugCard({ chug, lit }: { chug: ChugFeedEntry; lit: boolean }) {
 
 const SHOWN = 4;
 
-export function EliteChugFeed({ chugs }: { chugs: ChugFeedEntry[] }) {
-  const [all, setAll] = useState(false);
+// focusId (?chug=, a chug's push) opens the list on that chug.
+export function EliteChugFeed({ chugs, focusId = null }: { chugs: ChugFeedEntry[]; focusId?: number | null }) {
+  const [all, setAll] = useState(() => chugs.findIndex((c) => c.id === focusId) >= SHOWN);
+  useEffect(() => {
+    if (focusId) document.getElementById(`chug-${focusId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusId]);
   if (chugs.length === 0) return null;
   const shown = all ? chugs : chugs.slice(0, SHOWN);
   const best = Math.max(...chugs.map((c) => c.final_score));
@@ -183,7 +187,7 @@ export function EliteChugFeed({ chugs }: { chugs: ChugFeedEntry[] }) {
       <EliteLabel>Recent Chugs</EliteLabel>
       <ol className="flex flex-col gap-3">
         {shown.map((c) => (
-          <ChugCard key={c.id} chug={c} lit={c.final_score === best} />
+          <ChugCard key={c.id} chug={c} lit={c.final_score === best} focused={c.id === focusId} />
         ))}
       </ol>
       {chugs.length > SHOWN && (

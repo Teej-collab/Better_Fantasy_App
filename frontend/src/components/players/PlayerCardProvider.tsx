@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { createContext, Suspense, useContext, useEffect, useMemo, useState } from "react";
 import { PlayerCardModal } from "@/components/players/PlayerCardModal";
 
 type PlayerCardContextValue = {
@@ -23,11 +24,29 @@ export function PlayerCardProvider({ children }: { children: React.ReactNode }) 
   return (
     <PlayerCardContext.Provider value={value}>
       {children}
+      <Suspense fallback={null}>
+        <CardFromUrl open={setSleeperPlayerId} />
+      </Suspense>
       {sleeperPlayerId && (
         <PlayerCardModal sleeperPlayerId={sleeperPlayerId} onClose={() => setSleeperPlayerId(null)} />
       )}
     </PlayerCardContext.Provider>
   );
+}
+
+// ?card=<sleeper id> on any page opens that player's card over it — how
+// an injury or news push opens the player (2026-11-10). The param comes
+// off the address once it's open, so a refresh doesn't reopen it.
+function CardFromUrl({ open }: { open: (sleeperPlayerId: string) => void }) {
+  const card = useSearchParams().get("card");
+  useEffect(() => {
+    if (!card) return;
+    open(card);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("card");
+    window.history.replaceState(window.history.state, "", url);
+  }, [card, open]);
+  return null;
 }
 
 export function usePlayerCard(): PlayerCardContextValue {

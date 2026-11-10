@@ -5,6 +5,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 
 import { GamecastBets } from '@/components/bets/GamecastBets';
 import { BoxScore } from '@/components/gamecast/BoxScore';
+import { FocusPlayer } from '@/components/gamecast/FocusPlayer';
 import { GamecastField } from '@/components/gamecast/GamecastField';
 import { DriveChart, LastPlayCard, PlayByPlay, Scoreboard, ScoringCard, StakeCard } from '@/components/gamecast/GamecastSections';
 import { MomentBanner, useGameMoments } from '@/components/gamecast/MomentBanner';
@@ -90,7 +91,8 @@ function useKeepAwakeWhile(active: boolean) {
 }
 
 export default function GamecastScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // ?player= (a player tapped in the matchup) puts that player up top.
+  const { id, player } = useLocalSearchParams<{ id: string; player?: string }>();
   // The web's gamecast_game_selected feature event.
   useEffect(() => trackGamecastGameSelected(id), [id]);
   const game = useGamecastGame(id);
@@ -127,11 +129,12 @@ export default function GamecastScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
         <OtherLiveGames currentId={id} />
         <Scoreboard game={g} connected={connected} />
+        {player && <FocusPlayer playerId={player} game={g} box={box.data} impact={impact.data} accent={accent} />}
         <GamecastField game={g} />
         {g.status !== 'scheduled' && <LastPlayCard play={lastPlay} fantasy={playFantasy.data ?? []} />}
         <GamecastBets gameId={g.game_id} live={live} />
         {impact.data && <StakeCard impact={impact.data} />}
-        {box.data && <BoxScore box={box.data} impact={impact.data} accent={accent} />}
+        {box.data && <BoxScore box={box.data} impact={impact.data} accent={accent} focusId={player} />}
         <ScoringCard game={g} />
         <DriveChart game={g} />
         <PlayByPlay game={g} />

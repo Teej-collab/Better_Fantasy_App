@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { RosterPlayer } from "@/lib/api";
 import { getScoringRules } from "@/lib/leaguesApi";
@@ -13,6 +14,7 @@ import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, slotDisplayLabel, starterSortIndex } f
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
 import { formatPositionRank, rankColorVar } from "@/lib/positionRank";
 import { ANTON, ELITE, Hex } from "@/components/elite/Elite";
+import { findGamecastId, getLiveGames, type GamecastLiveGameSummary } from "@/lib/gamecastApi";
 
 // "Jason Myers" -> "J. Myers" — the reference layout (real ESPN
 // matchup screen, 2026-09) always shows first-initial + last name, not
@@ -237,7 +239,7 @@ function PlayerCell({
 }: {
   player: RosterPlayer | null;
   mounted: boolean;
-  onOpen: (sleeperPlayerId: string) => void;
+  onOpen: (player: RosterPlayer) => void;
   onOpenBreakdown: (player: RosterPlayer) => void;
   // Elite pass (2026-10-31): this side is winning the slot.
   winning?: boolean;
@@ -349,7 +351,7 @@ function PlayerCell({
         <span className="flex items-baseline gap-1.5">
           {clickable ? (
             <button
-              onClick={() => onOpen(player.player_id as string)}
+              onClick={() => onOpen(player)}
               className="min-w-0 flex-1 text-left text-xs font-semibold break-words hover:underline"
             >
               {nameSpan}
@@ -458,7 +460,7 @@ function ComparisonRows({
 }: {
   rows: ComparisonRow[];
   mounted: boolean;
-  onOpen: (sleeperPlayerId: string) => void;
+  onOpen: (player: RosterPlayer) => void;
   onOpenBreakdown: (player: RosterPlayer) => void;
   bench?: boolean;
 }) {
@@ -513,6 +515,26 @@ export function StarterComparisonTable({
   week: number;
 }) {
   const { openPlayerCard } = usePlayerCard();
+  const router = useRouter();
+  const [gamecastGames, setGamecastGames] = useState<GamecastLiveGameSummary[]>([]);
+  useEffect(() => {
+    void getLiveGames().then(setGamecastGames);
+  }, []);
+  // A name opens the player's Gamecast, focused on them, once their game
+  // has kicked off (2026-11-10); before that, on a bye, or when the game
+  // isn't on Gamecast, their card. next_opponent is "vs KC" / "@ KC".
+  function openPlayer(player: RosterPlayer) {
+    const started = player.game_status === "in_progress" || player.game_status === "final";
+    const [where, opponent] = (player.next_opponent ?? "").split(" ");
+    const id =
+      started && player.pro_team && opponent
+        ? where === "vs"
+          ? findGamecastId(player.pro_team, opponent, gamecastGames)
+          : findGamecastId(opponent, player.pro_team, gamecastGames)
+        : null;
+    if (id) router.push(`/gamecast/${id}?player=${encodeURIComponent(String(player.player_id))}`);
+    else openPlayerCard(String(player.player_id));
+  }
   const [mounted, setMounted] = useState(false);
   const [rates, setRates] = useState<Record<string, number>>({});
   const [breakdownPlayer, setBreakdownPlayer] = useState<RosterPlayer | null>(null);
@@ -545,7 +567,7 @@ export function StarterComparisonTable({
 
   return (
     <div className="flex flex-col gap-1">
-      <ComparisonRows rows={starterRows} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
+      <ComparisonRows rows={starterRows} mounted={mounted} onOpen={openPlayer} onOpenBreakdown={setBreakdownPlayer} />
 
       {benchRows.length > 0 && (
         <>
@@ -557,7 +579,7 @@ export function StarterComparisonTable({
           >
             {showBench ? "Hide bench" : "Bench ›"}
           </button>
-          {showBench && <ComparisonRows rows={benchRows} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} bench />}
+          {showBench && <ComparisonRows rows={benchRows} mounted={mounted} onOpen={openPlayer} onOpenBreakdown={setBreakdownPlayer} bench />}
         </>
       )}
 

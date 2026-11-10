@@ -422,7 +422,7 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf
             # own docstring).
             await notify_chug_posted(
                 conn, active_season, league_id, owner_id, owner_row["display_name"], result["final"],
-                video_key is not None,
+                video_key is not None, row["id"],
             )
 
             # Facts for the AI write-up (app/domain/chug_roast.py) — read

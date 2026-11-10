@@ -65,8 +65,13 @@ const nextConfig: NextConfig = {
   },
   // Health alerts (backend/app/notifications/health_watch.py) link to
   // the app's /admin/brain; on the website the Brain lives at /brain.
+  // Waiver pushes link to the app's /waivers; the website's claims are
+  // on Free Agents.
   async redirects() {
-    return [{ source: "/admin/brain", destination: "/brain", permanent: false }];
+    return [
+      { source: "/admin/brain", destination: "/brain", permanent: false },
+      { source: "/waivers", destination: "/free-agents", permanent: false },
+    ];
   },
   async headers() {
     return [

@@ -3,6 +3,7 @@ import { requireOptionalNativeModule } from 'expo';
 import { router, type Href } from 'expo-router';
 
 import type { Reminder, ReminderCategory } from '@/lib/reminders';
+import { api } from '@/lib/api';
 import { markOpenedByLink } from '@/lib/freshStart';
 import { registerNotificationCategories, runNotificationAction } from '@/lib/notificationActions';
 import { queryClient } from '@/lib/queries';
@@ -118,19 +119,14 @@ export function setUpReminderHandling(): () => void {
       return { shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false };
     },
   });
-  const open = (url: unknown) => {
-    if (typeof url === 'string' && url.startsWith('/')) {
-      markOpenedByLink();
-      router.push(toNativePath(url) as Href);
-    }
-  };
   // A reminder carries its url in content.data; a real push from the
-  // backend (app/notifications/apns_client.py) carries it beside "aps",
-  // which iOS hands over as the push trigger's payload.
-  const urlOf = (r: import('expo-notifications').NotificationResponse) => {
+  // backend (app/notifications/apns_client.py) carries it and its data
+  // beside "aps", which iOS hands over as the push trigger's payload.
+  const linkOf = (r: import('expo-notifications').NotificationResponse) => {
     const { content, trigger } = r.notification.request;
     const payload = trigger && 'payload' in trigger ? (trigger.payload as Record<string, unknown> | null) : null;
-    return content.data?.url ?? payload?.url;
+    const data = ((payload?.data ?? content.data) ?? {}) as Record<string, unknown>;
+    return { url: content.data?.url ?? payload?.url, leagueId: data.league_id };
   };
   // A button on the push (lib/notificationActions.ts) does its thing first.
   const respond = (r: import('expo-notifications').NotificationResponse) => {
@@ -140,7 +136,8 @@ export function setUpReminderHandling(): () => void {
       const data = ((payload?.data ?? content.data) ?? {}) as Record<string, unknown>;
       void runNotificationAction(content.categoryIdentifier ?? (data.category as string | undefined), r.actionIdentifier, data, r.userText);
     }
-    open(urlOf(r));
+    const { url, leagueId } = linkOf(r);
+    void openNotificationLink(url, leagueId);
   };
   registerNotificationCategories(n);
   const initial = n.getLastNotificationResponse();
@@ -151,6 +148,31 @@ export function setUpReminderHandling(): () => void {
   }
   const sub = n.addNotificationResponseReceivedListener(respond);
   return () => sub.remove();
+}
+
+/**
+ * Opens what a notification is about (2026-11-10): switches to the
+ * league it came from first, so a push from your other league doesn't
+ * open its matchup or trade under this one ("not found"). Used by push
+ * taps and the inbox.
+ */
+export async function openNotificationLink(url: unknown, leagueId?: unknown): Promise<void> {
+  if (typeof url !== 'string' || !url.startsWith('/')) return;
+  // Before anything awaits, so a fresh start (app/_layout.tsx) knows a
+  // tap is landing and doesn't send it Home.
+  markOpenedByLink();
+  if (typeof leagueId === 'number') {
+    type Mine = { active_league_id: number | null };
+    const active =
+      queryClient.getQueryData<Mine>(['leagues-mine'])?.active_league_id ??
+      (await api.leaguesMine().catch(() => null))?.active_league_id;
+    if (active != null && active !== leagueId) {
+      const switched = await api.selectLeague(leagueId).then(() => true, () => false);
+      if (switched) await queryClient.invalidateQueries();
+      markOpenedByLink();
+    }
+  }
+  router.push(toNativePath(url) as Href);
 }
 
 /**
@@ -169,6 +191,12 @@ export function toNativePath(url: string): string {
   if (/^\/lounge\/[\w-]+$/.test(url)) return '/lounge-private';
   m = url.match(/^\/matchups\/(\d+)/);
   if (m) return `/matchup/${m[1]}`;
+  // One trade, one player's card (injury/news), standings in League.
+  m = url.match(/^\/trades\?trade=(\d+)/);
+  if (m) return `/trade/${m[1]}`;
+  m = url.match(/^\/team\?card=([\w-]+)/);
+  if (m) return `/player/${m[1]}`;
+  if (url === '/standings') return '/league?section=standings';
   m = url.match(/^\/seasons\/(\d+)\/weeks\/(\d+)\/recap/);
   if (m) return `/recap/${m[1]}/${m[2]}`;
   m = url.match(/^\/admin\/errors\?fp=([^&]+)/);

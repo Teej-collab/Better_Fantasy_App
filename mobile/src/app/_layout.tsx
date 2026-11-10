@@ -126,14 +126,16 @@ function RootStack() {
       const away = Date.now() - backgroundAt.current;
       backgroundAt.current = null;
       if (away < AWAY_RESET_MS) return;
-      // Give a notification tap or link a moment to land first.
+      // Give a notification tap or link a moment to land first. iOS can
+      // hand over the tap well after the app is active again; 400ms
+      // missed some and sent them Home (2026-11-10).
       setTimeout(() => {
         if (openedByLinkRecently()) return;
         if (router.canDismiss()) router.dismissAll();
         router.navigate('/');
         void queryClient.invalidateQueries();
         setIntro('playing');
-      }, 400);
+      }, 1200);
     });
     return () => sub.remove();
   }, [token]);

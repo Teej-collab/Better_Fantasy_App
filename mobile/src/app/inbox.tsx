@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { router, Stack, type Href } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -10,7 +10,7 @@ import { LoadingState, MessageState } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
-import { toNativePath } from '@/lib/localNotifications';
+import { openNotificationLink } from '@/lib/localNotifications';
 import { runNotificationAction } from '@/lib/notificationActions';
 import { queryClient } from '@/lib/queries';
 import type { ChugsOwed, InboxNotification } from '@/lib/types';
@@ -56,7 +56,7 @@ function Row({ n }: { n: InboxNotification }) {
   function open() {
     haptics.tap();
     if (!n.read) void markRead([n.id]);
-    router.push(toNativePath(n.url) as Href);
+    void openNotificationLink(n.url, n.data.league_id);
   }
   return (
     <Pressable onPress={open} accessibilityRole="button" accessibilityHint={n.read ? undefined : 'Unread'} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
