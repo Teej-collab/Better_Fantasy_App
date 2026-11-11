@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { columnsFor } from '@/components/gamecast/BoxScore';
+import { ShareButton } from '@/components/ShareSheet';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { sleeperHeadshotUrl } from '@/lib/nflTeams';
@@ -110,12 +111,15 @@ export function FocusPlayer(props: {
         </View>
       )}
 
-      <Pressable
-        onPress={() => openPlayer(playerId)}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.cardLink, pressed && styles.pressed]}>
-        <Text style={[styles.cardLinkText, { color: accent }]}>Player card ›</Text>
-      </Pressable>
+      <View style={styles.links}>
+        <Pressable
+          onPress={() => openPlayer(playerId)}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.cardLink, pressed && styles.pressed]}>
+          <Text style={[styles.cardLinkText, { color: accent }]}>Player card ›</Text>
+        </Pressable>
+        {lines.length > 0 && <ShareButton shareRef={{ kind: 'player', game_id: game.game_id, player_id: playerId }} title={`${name} · ${team ?? ''}`.trim()} />}
+      </View>
     </View>
   );
 }
@@ -140,6 +144,7 @@ const styles = StyleSheet.create({
   play: { flexDirection: 'row', gap: Spacing.sm },
   playWhen: { color: Colors.textSecondary, fontSize: 12, width: 64, fontVariant: ['tabular-nums'] },
   playText: { color: Colors.text, fontSize: 13, lineHeight: 18, flex: 1 },
+  links: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardLink: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
   cardLinkText: { fontSize: 14, fontWeight: '700' },
   pressed: { opacity: 0.6 },

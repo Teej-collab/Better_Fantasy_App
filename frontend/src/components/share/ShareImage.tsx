@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- Satori draws plain <img>, next/image doesn't exist there */
 import type { CSSProperties, ReactNode } from "react";
-import type { AwardsCard, MatchupCard, PowerCard, RecapCard, ShareData, ShareFormat, StandingsCard } from "@/lib/share";
+import type { AwardsCard, BetCard, ChampionCard, ChugCard, InviteCard, MatchupCard, PlayerCard, PowerCard, RecapCard, SeasonAwardsCard, ShareData, ShareFormat, StandingsCard, TradeCard, WheelCard } from "@/lib/share";
 import { FORMAT_SIZE } from "@/lib/share";
 
 /**
@@ -381,6 +381,294 @@ function Awards({ c, fmt, league, assets }: { c: AwardsCard; fmt: ShareFormat; l
   );
 }
 
+function Headshot({ u, src, size }: { u: U; src: string | null | undefined; size: number }) {
+  const style = { borderRadius: u(size / 2), border: `${u(2)}px solid rgba(57,255,20,0.55)` };
+  return src ? (
+    <img alt="" src={src} width={u(size)} height={u(size)} style={{ ...style, objectFit: "cover" }} />
+  ) : (
+    <div style={{ display: "flex", width: u(size), height: u(size), background: PANEL, ...style }} />
+  );
+}
+
+function Stat({ u, value, label, hot = false }: { u: U; value: string; label: string; hot?: boolean }) {
+  return (
+    <Col style={{ flex: 1, alignItems: "center", background: PANEL, border: `${u(1.5)}px solid rgba(57,255,20,0.3)`, borderRadius: u(14), padding: `${u(10)}px 0` }}>
+      <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(28), color: hot ? GREEN : CREAM, textShadow: hot ? GLOW : "none", lineHeight: 1 }}>{value}</div>
+      <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(12), color: FAINT, letterSpacing: u(0.6), marginTop: u(6), textTransform: "uppercase" }}>{label}</div>
+    </Col>
+  );
+}
+
+// ---------------------------------------------------------------- champion
+function Champion({ c, fmt, league, assets }: { c: ChampionCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
+  const u = unit(fmt);
+  const wide = fmt === "wide";
+  const ord = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th"}`;
+  return (
+    <Frame fmt={fmt} league={league} right={<Label u={u} color={GREEN}>{`${c.season} season`}</Label>} assets={assets}>
+      <Col style={{ alignItems: "center", marginTop: u(wide ? 4 : 30) }}>
+        {!wide && <img alt="" src={assets.emblem} width={u(150)} height={u(159)} />}
+        <div style={{ display: "flex", marginTop: u(wide ? 0 : 14) }}>
+          <Kicker u={u}>League champion</Kicker>
+        </div>
+        <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(wide ? 64 : 58), color: GREEN, textShadow: GLOW, textTransform: "uppercase", lineHeight: 1.05 }}>{c.name}</div>
+        <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(18), color: SOFT, textTransform: "uppercase", marginTop: u(4) }}>{c.team_name}</div>
+        {c.final && <div style={{ display: "flex", fontSize: u(13), color: FAINT, marginTop: u(4) }}>{c.final}</div>}
+      </Col>
+      <Row style={{ gap: u(10), marginTop: u(wide ? 16 : 26) }}>
+        {c.record && <Stat u={u} value={c.record} label="Record" />}
+        {c.points_for !== null && <Stat u={u} value={c.points_for.toLocaleString("en-US")} label="Points" />}
+        <Stat u={u} value={ord(c.titles)} label="Title" hot />
+      </Row>
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------- season awards
+function SeasonAwards({ c, fmt, league, assets }: { c: SeasonAwardsCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
+  const u = unit(fmt);
+  const shown = fmt === "wide" ? c.awards.slice(0, 3) : fmt === "story" ? c.awards : c.awards.slice(0, 6);
+  return (
+    <Frame fmt={fmt} league={league} right={<Label u={u} color={GREEN}>{`${c.season} season`}</Label>} assets={assets}>
+      <div style={{ display: "flex", marginTop: u(fmt === "wide" ? 10 : 20) }}>
+        <Title u={u}>The {c.season} awards</Title>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: u(12), marginTop: u(16) }}>
+        {shown.map((a) => (
+          <Panel key={a.title} u={u} tone={a.tone} style={{ width: fmt === "wide" ? u(320) : u(232), minHeight: u(fmt === "story" ? 130 : 104) }}>
+            <Label u={u} color={a.tone === "glory" ? GREEN : ORANGE}>{a.title}</Label>
+            <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(26), marginTop: u(4), textTransform: "uppercase" }}>{a.name}</div>
+            {a.note && <div style={{ display: "flex", fontSize: u(12.5), color: FAINT }}>{a.note}</div>}
+          </Panel>
+        ))}
+      </div>
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------- chug
+function Chug({ c, fmt, league, assets }: { c: ChugCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
+  const u = unit(fmt);
+  const wide = fmt === "wide";
+  return (
+    <Frame fmt={fmt} league={league} right={<Label u={u} color={GREEN}>{c.week ? `Chug board · Week ${c.week}` : "Chug board"}</Label>} assets={assets}>
+      <Row style={{ justifyContent: "space-between", alignItems: "flex-end", marginTop: u(wide ? 10 : 30) }}>
+        <Col>
+          <Kicker u={u}>Chug graded</Kicker>
+          <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(46), color: CREAM, textTransform: "uppercase", lineHeight: 1.05 }}>{c.name}</div>
+          <div style={{ display: "flex", fontSize: u(13), color: FAINT }}>
+            {[c.seconds !== null ? `${c.seconds.toFixed(1)} seconds` : null, c.cheers ? `${c.cheers} cheers` : null].filter(Boolean).join(" · ")}
+          </div>
+        </Col>
+        <Row style={{ alignItems: "flex-end" }}>
+          <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(wide ? 110 : 96), lineHeight: 1, color: GREEN, textShadow: GLOW }}>{c.score.toFixed(1)}</div>
+          <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(26), color: FAINT, marginBottom: u(10) }}>/10</div>
+        </Row>
+      </Row>
+      {c.line && (
+        <Panel u={u} tone="shame" style={{ marginTop: u(wide ? 14 : 22) }}>
+          <div style={{ display: "flex", fontSize: u(wide ? 15 : 16), lineHeight: 1.4 }}>{c.line}</div>
+        </Panel>
+      )}
+      {!wide && c.quote && (
+        <div style={{ display: "flex", fontFamily: SCRIPT, fontSize: u(26), color: PEACH, marginTop: u(16), textShadow: "0 0 10px rgba(255,122,26,0.5)" }}>{`“${c.quote}”`}</div>
+      )}
+      {!wide && c.bars.length > 0 && (
+        <Col style={{ gap: u(10), marginTop: u(18) }}>
+          {c.bars.map((b) => (
+            <Row key={b.label} style={{ gap: u(10) }}>
+              <div style={{ display: "flex", width: u(120), flexShrink: 0, fontFamily: ANTON, fontSize: u(13), color: SOFT, textTransform: "uppercase", letterSpacing: u(0.6) }}>{b.label}</div>
+              <div style={{ display: "flex", width: u(270), flexShrink: 0, height: u(8), borderRadius: u(5), background: "#232831", overflow: "hidden" }}>
+                <div style={{ display: "flex", width: u((270 * Math.min(b.value, b.max)) / b.max), backgroundImage: `linear-gradient(90deg, ${ORANGE}, ${GREEN})` }} />
+              </div>
+              <div style={{ display: "flex", width: u(40), flexShrink: 0, justifyContent: "flex-end", fontFamily: ANTON, fontSize: u(15) }}>{`${b.value}/${b.max}`}</div>
+            </Row>
+          ))}
+        </Col>
+      )}
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------- bet
+const BET_STATUS: Record<string, { label: string; color: string }> = {
+  won: { label: "Hit", color: GREEN },
+  lost: { label: "Missed", color: ORANGE },
+  push: { label: "Push", color: SOFT },
+  void: { label: "Void", color: SOFT },
+  cashed_out: { label: "Cashed out", color: PEACH },
+  open: { label: "Sweating", color: PEACH },
+};
+
+function Bet({ c, fmt, league, assets }: { c: BetCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
+  const u = unit(fmt);
+  const wide = fmt === "wide";
+  const hits = c.legs.filter((l) => l.status === "won").length;
+  const odds = c.odds !== null ? (c.odds > 0 ? `+${c.odds}` : `${c.odds}`) : null;
+  const money = (n: number) => `$${n % 1 ? n.toFixed(2) : n.toFixed(0)}`;
+  const legs = c.legs.slice(0, wide ? 2 : fmt === "story" ? 8 : 5);
+  return (
+    <Frame fmt={fmt} league={league} right={<Label u={u} color={GREEN}>{c.legs.length > 1 ? `${hits} of ${c.legs.length} hit` : BET_STATUS[c.status]?.label ?? ""}</Label>} assets={assets}>
+      <Row style={{ justifyContent: "space-between", alignItems: "flex-end", marginTop: u(wide ? 10 : 28) }}>
+        <Col>
+          <Kicker u={u}>{`${c.name}'s slip`}</Kicker>
+          <Title u={u} size={32}>
+            {c.legs.length > 1 ? `${c.legs.length}-leg parlay` : "The bet"}
+          </Title>
+          {c.stake !== null && c.payout !== null && <div style={{ display: "flex", fontSize: u(13), color: FAINT, marginTop: u(4) }}>{`${money(c.stake)} to win ${money(c.payout)}`}</div>}
+        </Col>
+        {odds && <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(54), color: c.status === "won" ? GREEN : CREAM, textShadow: c.status === "won" ? GLOW : "none" }}>{odds}</div>}
+      </Row>
+      <Col style={{ marginTop: u(16) }}>
+        {legs.map((l, i) => {
+          const st = BET_STATUS[l.status ?? "open"] ?? BET_STATUS.open;
+          return (
+            <Row key={i} style={{ gap: u(12), padding: `${u(10)}px 0`, borderTop: `${u(1)}px solid ${LINE}` }}>
+              <Headshot u={u} src={l.headshot ? assets.headshots[l.headshot] : null} size={40} />
+              <div style={{ display: "flex", flexGrow: 1, flexShrink: 1, fontWeight: 700, fontSize: u(14.5) }}>{l.text}</div>
+              <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(12), letterSpacing: u(0.8), color: st.color, border: `${u(1)}px solid ${st.color}`, borderRadius: u(12), padding: `${u(4)}px ${u(9)}px`, textTransform: "uppercase" }}>{st.label}</div>
+            </Row>
+          );
+        })}
+      </Col>
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------- trade
+function Trade({ c, fmt, league, assets }: { c: TradeCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
+  const u = unit(fmt);
+  const wide = fmt === "wide";
+  return (
+    <Frame fmt={fmt} league={league} right={<Label u={u} color={GREEN}>{c.date ? `Trade · ${c.date}` : "Trade accepted"}</Label>} assets={assets}>
+      <div style={{ display: "flex", marginTop: u(wide ? 8 : 24) }}>
+        <Title u={u}>Trade alert</Title>
+      </div>
+      <Row style={{ gap: u(12), marginTop: u(wide ? 12 : 20), alignItems: "stretch" }}>
+        {c.sides.map((side, i) => (
+          <Panel key={i} u={u} tone={i === 0 ? "glory" : "shame"} style={{ flex: 1, gap: u(10) }}>
+            <Label u={u} color={i === 0 ? GREEN : ORANGE}>{`${side.name} gets`}</Label>
+            {side.players.slice(0, wide ? 1 : 3).map((p) => (
+              <Row key={p.name} style={{ gap: u(10) }}>
+                <Headshot u={u} src={p.headshot ? assets.headshots[p.headshot] : null} size={wide ? 44 : 52} />
+                <Col style={{ flexShrink: 1 }}>
+                  <div style={{ display: "flex", fontWeight: 700, fontSize: u(15) }}>{p.name}</div>
+                  <div style={{ display: "flex", fontSize: u(12), color: FAINT }}>{[p.position, p.pro_team].filter(Boolean).join(" · ")}</div>
+                </Col>
+              </Row>
+            ))}
+            {side.picks > 0 && <div style={{ display: "flex", fontSize: u(13), color: SOFT }}>{`+ ${side.picks} draft pick${side.picks > 1 ? "s" : ""}`}</div>}
+            {side.players.length === 0 && side.picks === 0 && <div style={{ display: "flex", fontSize: u(13), color: FAINT }}>Nothing back</div>}
+          </Panel>
+        ))}
+      </Row>
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------- punishment wheel
+function Wheel({ c, fmt, league, assets }: { c: WheelCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
+  const u = unit(fmt);
+  const wide = fmt === "wide";
+  const size = wide ? 0 : 250;
+  const slices = Math.max(c.slices, 6);
+  const wedges = Array.from({ length: slices }, (_, i) => {
+    const a0 = (i / slices) * 2 * Math.PI - Math.PI / 2 - Math.PI / slices;
+    const a1 = a0 + (2 * Math.PI) / slices;
+    const p = (a: number) => `${50 + 48 * Math.cos(a)},${50 + 48 * Math.sin(a)}`;
+    return <path key={i} d={`M50,50 L${p(a0)} A48,48 0 0,1 ${p(a1)} Z`} fill={i === 0 ? "#2a1a0e" : i % 2 ? "#10151c" : "#1a2a14"} stroke="#39ff14" strokeOpacity="0.5" strokeWidth="0.6" />;
+  });
+  return (
+    <Frame fmt={fmt} league={league} right={<Label u={u} color={GREEN}>{`${c.season} punishment`}</Label>} assets={assets}>
+      <Col style={{ alignItems: "center", marginTop: u(wide ? 6 : 26) }}>
+        {!wide && (
+          <div style={{ display: "flex", position: "relative", width: u(size), height: u(size) }}>
+            <svg width={u(size)} height={u(size)} viewBox="0 0 100 100">
+              {wedges}
+              <circle cx="50" cy="50" r="48" fill="none" stroke="#39ff14" strokeWidth="1.2" />
+              <circle cx="50" cy="50" r="13" fill="#0b0f14" stroke="#39ff14" strokeWidth="1" />
+              <polygon points="44,0 56,0 50,11" fill={ORANGE} />
+            </svg>
+          </div>
+        )}
+        <div style={{ display: "flex", marginTop: u(wide ? 0 : 20) }}>
+          <Kicker u={u}>The wheel has spoken</Kicker>
+        </div>
+        <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(wide ? 44 : 34), textAlign: "center", justifyContent: "center", lineHeight: 1.12, marginTop: u(8), maxWidth: u(460) }}>{c.text}</div>
+        {c.loser && <div style={{ display: "flex", fontSize: u(14), color: SOFT, marginTop: u(10) }}>{`${c.loser.name} · last place · ${c.loser.record}`}</div>}
+      </Col>
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------- invite
+function Invite({ c, fmt, league, assets }: { c: InviteCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
+  const u = unit(fmt);
+  const wide = fmt === "wide";
+  const facts = [c.team_count ? `${c.team_count} teams` : `${c.members} members`, c.league_type ? c.league_type.replace(/_/g, " ") : null, c.chug_rule ? "chug rule in effect" : null]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <Frame fmt={fmt} league={league} right={<Label u={u} color={GREEN}>{"You're invited"}</Label>} assets={assets}>
+      <Col style={{ alignItems: "center", marginTop: u(wide ? 2 : 34) }}>
+        {!wide && <img alt="" src={assets.emblem} width={u(130)} height={u(138)} />}
+        <div style={{ display: "flex", marginTop: u(wide ? 0 : 16) }}>
+          <Kicker u={u}>{c.commissioner ? `${c.commissioner} wants you in` : "Come play"}</Kicker>
+        </div>
+        <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(wide ? 52 : 44), color: GREEN, textShadow: GLOW, textTransform: "uppercase", textAlign: "center", lineHeight: 1.05 }}>{league}</div>
+        <div style={{ display: "flex", fontSize: u(14), color: SOFT, marginTop: u(6) }}>{facts}</div>
+        {c.seats_left !== null && c.seats_left > 0 && <div style={{ display: "flex", fontSize: u(13), color: PEACH, marginTop: u(4) }}>{`${c.seats_left} seat${c.seats_left > 1 ? "s" : ""} left`}</div>}
+        <Panel u={u} tone="glory" style={{ marginTop: u(wide ? 12 : 24), alignItems: "center", padding: `${u(12)}px ${u(26)}px` }}>
+          <Label u={u}>Join code</Label>
+          <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(40), letterSpacing: u(6), lineHeight: 1.1 }}>{c.invite_code}</div>
+        </Panel>
+      </Col>
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------- Gamecast player
+function Player({ c, fmt, league, assets }: { c: PlayerCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
+  const u = unit(fmt);
+  const wide = fmt === "wide";
+  const live = c.game.status === "in_progress" || c.game.status === "halftime";
+  const shot = c.headshot ? assets.headshots[c.headshot] : null;
+  const score = c.game.away && c.game.home ? `${c.game.away} ${c.game.away_score ?? 0} @ ${c.game.home} ${c.game.home_score ?? 0}` : null;
+  return (
+    <Frame
+      fmt={fmt}
+      league={league}
+      right={live ? <Live u={u}>{c.game.clock ?? "Live"}</Live> : <Label u={u} color={GREEN}>{c.game.status === "final" ? "Final" : "Gamecast"}</Label>}
+      assets={assets}
+    >
+      <Row style={{ justifyContent: "space-between", marginTop: u(wide ? 6 : 24) }}>
+        <Col style={{ flexShrink: 1 }}>
+          <Kicker u={u}>{live ? "He's cooking" : "Stat line"}</Kicker>
+          <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(38), textTransform: "uppercase", lineHeight: 1.05, marginTop: u(4) }}>{c.name}</div>
+          <div style={{ display: "flex", fontSize: u(13), color: FAINT }}>{[c.position, c.team, score].filter(Boolean).join(" · ")}</div>
+          {c.points !== null && (
+            <Row style={{ alignItems: "flex-end", marginTop: u(10) }}>
+              <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(64), color: GREEN, textShadow: GLOW, lineHeight: 1 }}>{c.points.toFixed(1)}</div>
+              <div style={{ display: "flex", fontSize: u(14), color: FAINT, marginLeft: u(8), marginBottom: u(8) }}>pts</div>
+            </Row>
+          )}
+        </Col>
+        {shot && <img alt="" src={shot} width={u(wide ? 150 : 170)} height={u(wide ? 150 : 170)} style={{ borderRadius: u(wide ? 75 : 85), border: `${u(3)}px solid rgba(57,255,20,0.6)`, objectFit: "cover" }} />}
+      </Row>
+      {c.lines.slice(0, wide ? 1 : 3).map((line) => (
+        <Col key={line.title} style={{ marginTop: u(wide ? 12 : 18), gap: u(6) }}>
+          {!wide && <Label u={u}>{line.title}</Label>}
+          <Row style={{ gap: u(8) }}>
+            {line.stats.map((st) => (
+              <Stat key={st.label} u={u} value={st.value} label={st.label} hot={st.label === "TD" && st.value !== "0"} />
+            ))}
+          </Row>
+        </Col>
+      ))}
+    </Frame>
+  );
+}
+
 export function ShareImage({ data, fmt, assets }: { data: ShareData; fmt: ShareFormat; assets: ShareAssets }) {
   const league = data.league_name;
   switch (data.kind) {
@@ -394,5 +682,21 @@ export function ShareImage({ data, fmt, assets }: { data: ShareData; fmt: ShareF
       return <Power c={data.card} fmt={fmt} league={league} assets={assets} />;
     case "awards":
       return <Awards c={data.card} fmt={fmt} league={league} assets={assets} />;
+    case "champion":
+      return <Champion c={data.card} fmt={fmt} league={league} assets={assets} />;
+    case "season_awards":
+      return <SeasonAwards c={data.card} fmt={fmt} league={league} assets={assets} />;
+    case "chug":
+      return <Chug c={data.card} fmt={fmt} league={league} assets={assets} />;
+    case "bet":
+      return <Bet c={data.card} fmt={fmt} league={league} assets={assets} />;
+    case "trade":
+      return <Trade c={data.card} fmt={fmt} league={league} assets={assets} />;
+    case "wheel":
+      return <Wheel c={data.card} fmt={fmt} league={league} assets={assets} />;
+    case "invite":
+      return <Invite c={data.card} fmt={fmt} league={league} assets={assets} />;
+    case "player":
+      return <Player c={data.card} fmt={fmt} league={league} assets={assets} />;
   }
 }

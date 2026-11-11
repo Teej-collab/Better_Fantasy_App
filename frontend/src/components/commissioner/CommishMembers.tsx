@@ -1,5 +1,6 @@
 "use client";
 
+import { ShareButton } from "@/components/share/ShareButton";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { buttonClass, inputClass, panelClass } from "@/components/commissioner/CommishBits";
@@ -65,6 +66,7 @@ export function CommishMembers() {
         >
           {copied ? "Link copied" : "Copy invite link"}
         </button>
+        <ShareButton shareRef={{ kind: "invite" }} title="You're invited" label="Invite card ↗" className="self-auto" />
       </div>
       <input
         value={search}

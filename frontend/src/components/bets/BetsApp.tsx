@@ -1,5 +1,6 @@
 "use client";
 
+import { ShareButton } from "@/components/share/ShareButton";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AddBetFlow } from "@/components/bets/AddBetFlow";
@@ -196,6 +197,7 @@ function BetActions({
         </div>
       ))}
       <div className="flex flex-wrap items-center gap-2">
+        <ShareButton shareRef={{ kind: "bet", bet_id: bet.id }} title={bet.legs.length > 1 ? `My ${bet.legs.length}-leg parlay` : "My bet"} className="self-auto" />
         <button
           type="button"
           onClick={() =>

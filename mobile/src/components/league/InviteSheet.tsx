@@ -4,12 +4,14 @@ import { Modal, Pressable, Share, StyleSheet, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ShareButton } from '@/components/ShareSheet';
 import { Kicker, NeonButton } from '@/components/start/StartUI';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { IOS_APP_URL } from '@/lib/appLinks';
 import { joinLinkFor } from '@/lib/qrJoin';
+import { useMe } from '@/lib/queries';
 
 /** The invite text: the app download (TestFlight, 2026-10-28), the web
  *  join link everyone can open, and a link that opens the app's join
@@ -29,7 +31,8 @@ export function inviteMessage(leagueName: string, code: string): string {
 // to send the invite by text or anything else. The same sheet opens
 // from Leagues, the League tab's "Invite friends", and Commissioner
 // Tools.
-export function InviteSheet({ league, onClose }: { league: { name: string; invite_code: string } | null; onClose: () => void }) {
+export function InviteSheet({ league, onClose }: { league: { id?: number; name: string; invite_code: string } | null; onClose: () => void }) {
+  const activeLeagueId = useMe().data?.active_league_id ?? null;
   const insets = useSafeAreaInsets();
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
   if (!league) return null;
@@ -82,6 +85,10 @@ export function InviteSheet({ league, onClose }: { league: { name: string; invit
               void Share.share({ message: inviteMessage(league.name, league.invite_code) });
             }}
           />
+          {/* The invite as a card (components/ShareSheet.tsx), for the league you're in. */}
+          {league.id !== undefined && league.id === activeLeagueId && (
+            <ShareButton shareRef={{ kind: 'invite' }} title={`You're invited to ${league.name}`} label="Share an invite card ↗" />
+          )}
           <Pressable onPress={() => void copy('link')} style={styles.copyLink} accessibilityRole="button">
             <Text style={styles.copyLinkText}>{copied === 'link' ? 'Link copied!' : 'Copy invite link'}</Text>
           </Pressable>

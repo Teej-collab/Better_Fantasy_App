@@ -43,6 +43,15 @@ async function inline(url: string): Promise<string | null> {
   }
 }
 
+// Every player photo anywhere on the card (stars, bet legs, trade sides…).
+function headshotsIn(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(headshotsIn);
+  if (value && typeof value === "object") {
+    return Object.entries(value).flatMap(([k, v]) => (k === "headshot" && typeof v === "string" ? [v] : headshotsIn(v)));
+  }
+  return [];
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const f = new URL(request.url).searchParams.get("f");
@@ -50,7 +59,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   const data = await getShareCard(token);
   if (!data) return new Response("Not found", { status: 404 });
 
-  const headshotUrls = data.kind === "matchup" ? data.card.stars.map((s) => s.headshot).filter((u): u is string => Boolean(u)) : [];
+  const headshotUrls = [...new Set(headshotsIn(data.card))];
   const [fontData, emblemSrc, shots] = await Promise.all([loadFonts(), loadEmblem(), Promise.all(headshotUrls.map(inline))]);
   const assets: ShareAssets = { emblem: emblemSrc, headshots: Object.fromEntries(headshotUrls.map((u, i) => [u, shots[i]])) };
 

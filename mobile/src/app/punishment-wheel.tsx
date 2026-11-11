@@ -18,7 +18,7 @@ import Animated, {
 import Svg, { Circle, G, Path, Polygon, Text as SvgText } from 'react-native-svg';
 
 import { GlowBox, GlowText } from '@/components/fx/Glow';
-import { ShareableCard } from '@/components/ShareableCard';
+import { ShareButton } from '@/components/ShareSheet';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
@@ -407,7 +407,7 @@ export default function PunishmentWheelScreen() {
       {revealed && result && (
         // The verdict, for the group chat (2026-10-24).
         <Animated.View entering={FadeInDown.duration(450)}>
-          <ShareableCard title={`The ${data.season} punishment wheel has spoken`}>
+          <>
             <GlowBox color={ORANGE} radius={22} intensity={0.5} spread={16}>
               <View style={styles.result} accessibilityLiveRegion="polite">
                 <View style={styles.spokenRow}>
@@ -423,7 +423,8 @@ export default function PunishmentWheelScreen() {
                 </Text>
               </View>
             </GlowBox>
-          </ShareableCard>
+          <ShareButton shareRef={{ kind: 'wheel', season: data.season }} title={`The ${data.season} punishment wheel has spoken`} />
+          </>
           <Pressable onPress={replay} style={({ pressed }) => [styles.again, pressed && styles.pressed]} accessibilityRole="button">
             <Text style={styles.againText}>Watch it again</Text>
           </Pressable>

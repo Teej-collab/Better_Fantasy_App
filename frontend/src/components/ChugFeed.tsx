@@ -1,5 +1,6 @@
 "use client";
 
+import { ShareButton } from "@/components/share/ShareButton";
 import { useState } from "react";
 import Link from "next/link";
 import { getChugVideoUrl, type ChugFeedEntry } from "@/lib/api";
@@ -92,7 +93,10 @@ function ChugCard({ chug }: { chug: ChugFeedEntry }) {
           )}
         </div>
       )}
-      <ChugCheers chug={chug} className="px-4 pb-3" />
+      <div className="flex items-center justify-between gap-2 px-4 pb-3">
+        <ChugCheers chug={chug} />
+        <ShareButton shareRef={{ kind: "chug", chug_id: chug.id }} title={`${chug.owner_name}'s chug · ${chug.final_score}/10`} />
+      </div>
     </li>
   );
 }

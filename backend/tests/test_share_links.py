@@ -77,3 +77,94 @@ async def test_share_links_need_a_member_and_a_real_link(pool):
         await _member_of_a_new_league(client)
         assert (await client.post("/share", json={"kind": "nope"})).status_code == 422
         assert (await client.post("/share", json={"kind": "recap", "season": 2026})).status_code == 422
+
+
+# ---- the second pass (2026-11-11) ----------------------------------------
+
+
+async def _two_teams(pool, league_id: int) -> tuple[list[int], list[int]]:
+    """(owner_ids, team_ids) for Kim and Eric in this league."""
+    owners, teams = [], []
+    async with pool.acquire() as conn:
+        for i, name in enumerate(["Kim Smith", "Eric Jones"], 1):
+            owner_id = await conn.fetchval(
+                "INSERT INTO owners (espn_member_id, display_name, discord_user_id) VALUES ($1, $2, $3) RETURNING owner_id",
+                f"test-share-owner-{uuid.uuid4().hex[:8]}", name, 990000000000 + int(uuid.uuid4().int % 1000000),
+            )
+            team_id = await conn.fetchval(
+                "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+                TEST_SEASON, 870000 + i, owner_id, f"{name.split()[0]} FC", league_id,
+            )
+            owners.append(owner_id)
+            teams.append(team_id)
+    return owners, teams
+
+
+async def test_second_pass_cards_build_from_the_leagues_data(pool):
+    async with _client() as client:
+        league_id = await _member_of_a_new_league(client)
+        (kim, eric), (kim_team, eric_team) = await _two_teams(pool, league_id)
+        async with pool.acquire() as conn:
+            await conn.execute("INSERT INTO season_champions (season, owner_id, team_name, league_id) VALUES ($1, $2, 'Kim FC', $3)", TEST_SEASON, kim, league_id)
+            await conn.execute(
+                "INSERT INTO season_awards (season, owner_id, award_type, detail, league_id) VALUES ($1, $2, 'Boom Week', '151.8 pts', $4), ($1, $3, 'Bust Week', '61.2 pts', $4)",
+                TEST_SEASON, kim, eric, league_id,
+            )
+            await conn.execute(
+                "INSERT INTO season_punishments (league_id, season, text, landed_index, items_snapshot) VALUES ($1, $2, 'Wear a jersey', 0, '[\"a\", \"b\"]'::jsonb)",
+                league_id, TEST_SEASON,
+            )
+            discord = await conn.fetchval("SELECT discord_user_id FROM owners WHERE owner_id = $1", kim)
+            chug_id = await conn.fetchval(
+                "INSERT INTO chug_scores (discord_user_id, chug_time_seconds, final_score, season, week, league_id, roast, hype_detail) "
+                "VALUES ($1, 4.6, 8.7, $2, 3, $3, 'Fast.', '{\"comedy\": 2, \"quote\": \"cheers\"}'::jsonb) RETURNING id",
+                discord, TEST_SEASON, league_id,
+            )
+            trade_id = await conn.fetchval(
+                "INSERT INTO trades (league_id, season, proposing_team_id, receiving_team_id, status, accepted_at) VALUES ($1, $2, $3, $4, 'accepted', now()) RETURNING id",
+                league_id, TEST_SEASON, kim_team, eric_team,
+            )
+
+        for ref in (
+            {"kind": "champion", "season": TEST_SEASON},
+            {"kind": "season_awards", "season": TEST_SEASON},
+            {"kind": "wheel", "season": TEST_SEASON},
+            {"kind": "chug", "chug_id": chug_id},
+            {"kind": "trade", "trade_id": trade_id},
+            {"kind": "invite"},
+        ):
+            resp = await client.post("/share", json=ref)
+            assert resp.status_code == 200, (ref, resp.text)
+            card = (await client.get(f"/share/{resp.json()['token']}")).json()["card"]
+            if ref["kind"] == "champion":
+                assert card["name"] == "Kim" and card["titles"] == 1
+            if ref["kind"] == "season_awards":
+                assert [a["tone"] for a in card["awards"]] == ["glory", "shame"]
+            if ref["kind"] == "wheel":
+                assert card["text"] == "Wear a jersey" and card["slices"] == 2
+            if ref["kind"] == "chug":
+                assert card["name"] == "Kim" and card["score"] == 8.7 and card["quote"] == "cheers"
+            if ref["kind"] == "trade":
+                assert [s["name"] for s in card["sides"]] == ["Kim", "Eric"]
+            if ref["kind"] == "invite":
+                assert card["invite_code"]
+
+
+async def test_only_the_bettor_shares_a_bet(pool):
+    async with _client() as bettor, _client() as other:
+        league_id = await _member_of_a_new_league(bettor)
+        await _member_of_a_new_league(other)
+        me = (await bettor.get("/auth/me")).json()
+        async with pool.acquire() as conn:
+            bet_id = await conn.fetchval(
+                "INSERT INTO bets (user_id, league_id, stake_cents, odds_american, payout_cents, status, source) VALUES ($1, $2, 2000, 1130, 24600, 'open', 'manual') RETURNING id",
+                me["user_id"], league_id,
+            )
+            await conn.execute(
+                "INSERT INTO bet_legs (bet_id, position, description, market) VALUES ($1, 1, 'Justin Jefferson 90+ rec yds', 'player_prop')", bet_id
+            )
+        resp = await bettor.post("/share", json={"kind": "bet", "bet_id": bet_id})
+        assert resp.status_code == 200, resp.text
+        card = (await bettor.get(f"/share/{resp.json()['token']}")).json()["card"]
+        assert card["stake"] == 20 and card["legs"][0]["text"] == "Justin Jefferson 90+ rec yds"
+        assert (await other.post("/share", json={"kind": "bet", "bet_id": bet_id})).status_code == 404

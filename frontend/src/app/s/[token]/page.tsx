@@ -55,6 +55,20 @@ export default async function SharedCardPage({ params }: Props) {
         </section>
       )}
 
+      {data.kind === "invite" ? (
+        <section className="flex flex-col gap-3 rounded-[22px] border border-[#39ff14]/40 bg-[#141a22] p-5 shadow-[0_0_26px_rgba(57,255,20,.12)]">
+          <h2 className={`${ANTON} text-2xl uppercase tracking-wide text-[#39ff14]`}>Join {data.league_name}</h2>
+          <p className="text-[15px] leading-relaxed text-[#f5f4ec]/75">
+            Sign up, then enter code <span className="font-mono font-bold tracking-widest text-[#f5f4ec]">{data.card.invite_code}</span> if it doesn&apos;t fill in for you.
+          </p>
+          <Link
+            href={`/start?join=${encodeURIComponent(data.card.invite_code)}`}
+            className={`${ANTON} flex min-h-12 items-center justify-center rounded-xl bg-[#ff7a1a] text-lg uppercase tracking-wide text-[#1a0b00] shadow-[0_0_18px_rgba(255,122,26,.45)]`}
+          >
+            Join the league
+          </Link>
+        </section>
+      ) : (
       <section className="flex flex-col gap-3 rounded-[22px] border border-[#39ff14]/40 bg-[#141a22] p-5 shadow-[0_0_26px_rgba(57,255,20,.12)]">
         <h2 className={`${ANTON} text-2xl uppercase tracking-wide text-[#39ff14]`}>Your league deserves this</h2>
         <p className="text-[15px] leading-relaxed text-[#f5f4ec]/75">
@@ -70,6 +84,7 @@ export default async function SharedCardPage({ params }: Props) {
           Already in {data.league_name}? Open The Weekend
         </Link>
       </section>
+      )}
     </main>
   );
 }

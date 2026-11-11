@@ -1,5 +1,6 @@
 "use client";
 
+import { ShareButton } from "@/components/share/ShareButton";
 import { useCallback, useEffect, useState } from "react";
 import { GroupTitle, inputClass, panelClass } from "@/components/commissioner/CommishBits";
 import { trackTap } from "@/lib/analyticsEvents";
@@ -888,6 +889,9 @@ function Detail({
         </h2>
         <p className={`text-sm ${MUTED}`}>{subtitle}</p>
       </div>
+      {trade.status === "accepted" && (
+        <ShareButton shareRef={{ kind: "trade", trade_id: trade.id }} title={`Trade: ${trade.proposing_team_name} ↔ ${trade.receiving_team_name}`} />
+      )}
       {trade.note && (
         <div className={`${panelClass} p-4`}>
           <span className={`block text-[11px] font-extrabold tracking-wider uppercase ${MUTED}`}>Their note</span>

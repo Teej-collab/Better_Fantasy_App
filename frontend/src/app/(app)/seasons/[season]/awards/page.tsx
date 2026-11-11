@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ShareButton } from "@/components/share/ShareButton";
 import { cookies } from "next/headers";
 import { getActiveLeagueName, getMe, getSeasonAwards, listSeasons } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
@@ -68,6 +69,7 @@ export default async function SeasonAwardsPage({
               {champion.owner_name}
             </Link>
           </div>
+          <ShareButton className="ml-auto" shareRef={{ kind: "champion", season: Number(season) }} title={`${season} champion: ${champion.team_name}`} />
         </EliteCard>
       ) : (
         Number(season) === Math.max(...seasons) && (
@@ -89,7 +91,10 @@ export default async function SeasonAwardsPage({
       {awards.length === 0 ? (
         <p className="text-sm text-black/50 dark:text-white/50">No awards recorded for {season} yet.</p>
       ) : (
-        <TrophyWall awards={awards} />
+        <>
+          <ShareButton shareRef={{ kind: "season_awards", season: Number(season) }} title={`${season} season awards`} label="Share the awards ↗" />
+          <TrophyWall awards={awards} />
+        </>
       )}
     </div>
   );

@@ -295,7 +295,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // What a share link points at (backend app/routers/share.py).
-export type ShareRef = { kind: 'matchup' | 'recap' | 'standings' | 'power' | 'awards'; matchup_id?: number; season?: number; week?: number };
+export type ShareRef = {
+  kind: 'matchup' | 'recap' | 'standings' | 'power' | 'awards' | 'champion' | 'season_awards' | 'chug' | 'bet' | 'trade' | 'wheel' | 'invite' | 'player';
+  matchup_id?: number;
+  season?: number;
+  week?: number;
+  chug_id?: number;
+  bet_id?: number;
+  trade_id?: number;
+  game_id?: string;
+  player_id?: string;
+};
 
 export type ReportReason = 'harassment' | 'hate' | 'sexual' | 'spam' | 'other';
 

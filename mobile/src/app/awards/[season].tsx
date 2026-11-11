@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { ANTON, Elite, EliteCard, EliteChips, EliteLabel, eliteText, EliteTitle, Hex, initials, PodiumBoard } from '@/components/elite/Elite';
 import { Muted, openOwner } from '@/components/league/LeagueUI';
-import { ShareableCard } from '@/components/ShareableCard';
+import { ShareButton } from '@/components/ShareSheet';
 import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
@@ -72,7 +72,7 @@ function SeasonAwardsView({ season, latest }: { season: number; latest: boolean 
     <View style={styles.gap}>
       {/* The champion and the season's awards go to the group chat as images (2026-10-24). */}
       {champion ? (
-        <ShareableCard title={`${season} champion: ${champion.team_name}`}>
+        <>
           <EliteCard tone="orange" style={styles.plate}>
             <TrophyCell />
             <View style={styles.flex}>
@@ -83,7 +83,8 @@ function SeasonAwardsView({ season, latest }: { season: number; latest: boolean 
               </Pressable>
             </View>
           </EliteCard>
-        </ShareableCard>
+          <ShareButton shareRef={{ kind: 'champion', season }} title={`${season} champion: ${champion.team_name}`} />
+        </>
       ) : (
         latest && (
           <EliteCard tone="orange" style={styles.plate}>
@@ -99,7 +100,8 @@ function SeasonAwardsView({ season, latest }: { season: number; latest: boolean 
       {awards.length === 0 ? (
         <Muted>No awards recorded for {season} yet.</Muted>
       ) : (
-        <ShareableCard title={`${season} season awards`}>
+        <View style={styles.gap}>
+          <ShareButton shareRef={{ kind: 'season_awards', season }} title={`${season} season awards`} />
           <View style={styles.gap}>
             {hero && (
               <Pressable onPress={() => openOwner(hero.owner_id)} accessibilityRole="button">
@@ -120,7 +122,7 @@ function SeasonAwardsView({ season, latest }: { season: number; latest: boolean 
             {glory.length > 0 && <AwardGrid label="GLORY" color={Elite.green} awards={glory} />}
             {shame.length > 0 && <AwardGrid label="SHAME" color={Elite.orange} awards={shame} />}
           </View>
-        </ShareableCard>
+        </View>
       )}
     </View>
   );

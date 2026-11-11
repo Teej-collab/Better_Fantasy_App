@@ -1,5 +1,6 @@
 "use client";
 
+import { ShareButton } from "@/components/share/ShareButton";
 import { useEffect, useState } from "react";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
@@ -123,9 +124,12 @@ export function FocusPlayer({ playerId, game }: { playerId: string; game: LiveGa
         </div>
       )}
 
-      <button type="button" onClick={() => openPlayerCard(playerId)} className="self-start text-sm font-bold text-emerald-400 hover:underline">
-        Player card ›
-      </button>
+      <div className="flex items-center justify-between">
+        <button type="button" onClick={() => openPlayerCard(playerId)} className="text-sm font-bold text-emerald-400 hover:underline">
+          Player card ›
+        </button>
+        {lines.length > 0 && <ShareButton shareRef={{ kind: "player", game_id: game.game_id, player_id: playerId }} title={`${name}${team ? ` · ${team}` : ""}`} className="self-auto" />}
+      </div>
     </section>
   );
 }

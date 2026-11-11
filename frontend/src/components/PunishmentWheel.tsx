@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Anton, Satisfy } from "next/font/google";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { seasonalEmblem } from "@/lib/seasonal";
+import { ShareButton } from "@/components/share/ShareButton";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
@@ -353,6 +354,7 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
           <button type="button" onClick={replay} className="h-[46px] rounded-2xl border border-white/20 text-[15px] font-bold hover:bg-white/5">
             Watch it again
           </button>
+          <ShareButton shareRef={{ kind: "wheel", season: wheel.season }} title={`The ${wheel.season} punishment wheel has spoken`} />
         </div>
       )}
 

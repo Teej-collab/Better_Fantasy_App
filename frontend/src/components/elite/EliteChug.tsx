@@ -1,5 +1,6 @@
 "use client";
 
+import { ShareButton } from "@/components/share/ShareButton";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getChugVideoUrl, type ChugFeedEntry } from "@/lib/api";
@@ -166,6 +167,7 @@ function ChugCard({ chug, lit, focused }: { chug: ChugFeedEntry; lit: boolean; f
         {chug.hype_detail && <HypeBars detail={chug.hype_detail} />}
         {chug.roast && <ReadMore text={chug.roast} more="Read the whole roast" className="text-sm leading-relaxed text-[#f5f4ec]/85" />}
         <ChugCheers chug={chug} />
+        <ShareButton shareRef={{ kind: "chug", chug_id: chug.id }} title={`${chug.owner_name}'s chug · ${chug.final_score}/10`} />
       </EliteCard>
     </li>
   );

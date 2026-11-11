@@ -6,7 +6,8 @@ images (frontend/src/app/s/[token]/image) and public page
 (frontend/src/app/s/[token]) read the card through GET /share/{token}.
 Sharing the same thing again hands back the same link.
 
-The card itself only carries what's drawn on it (app/domain/
+Kinds and what each points at: _REF_FIELDS. A bet can only be shared by
+the person who placed it. The card itself only carries what's drawn on it (app/domain/
 share_cards.py): this is the one deliberately public read of league
 data, and only for something a member chose to share.
 """
@@ -31,6 +32,14 @@ _REF_FIELDS = {
     "standings": ("season",),
     "power": ("season", "week"),
     "awards": ("season", "week"),
+    "champion": ("season",),
+    "season_awards": ("season",),
+    "chug": ("chug_id",),
+    "bet": ("bet_id",),
+    "trade": ("trade_id",),
+    "wheel": ("season",),
+    "invite": (),
+    "player": ("game_id", "player_id"),
 }
 
 
@@ -39,6 +48,11 @@ class ShareRequest(BaseModel):
     matchup_id: int | None = None
     season: int | None = None
     week: int | None = None
+    chug_id: int | None = None
+    bet_id: int | None = None
+    trade_id: int | None = None
+    game_id: str | None = None
+    player_id: str | None = None
 
 
 @router.post("")
@@ -54,6 +68,11 @@ async def create_share_link(
     payload = decode_session_token(SessionConfig().session_secret, get_session_token(request) or "")
 
     async with pool.acquire() as conn:
+        # A bet is yours to share, nobody else's.
+        if body.kind == "bet":
+            owner = await conn.fetchval("SELECT user_id FROM bets WHERE id = $1", body.bet_id)
+            if payload is None or owner != payload["user_id"]:
+                raise HTTPException(status_code=404, detail="There's nothing to share here yet.")
         # Only something that exists in this league, and has something to show.
         if await share_cards.BUILDERS[body.kind](conn, league_id, ref) is None:
             raise HTTPException(status_code=404, detail="There's nothing to share here yet.")

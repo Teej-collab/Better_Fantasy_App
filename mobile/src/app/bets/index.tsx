@@ -4,7 +4,7 @@ import { ActionSheetIOS, Alert, Platform, Pressable, ScrollView, StyleSheet, Vie
 
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { BetCard } from '@/components/bets/BetCard';
-import { ShareableCard } from '@/components/ShareableCard';
+import { ShareButton } from '@/components/ShareSheet';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -193,10 +193,9 @@ function OwnBet({ bet, run }: { bet: Bet; run: (action: () => Promise<unknown>) 
 
   return (
     <View style={styles.ownBet}>
-      {/* Only the card goes in the shared image, not these buttons. */}
-      <ShareableCard title={bet.legs.length > 1 ? `My ${bet.legs.length}-leg parlay` : 'My bet'}>
-        <BetCard bet={bet} />
-      </ShareableCard>
+      <BetCard bet={bet} />
+      {/* Share sends the bet card (components/ShareSheet.tsx); only yours can be shared. */}
+      <ShareButton shareRef={{ kind: 'bet', bet_id: bet.id }} title={bet.legs.length > 1 ? `My ${bet.legs.length}-leg parlay` : 'My bet'} />
       <View style={styles.actions}>
         {untracked.map((leg) => (
           <Pressable key={leg.id} onPress={() => markLeg(leg.id, leg.description)} style={styles.chip} accessibilityRole="button">

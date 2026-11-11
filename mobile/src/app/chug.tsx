@@ -9,6 +9,7 @@ import { ChugCheers } from '@/components/ChugCheers';
 import { ANTON, Elite, EliteCard, EliteChips, EliteLabel, eliteText, EliteTitle, Hex, SATISFY } from '@/components/elite/Elite';
 import { ChugVideo } from '@/components/home/FeedCards';
 import { ShareableCard } from '@/components/ShareableCard';
+import { ShareButton } from '@/components/ShareSheet';
 import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -277,8 +278,8 @@ function ChugUpload({ creditable }: { creditable?: { id: number; name: string }[
       {status === 'error' && error && <Text style={styles.error}>{error}</Text>}
       {status === 'done' && result && !result.can_to_mouth && <Text style={eliteText.small}>{result.message}</Text>}
       {status === 'done' && result && result.can_to_mouth && (
-        // The grade and the roast, for the group chat (2026-10-24).
-        <ShareableCard title={`Chug graded ${result.final_score}/10`}>
+        // The grade and the roast; Share sends the chug card (components/ShareSheet.tsx).
+        <>
           <View style={styles.grade}>
             <View style={styles.gradeTop}>
               <Hex width={58} color={Elite.green} glow>
@@ -305,7 +306,8 @@ function ChugUpload({ creditable }: { creditable?: { id: number; name: string }[
             )}
             {result.roast && <Text style={eliteText.body}>{result.roast}</Text>}
           </View>
-        </ShareableCard>
+          <ShareButton shareRef={{ kind: 'chug', chug_id: result.id }} title={`Chug graded ${result.final_score}/10`} />
+        </>
       )}
     </EliteCard>
   );
@@ -550,6 +552,7 @@ function ChugCard({ chug, lit, focused }: { chug: ChugFeedEntry; lit: boolean; f
           )}
         </>
       )}      <ChugCheers chug={chug} />
+      <ShareButton shareRef={{ kind: 'chug', chug_id: chug.id }} title={`${chug.owner_name}'s chug · ${chug.final_score}/10`} />
     </EliteCard>
   );
 }
