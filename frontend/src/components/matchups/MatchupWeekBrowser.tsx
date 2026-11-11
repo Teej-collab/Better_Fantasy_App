@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { getWeekMatchupContextClient, type WeekMatchupContextItem } from "@/lib/api";
 import { WeekPlate } from "@/components/elite/Elite";
 import { MatchupCarousel } from "@/components/matchups/MatchupCarousel";
+import { ShareButton } from "@/components/share/ShareButton";
 import { orientMatchupForViewer } from "@/components/matchups/orientMatchup";
 import { useOnAppRefresh } from "@/lib/usePullToRefresh";
 
@@ -42,6 +43,9 @@ export function MatchupWeekBrowser({
     return [...matchups.filter(mine), ...matchups.filter((m) => !mine(m))];
   }, [matchups, myOwnerId]);
   const [targetMatchupId, setTargetMatchupId] = useState(initialMatchupId);
+  // The matchup on screen, for Share (components/share/ShareButton.tsx).
+  const [activeMatchupId, setActiveMatchupId] = useState(initialMatchupId);
+  const active = ordered.find((m) => m.matchup_id === activeMatchupId) ?? ordered[0];
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   // Whichever team is on the left of the matchup currently on screen —
@@ -133,8 +137,18 @@ export function MatchupWeekBrowser({
             myOwnerId={myOwnerId}
             onActiveMatchupChange={(m) => {
               focusOwnerIdRef.current = m.home.owner_id;
+              setActiveMatchupId(m.matchup_id);
             }}
           />
+        )}
+        {active && !loadError && (
+          <div className="flex justify-end">
+            <ShareButton
+              key={active.matchup_id}
+              shareRef={{ kind: "matchup", matchup_id: active.matchup_id }}
+              title={`Week ${week}: ${active.home.team_name} vs ${active.away.team_name}`}
+            />
+          </div>
         )}
       </div>
     </div>

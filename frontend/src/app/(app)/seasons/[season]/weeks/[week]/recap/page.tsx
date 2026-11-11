@@ -5,6 +5,7 @@ import { getMe, getWeeklyRecap } from "@/lib/api";
 import { BackButton } from "@/components/BackButton";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { RecapOpenTracker } from "@/components/RecapOpenTracker";
+import { ShareButton } from "@/components/share/ShareButton";
 import { SignInCard } from "@/components/SignInCard";
 import { DESTINATIONS } from "@/lib/navDestinations";
 import { panelGlowStyle } from "@/lib/sectionColors";
@@ -74,6 +75,12 @@ export default async function WeekRecapPage({
           <p className="text-base leading-relaxed whitespace-pre-line text-black/80 dark:text-white/80">{recap.text.trim()}</p>
           <RecapOpenTracker season={seasonNum} week={weekNum} source={from === "push" ? "push" : "page"} />
         </article>
+      )}
+      {recap && recap.released !== false && (
+        <div className="flex justify-end gap-4">
+          <ShareButton shareRef={{ kind: "awards", season: seasonNum, week: weekNum }} title={`Week ${weekNum} awards`} label="Share the awards ↗" />
+          <ShareButton shareRef={{ kind: "recap", season: seasonNum, week: weekNum }} title={`Week ${weekNum} Recap`} />
+        </div>
       )}
     </div>
   );

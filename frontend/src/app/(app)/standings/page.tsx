@@ -23,6 +23,7 @@ import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { BracketExperience } from "@/components/bracket/BracketExperience";
 import { SignInCard } from "@/components/SignInCard";
+import { ShareButton } from "@/components/share/ShareButton";
 import { StandingsViewTabs } from "@/components/standings/StandingsViewTabs";
 import { WeekScoreboardBrowser } from "@/components/standings/WeekScoreboardBrowser";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
@@ -146,6 +147,7 @@ export default async function StandingsPage({
       <LeagueSubNav active="standings" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
       <EliteTitle kicker={season !== null ? `The ${season}` : "The"} title="Standings" />
       <EliteSeasonChips seasons={seasons} activeSeason={season} hrefFor={(s) => `/standings?season=${s}`} />
+      {season !== null && <ShareButton shareRef={{ kind: "standings", season }} title={`${season} standings`} label="Share the standings ↗" />}
 
       <StandingsViewTabs
         standings={

@@ -47,7 +47,7 @@ import logging
 from app import ai_usage
 from app.config import ANTHROPIC_API_KEY, DEFAULT_CHUG_RULE_NAME, DEFAULT_LEAGUE_ID
 from app.db import get_pool
-from app.domain import manager_awards, recap_context, weekly_awards
+from app.domain import manager_awards, pronouns, recap_context, weekly_awards
 from app.domain.team_profile import get_owner_badges
 from app.providers.anthropic_narrative import MODEL, generate_narrative
 from app.providers.nfl_scoreboard import get_week_scoreboard
@@ -123,7 +123,7 @@ no disclaimers, no participation-trophy energy. Plain prose paragraphs only — 
 # unbeaten/winless, RBs going off, a QB feeding his own WR, a pile of
 # picks or missed kicks), then why games went the way they did, with
 # losers getting credit where it's real. Up to 750 words; same shit-talk.
-WEEKLY_RECAP_PROMPT = """You're one of the guys in this fantasy football league, writing the weekly recap \
+WEEKLY_RECAP_PROMPT = """You're one of the managers in this fantasy football league, writing the weekly recap \
 for the group. You watched every game, you know everybody, and you talk a lot of shit — but you also \
 actually know ball. Write it in first person, the way you'd tell the group chat how the week went \
 ("I'm not saying Jeff threw the game, but..."). Conversational and natural, never like a press release or \
@@ -143,7 +143,7 @@ or a dud, did the top power-ranked teams collide and how did it shake out, who's
 winless (only if the facts name someone — never point out that nobody is), and anything unusual — running backs going off, a QB feeding his own receiver, a pile \
 of interceptions or missed field goals. Lines marked (notable) are the ones worth talking about.
 - Then the games that matter, and WHY they went the way they did, from STORYLINES: the injury that sank \
-someone, the new pickup or returning star who swung it, the guy who tried to carry a loser. Give losers \
+someone, the new pickup or returning star who swung it, the player who tried to carry a loser. Give losers \
 their due where it's real ("Kyren tried to put the team on his back for Lorenzo, but...") and then roast \
 them for everything else. Specific, true shit-talk lands harder than generic insults: every paragraph \
 needs at least one real punchline built on a real number, not filler like "love it" or "drink up".
@@ -158,7 +158,7 @@ scenarios the facts give, never your own math. \
 Then who owes chugs.
 
 You have room for most of the good storylines, but not every fact — skip the ones that aren't \
-interesting rather than listing everything. End on a real line, not filler like "drink up, gentlemen". Names: call every manager only by the name \
+interesting rather than listing everything. End on a real line, not filler like "drink up, everybody". Names: call every manager only by the name \
 the facts use for them — never by team name, never by full name. Players can be named normally.
 
 Four to seven short paragraphs, up to 750 words — 750 is a hard limit. Plain prose paragraphs only: no title, \
@@ -320,6 +320,11 @@ async def _build_facts(conn, matchup: dict, kind: str) -> str:
         facts.append("This is a playoff matchup.")
     if matchup["is_game_of_the_week"]:
         facts.append("This is the league's Game of the Week.")
+    people = await pronouns.people_for(
+        conn, {side["owner_id"]: side["owner_name"] for side in (matchup["home"], matchup["away"])}
+    )
+    if people:
+        facts.append(people)
 
     return "; ".join(facts)
 
@@ -625,6 +630,10 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
             owed = float(chug["outstanding_owed"] or 0) + float(chug["fined_owed"] or 0)
             if owed > 0:
                 facts.append(f"{who(team_name)} currently owes {owed:g} under {rule} (the league's chug rule) this season")
+
+    people = await pronouns.people_for(conn, {side["owner_id"]: who(side["team_name"]) for side in sides})
+    if people:
+        facts += ["", people]
 
     if kind == "recap":
         return "\n".join(line if not line or line.endswith(":") else f"- {line}" for line in facts)

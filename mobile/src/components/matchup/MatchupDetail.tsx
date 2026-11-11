@@ -6,7 +6,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ANTON, Elite, EliteCard, EliteLabel, EliteWinBar, eliteText, Hex, SATISFY } from '@/components/elite/Elite';
 import { openTeam } from '@/components/league/LeagueUI';
 import { MatchupWriteUps } from '@/components/matchup/WriteUps';
-import { ShareableCard } from '@/components/ShareableCard';
+import { ShareButton } from '@/components/ShareSheet';
 import { RecordWithStreak } from '@/components/home/YourWeekCard';
 import { Text } from '@/components/Text';
 import { TeamAvatar } from '@/components/ui';
@@ -47,9 +47,8 @@ export function MatchupDetail({ matchup }: { matchup: WeekMatchupContextItem }) 
 
   return (
     <View style={styles.panel}>
-      <ShareableCard title={`Week ${matchup.week}: ${home.team_name} vs ${away.team_name}`}>
-        <Jumbotron matchup={matchup} />
-      </ShareableCard>
+      <Jumbotron matchup={matchup} />
+      <ShareButton shareRef={{ kind: 'matchup', matchup_id: matchup.matchup_id }} title={`Week ${matchup.week}: ${home.team_name} vs ${away.team_name}`} />
 
       <MatchupWriteUps narrative={matchup.narrative} preview={matchup.preview ?? null} week={matchup.week} />
 

@@ -16,6 +16,9 @@ export type Me = {
   league_count?: number;
   // The active league's format (2026-10); null with no active league.
   league_format?: LeagueFormat | null;
+  // The one-time About you step still to answer (components/AboutYou.tsx).
+  about_you_needed?: boolean;
+  gender?: 'male' | 'female' | null;
 };
 
 export type YourWeekMatchup = {

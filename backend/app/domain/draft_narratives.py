@@ -16,6 +16,7 @@ using it at the same time.
 import asyncio
 
 from app import ai_usage, config
+from app.domain import pronouns
 from app.domain.draft_grades import get_draft_grades_for_season, pick_gains
 from app.providers.anthropic_narrative import MODEL, generate_narrative
 
@@ -28,11 +29,12 @@ the clear steals and reaches already called out for you. Never invent a stat, a 
 not present in the data — every jab must be traceable to a specific fact you were handed.
 
 The grade itself was worked out from the numbers (projections, market draft position, lineup value); \
-your job is NOT to explain that math. Talk like the funniest guy in the group chat, not a draft \
+your job is NOT to explain that math. Talk like the funniest person in the group chat, not a draft \
 analyst: never mention ADP, rankings, rounds gained, percentiles, projections, value or any formula, \
 and never quote a number other than the grade, a round, or a count of players. Say "stole X in the \
-ninth" or "reached for X in the second" or "drafted four quarterbacks like he's starting a backup \
-QB farm," not "taken 2.1 rounds after his ADP."
+ninth" or "reached for X in the second" or "drafted four quarterbacks like they're starting a backup \
+QB farm," not "taken 2.1 rounds after ADP." Refer to the team's owner as "they" unless the facts say \
+he or she.
 
 Some picks are marked KEEPER — that slot was locked in by this league's keeper rules before the draft \
 even started, not a decision this team made on draft day. Never call a keeper pick a "steal," "value \
@@ -128,6 +130,7 @@ async def generate_draft_narratives(conn, season: int, league_id: int) -> dict:
         )
     }
     labels = pick_labels(gains, positions)
+    genders = await pronouns.owner_genders(conn, [g["owner_id"] for g in grades])
     generated = {}
     for grade in grades:
         picks = await conn.fetch(
@@ -145,6 +148,10 @@ async def generate_draft_narratives(conn, season: int, league_id: int) -> dict:
         facts = _build_draft_facts(
             [{**dict(p), "label": labels.get(p["sleeper_player_id"])} for p in picks], dict(grade)
         )
+        if genders.get(grade["owner_id"]) == "male":
+            facts += "\nThis team's owner is a man (he/him)."
+        elif genders.get(grade["owner_id"]) == "female":
+            facts += "\nThis team's owner is a woman (she/her)."
         # max_tokens above the 500 default: a real production failure
         # (2026-09) showed the model can spend its whole budget on
         # internal reasoning before ever emitting the actual text block

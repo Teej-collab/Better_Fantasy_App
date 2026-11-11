@@ -174,7 +174,8 @@ def _call_claude(content: list[dict]) -> dict | None:
     response = _get_client().messages.create(
         model=MODEL,
         max_tokens=1000,
-        system=HYPE_PROMPT,
+        # The verdict never guesses the chugger's gender (app/domain/pronouns.py).
+        system=f'{HYPE_PROMPT}\n\nIn the verdict, call the chugger "they", never he or she.',
         tools=[HYPE_TOOL],
         tool_choice={"type": "tool", "name": "grade_hype"},
         messages=[{"role": "user", "content": content}],

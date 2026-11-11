@@ -10,6 +10,7 @@ import {
   Space_Mono,
 } from "next/font/google";
 import "./globals.css";
+import { AboutYouGate } from "@/components/AboutYou";
 import { AudioWarmup } from "@/components/AudioWarmup";
 import { CinematicHoneycombBackground } from "@/components/CinematicHoneycombBackground";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -238,6 +239,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <PlayerCardProvider>{children}</PlayerCardProvider>
         </PresenceProvider>
         <ServiceWorkerRegistration />
+        {/* Birthday and gender, once after sign-in (components/AboutYou.tsx). */}
+        <AboutYouGate />
         <AudioWarmup />
       </body>
     </html>

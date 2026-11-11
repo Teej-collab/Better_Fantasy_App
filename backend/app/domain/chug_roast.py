@@ -14,6 +14,7 @@ import asyncio
 import logging
 
 from app import ai_usage, config
+from app.domain import pronouns
 from app.providers.anthropic_narrative import generate_narrative
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,10 @@ async def gather_facts(
         )
     if posted_by_commissioner:
         lines.append("The commissioner had to upload this video for them")
+    owner_id = await conn.fetchval("SELECT owner_id FROM owners WHERE discord_user_id = $1", discord_user_id)
+    people = await pronouns.people_for(conn, {owner_id: owner_name}) if owner_id else ""
+    if people:
+        lines.append(people)
     return "\n".join(lines)
 
 

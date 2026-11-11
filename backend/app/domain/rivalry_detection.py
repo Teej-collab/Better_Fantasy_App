@@ -25,6 +25,7 @@ import json
 import logging
 
 from app import ai_usage, config
+from app.domain import pronouns
 from app.providers.anthropic_narrative import generate_narrative
 
 logger = logging.getLogger(__name__)
@@ -191,12 +192,12 @@ def _default_name(a_name: str, b_name: str) -> str:
     return f"{a_name} vs {b_name}"
 
 
-async def _suggest_name(a_name: str, b_name: str, reasons: list[str]) -> tuple[str, str | None]:
+async def _suggest_name(a_name: str, b_name: str, reasons: list[str], people: str = "") -> tuple[str, str | None]:
     """(name, tagline) — written by the model when there's a key,
     else plain names and no tagline. Never raises."""
     if not config.ANTHROPIC_API_KEY:
         return _default_name(a_name, b_name), None
-    facts = f"{a_name} vs {b_name}. " + "; ".join(reasons)
+    facts = f"{a_name} vs {b_name}. " + "; ".join(reasons) + (f". {people}" if people else "")
     try:
         with ai_usage.tagged("rivalry_name"):
             text = await asyncio.to_thread(generate_narrative, NAME_PROMPT, facts, 200)
@@ -251,7 +252,9 @@ async def refresh_suggestions(conn, league_id: int) -> int:
             continue
         if key in existing or pair["score"] < SUGGEST_AT or pending >= max_pending(team_count or 0):
             continue
-        name, tagline = await _suggest_name(names.get(key[0], "Someone"), names.get(key[1], "Someone"), pair["reasons"])
+        a_name, b_name = names.get(key[0], "Someone"), names.get(key[1], "Someone")
+        people = await pronouns.people_for(conn, {key[0]: a_name, key[1]: b_name})
+        name, tagline = await _suggest_name(a_name, b_name, pair["reasons"], people)
         await conn.execute(
             """
             INSERT INTO rivalry_suggestions

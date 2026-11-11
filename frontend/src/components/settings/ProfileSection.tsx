@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { chatColorStyle, readableTextColor } from "@/components/chat/MessageBubble";
 import { ColorChoices } from "@/components/settings/ColorChoices";
+import { GenderSection } from "@/components/AboutYou";
 import { CardPhotoSection } from "@/components/settings/CardPhotoSection";
 import { LogoUploadCropper } from "@/components/settings/LogoUploadCropper";
 
@@ -177,6 +178,8 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
       </section>
 
       <CardPhotoSection />
+
+      <GenderSection />
 
       {initial.team_name !== null && (
         <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">

@@ -23,6 +23,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AppTickerBar } from '@/components/AppTickerBar';
 import { HoneycombBackground } from '@/components/HoneycombBackground';
 import { IntroOverlay } from '@/components/IntroOverlay';
+import { AboutYou } from '@/components/AboutYou';
 import { LaunchPicker } from '@/components/LaunchPicker';
 import { NewHereTourHost } from '@/components/tour/NewHereTour';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -283,9 +284,11 @@ function RootStack() {
         </Stack.Protected>
       </Stack>
       {picker && token && me && <LaunchPicker onDismiss={() => setPicker(false)} />}
+      {/* Birthday and gender, once (components/AboutYou.tsx). */}
+      {token && me?.about_you_needed && intro === 'done' && <AboutYou />}
       {intro === 'playing' && <IntroOverlay displayName={displayName} onDone={() => setIntro('done')} />}
       {/* The New Here tour, once per phone, after the intro and league picker. */}
-      <NewHereTourHost ready={intro === 'done' && !picker} />
+      <NewHereTourHost ready={intro === 'done' && !picker && !me?.about_you_needed} />
     </>
   );
 }

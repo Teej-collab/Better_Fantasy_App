@@ -19,6 +19,7 @@ import re
 from anthropic import Anthropic
 
 from app import ai_usage, config
+from app.domain import pronouns
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,8 @@ def generate_narrative(system_prompt: str, facts: str, max_tokens: int = 500) ->
     response = client.messages.create(
         model=MODEL,
         max_tokens=max_tokens,
-        system=system_prompt,
+        # Every writer gets the pronoun rule (app/domain/pronouns.py).
+        system=f"{system_prompt}\n\n{pronouns.RULE}",
         messages=[{"role": "user", "content": facts}],
     )
     ai_usage.record(response, MODEL)

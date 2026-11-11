@@ -1,3 +1,5 @@
+import { Alert } from 'react-native';
+
 import type * as A from '@/lib/adminTypes';
 import type { PlayoffWorld } from '@/lib/bracketEngine';
 import { initConnectivity, isNetworkFailure, reportReachable, reportUnreachable } from '@/lib/connectivity';
@@ -272,6 +274,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // a 401 for anything else (a wrong room password, a used sign-in
     // link) used to sign the phone out too (2026-10-14).
     if (res.status === 401 && sentToken !== null && sentToken === sessionToken && SESSION_ENDED.has(detail)) onUnauthorized?.();
+    // A birthday under 13 locks the account for good (backend
+    // app/routers/auth.py's about_you): say why, once, and sign out.
+    if (res.status === 403 && detail === 'under_13' && sentToken !== null && sentToken === sessionToken) {
+      sessionToken = null;
+      onUnauthorized?.();
+      Alert.alert('You need to be 13 or older', 'Sorry, you have to be at least 13 to use The Weekend.');
+    }
     throw new ApiError(res.status, detail, body);
   }
   const method = (init?.method ?? 'GET').toUpperCase();
@@ -285,10 +294,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+// What a share link points at (backend app/routers/share.py).
+export type ShareRef = { kind: 'matchup' | 'recap' | 'standings' | 'power' | 'awards'; matchup_id?: number; season?: number; week?: number };
+
 export type ReportReason = 'harassment' | 'hate' | 'sexual' | 'spam' | 'other';
 
 export const api = {
   me: () => request<Me>('/auth/me'),
+  // Birthday (first time only) and gender (components/AboutYou.tsx, Settings).
+  aboutYou: (body: { birthdate?: string; gender: 'male' | 'female' | null }) =>
+    request<{ ok: boolean }>('/auth/about-you', { method: 'PUT', body: JSON.stringify(body) }),
   // "Played here before with Discord?" (2026-10): a ticket naming this
   // account for the Discord sign-in, then the confirmation that moves this
   // login onto the original account and returns its session.
@@ -393,6 +408,8 @@ export const api = {
       `/seasons/${season}/playoffs/odds?${[team ? `team=${team}` : '', w ? `w=${encodeURIComponent(w)}` : ''].filter(Boolean).join('&')}`,
     ),
   // Posts a message to the active league's chat (sharing a What-If).
+  // A public link to a designed share card (components/ShareSheet.tsx).
+  createShareLink: (ref: ShareRef) => request<{ token: string }>('/share', { method: 'POST', body: JSON.stringify(ref) }),
   shareToLeagueChat: (body: string) =>
     request<{ conversation_id: number; message_id: number }>('/chat/league/share', { method: 'POST', body: JSON.stringify({ body }) }),
   // "If the season ended today"; null once a real bracket exists.

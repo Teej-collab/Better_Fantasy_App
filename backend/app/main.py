@@ -44,6 +44,7 @@ from app.routers import (
     rivalry_suggestions,
     push,
     settings,
+    share,
     survivor,
     notifications as notifications_router,
     system,
@@ -139,11 +140,16 @@ async def session_revocation(request, call_next):
             if payload is not None and "purpose" not in payload:  # real session, not a short-lived ticket
                 pool = await get_pool()
                 async with pool.acquire() as conn:
-                    current_version = await conn.fetchval(
-                        "SELECT token_version FROM users WHERE id = $1", payload["user_id"]
+                    user = await conn.fetchrow(
+                        "SELECT token_version, under_13_at FROM users WHERE id = $1", payload["user_id"]
                     )
-                if current_version is None or current_version != payload.get("token_version", 1):
+                if user is None or user["token_version"] != payload.get("token_version", 1):
                     return JSONResponse(status_code=401, content={"detail": "Session expired or invalid"})
+                # A birthday under 13 locks the account for good
+                # (app/routers/auth.py's about_you): every request,
+                # including a fresh sign-in's, gets this one answer.
+                if user["under_13_at"] is not None:
+                    return JSONResponse(status_code=403, content={"detail": "under_13"})
     return await call_next(request)
 
 
@@ -210,6 +216,7 @@ app.include_router(friends.router)
 app.include_router(war_room.router)
 app.include_router(kitty.router)
 app.include_router(survivor.router)
+app.include_router(share.router)
 app.include_router(notifications_router.router)
 
 

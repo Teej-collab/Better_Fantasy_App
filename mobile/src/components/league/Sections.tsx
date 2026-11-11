@@ -24,7 +24,7 @@ import { relativeTime } from '@/components/home/FeedCards';
 import { RankBadge } from '@/components/home/YourWeekCard';
 import { Muted, openOwner, openTeam, PageTitle } from '@/components/league/LeagueUI';
 import { NeonPanel } from '@/components/NeonPanel';
-import { ShareableCard } from '@/components/ShareableCard';
+import { ShareButton } from '@/components/ShareSheet';
 import { Text } from '@/components/Text';
 import { LoadingState, TeamAvatar } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -272,11 +272,12 @@ export function StandingsSection({ season, initialView, whatIf }: { season: numb
   return (
     <View style={styles.gap}>
       <EliteSegmented options={options} value={view} onChange={setView} />
-      {/* Standings and this week's power rankings go to the group chat as images (2026-10-24). */}
+      {/* Standings and this week's power rankings share as designed cards (components/ShareSheet.tsx). */}
       {view === 'standings' && (
-        <ShareableCard title={`${season ?? ''} standings`}>
+        <>
           <StandingsTable season={season} data={standingsQ.data} loading={standingsQ.isPending} />
-        </ShareableCard>
+          {season !== null && <ShareButton shareRef={{ kind: 'standings', season }} title={`${season} standings`} />}
+        </>
       )}
       {view === 'scoreboard' && season !== null && <WeekScoreboard season={season} />}
       {view === 'playoffs' && hasPlayoffs && <BracketExperience embedded initialMode={whatIf ? 'whatif' : undefined} initialW={whatIf} />}
@@ -541,11 +542,7 @@ export function PowerRankingsSection({ season }: { season: number | null }) {
         value={view}
         onChange={setView}
       />
-      {view === 'week' && (
-        <ShareableCard title="This week's power rankings">
-          <PowerWeek season={season} />
-        </ShareableCard>
-      )}
+      {view === 'week' && <PowerWeek season={season} />}
       {view === 'trend' && <PowerTrend season={season} />}
       {view === 'all-time' && <PowerAllTime />}
       <Text style={eliteText.small}>
@@ -591,6 +588,7 @@ function PowerWeek({ season }: { season: number | null }) {
   return (
     <View style={styles.gap}>
       <Text style={[eliteText.kickerCaps, styles.center]}>WEEK {q.data.week}</Text>
+      {season !== null && <ShareButton shareRef={{ kind: 'power', season, week: q.data.week }} title={`Week ${q.data.week} power rankings`} />}
       <EliteCard tone="orange" style={styles.throne}>
         <View style={styles.throneTop}>
           <Hex width={78} color={Elite.peach} fill={Elite.orange} glow image={photos.get(top.owner_id)} badge={photos.get(top.owner_id) ? '#1' : null}>

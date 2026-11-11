@@ -16,6 +16,7 @@ import {
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
+import { ShareButton } from "@/components/share/ShareButton";
 import { ANTON, ELITE, EliteCard, EliteSeasonChips, EliteSegLinks, EliteTitle, Hex, PodiumBoard, StatTile } from "@/components/elite/Elite";
 import { EliteClimb } from "@/components/elite/EliteClimb";
 
@@ -173,6 +174,7 @@ async function WeekView({
   return (
     <div className="flex flex-col gap-4">
       <span className="text-center text-[11px] font-extrabold tracking-[2px] text-black/55 dark:text-white/60">WEEK {week}</span>
+      <ShareButton shareRef={{ kind: "power", season, week }} title={`Week ${week} power rankings`} />
       <EliteCard tone="orange" className="flex flex-col gap-3.5 p-4">
         <div className="flex items-center gap-4">
           <Hex size={80} color={ELITE.peach} fill={ELITE.orange} glow image={photoByOwner.get(top.owner_id)} badge={photoByOwner.has(top.owner_id) ? "#1" : null}>

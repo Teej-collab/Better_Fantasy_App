@@ -9,7 +9,7 @@ import asyncio
 import logging
 import os
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import jwt
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -602,6 +602,10 @@ async def me(request: Request):
         on_own_conn(is_site_admin, payload["user_id"]),
     )
 
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        about = await conn.fetchrow("SELECT gender, about_you_at FROM users WHERE id = $1", payload["user_id"])
+
     return {
         "user_id": payload["user_id"],
         "owner_id": owner_id,
@@ -611,7 +615,67 @@ async def me(request: Request):
         "active_league_id": active_league_id,
         "league_count": league_count,
         "league_format": fmt,
+        # The one-time About you step (birthday, gender) still to answer.
+        "about_you_needed": about is None or about["about_you_at"] is None,
+        "gender": about["gender"] if about else None,
     }
+
+
+class AboutYouRequest(BaseModel):
+    # YYYY-MM-DD. Required the first time; leave it out to change only
+    # the gender later (Settings).
+    birthdate: str | None = None
+    # "male", "female", or null for Prefer not to say.
+    gender: str | None = None
+
+
+MIN_AGE = 13
+
+
+def _age_on(born: date, today: date) -> int:
+    return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+
+
+@router.put("/about-you")
+async def about_you(body: AboutYouRequest, request: Request):
+    """The About you step (2026-11-10), asked once after sign-in on
+    every sign-in path, and the gender setting after that. Under 13
+    can't use the app (COPPA): the account is locked for good (app/
+    main.py's session check answers every request with 403 "under_13"),
+    so going back and changing the birthday doesn't get in. Only the
+    birth year is kept. Gender feeds the AI writers (app/domain/
+    pronouns.py)."""
+    token = get_session_token(request)
+    payload = decode_session_token(SessionConfig().session_secret, token) if token else None
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    if body.gender not in (None, "male", "female"):
+        raise HTTPException(status_code=422, detail="Gender is male, female, or left blank.")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        answered = await conn.fetchval("SELECT about_you_at FROM users WHERE id = $1", payload["user_id"])
+        if body.birthdate is None:
+            if answered is None:
+                raise HTTPException(status_code=422, detail="Enter your birthday.")
+            await conn.execute("UPDATE users SET gender = $1 WHERE id = $2", body.gender, payload["user_id"])
+            return {"ok": True, "gender": body.gender}
+
+        try:
+            born = date.fromisoformat(body.birthdate)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Enter your birthday as a real date.")
+        today = datetime.now(timezone.utc).date()
+        if born > today or born.year < today.year - 120:
+            raise HTTPException(status_code=422, detail="Enter your real birthday.")
+        if _age_on(born, today) < MIN_AGE:
+            await conn.execute("UPDATE users SET under_13_at = now() WHERE id = $1", payload["user_id"])
+            raise HTTPException(status_code=403, detail="under_13")
+        await conn.execute(
+            "UPDATE users SET birth_year = $1, gender = $2, about_you_at = COALESCE(about_you_at, now()) WHERE id = $3",
+            born.year, body.gender, payload["user_id"],
+        )
+    return {"ok": True, "gender": body.gender}
 
 
 def _normalize_email(email: str) -> str:

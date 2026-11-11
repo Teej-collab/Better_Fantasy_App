@@ -9,6 +9,7 @@ import { ColorPicker, Host } from '@expo/ui/swift-ui';
 import { requireOptionalNativeModule } from 'expo';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 
+import { GENDER_OPTIONS, type GenderChoice } from '@/components/AboutYou';
 import { ImageViewer } from '@/components/ImageViewer';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
@@ -360,6 +361,38 @@ export function ProfileSettings() {
   return <ProfileForm key={`${q.data.display_name}|${q.data.team_name}`} settings={q.data} />;
 }
 
+// Male, female or Prefer not to say (2026-11-10), first asked in the
+// About you step (components/AboutYou.tsx). The recaps write with it.
+function GenderPanel() {
+  const me = useMe().data;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!me || me.about_you_needed) return null;
+  const value: GenderChoice = me.gender ?? 'none';
+
+  async function pick(next: GenderChoice) {
+    if (next === value) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.aboutYou({ gender: next === 'none' ? null : next });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await queryClient.invalidateQueries({ queryKey: ['me'] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Panel title="You are" description="The weekly recaps use this so they get you right. Prefer not to say and they use your name.">
+      {error && <Text style={styles.error}>{error}</Text>}
+      <Segment options={GENDER_OPTIONS} value={value} onChange={(v) => void pick(v)} disabled={saving} />
+    </Panel>
+  );
+}
+
 // Your player-card photo for the league you're in (2026-10-31): each
 // league keeps its own, like the Team Logo. The same photo the Cards
 // screen's "Change my photo" sets (POST /owners/{id}/card-photo, a
@@ -503,6 +536,7 @@ function ProfileForm({ settings }: { settings: MySettings }) {
       </Panel>
 
       <CardPhotoPanel />
+      <GenderPanel />
 
       {settings.team_name !== null && (
         <Panel

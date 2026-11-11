@@ -3,7 +3,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { ShareableCard } from '@/components/ShareableCard';
+import { ShareButton } from '@/components/ShareSheet';
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
@@ -115,7 +115,7 @@ export default function RecapScreen() {
           </Pressable>
         </NeonPanel>
       ) : (
-        <ShareableCard title={`Week ${week} Recap`}>
+        <>
         <NeonPanel color={color} contentStyle={styles.gap}>
           {recap.released === false && (
             <View style={styles.preview}>
@@ -126,7 +126,13 @@ export default function RecapScreen() {
             {recap.text.trim()}
           </Text>
         </NeonPanel>
-        </ShareableCard>
+        {recap.released !== false && (
+          <View style={styles.shareRow}>
+            <ShareButton shareRef={{ kind: 'awards', season, week }} title={`Week ${week} awards`} label="Share the awards ↗" />
+            <ShareButton shareRef={{ kind: 'recap', season, week }} title={`Week ${week} Recap`} />
+          </View>
+        )}
+        </>
       )}
     </ScrollView>
   );
@@ -138,6 +144,7 @@ const styles = StyleSheet.create({
   gap: { gap: Spacing.md },
   kicker: { fontSize: 12, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   weekRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  shareRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.lg },
   weekNav: { flexDirection: 'row', gap: Spacing.lg },
   heading: { color: '#eceef1', fontSize: 18, fontWeight: '600' },
   soft: { color: 'rgba(255,255,255,0.6)', fontSize: 14, lineHeight: 20 },
