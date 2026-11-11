@@ -11,13 +11,16 @@ import { Spacing } from '@/constants/theme';
 import { api, WEB_BASE_URL, type ShareRef } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
 
-type Format = 'post' | 'story' | 'wide';
+// Post and Story send the picture alone; Link sends the link alone, which
+// unfurls into the Wide card. Never both: iMessage turned the link into a
+// second card under the picture (2026-11-11).
+type Format = 'post' | 'story' | 'link';
 
 const SITE = WEB_BASE_URL || 'https://weekend-league-web.vercel.app';
 const FORMATS: { key: Format; label: string; ratio: number }[] = [
   { key: 'post', label: 'Post', ratio: 1080 / 1350 },
   { key: 'story', label: 'Story', ratio: 1080 / 1920 },
-  { key: 'wide', label: 'Wide', ratio: 1200 / 630 },
+  { key: 'link', label: 'Link', ratio: 1200 / 630 },
 ];
 
 // The share overhaul (2026-11-10): a designed card, drawn by the web
@@ -75,7 +78,7 @@ function ShareSheet({ shareRef, title, onClose }: { shareRef: ShareRef; title: s
   }, []);
 
   const link = token ? `${SITE}/s/${token}` : null;
-  const imageUrl = token ? `${SITE}/s/${token}/image?f=${format}` : null;
+  const imageUrl = token ? `${SITE}/s/${token}/image?f=${format === 'link' ? 'wide' : format}` : null;
   const ratio = FORMATS.find((f) => f.key === format)!.ratio;
 
   async function run(key: string, action: () => Promise<void>) {
@@ -92,11 +95,15 @@ function ShareSheet({ shareRef, title, onClose }: { shareRef: ShareRef; title: s
     }
   }
 
-  // The image itself plus the link, through the phone's own share sheet
-  // (Messages, Instagram, Save Image…). Falls back to just the link on a
-  // build without the file module.
+  // Through the phone's own share sheet (Messages, Instagram, Save
+  // Image…): the picture alone, or for Link the link alone. Falls back to
+  // the link on a build without the file module.
   async function shareOut() {
     if (!link || !imageUrl) return;
+    if (format === 'link') {
+      await Share.share(Platform.OS === 'ios' ? { url: link } : { message: link });
+      return;
+    }
     let file: string | null = null;
     try {
       const { File, Paths } = await import('expo-file-system');
@@ -107,7 +114,7 @@ function ShareSheet({ shareRef, title, onClose }: { shareRef: ShareRef; title: s
       file = null;
     }
     if (file && Platform.OS === 'ios') {
-      await Share.share({ url: file, message: `${title} ${link}` });
+      await Share.share({ url: file });
     } else if (file) {
       const Sharing = await import('expo-sharing');
       await Sharing.shareAsync(file, { mimeType: 'image/png', dialogTitle: title });
@@ -137,7 +144,11 @@ function ShareSheet({ shareRef, title, onClose }: { shareRef: ShareRef; title: s
 
           <EliteSegmented options={FORMATS.map((f) => ({ key: f.key, label: f.label }))} value={format} onChange={setFormat} />
           <Text style={styles.hint}>
-            {format === 'post' ? 'For group chats.' : format === 'story' ? 'Full screen, for stories.' : 'Wide, for X and Discord.'} Anyone with the link can see it, no sign-in needed.
+            {format === 'post'
+              ? 'Sends the picture, sized for group chats.'
+              : format === 'story'
+                ? 'Sends the picture, full screen for stories.'
+                : 'Sends the link. It opens as this card, and anyone can tap through, no sign-in needed.'}
           </Text>
 
           {error && <Text style={styles.error}>{error}</Text>}

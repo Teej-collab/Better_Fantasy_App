@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { ANTON } from "@/components/elite/Elite";
 import { createShareLink, FORMAT_SIZE, type ShareFormat, type ShareRef } from "@/lib/share";
 
+// Post and Story send the picture alone; Link sends the link alone, which
+// unfurls into the Wide card. Never both: iMessage turned the link into a
+// second card under the picture (2026-11-11).
 const FORMATS: { key: ShareFormat; label: string; hint: string }[] = [
-  { key: "post", label: "Post", hint: "For group chats." },
-  { key: "story", label: "Story", hint: "Full screen, for stories." },
-  { key: "wide", label: "Wide", hint: "Wide, for X and Discord." },
+  { key: "post", label: "Post", hint: "Sends the picture, sized for group chats." },
+  { key: "story", label: "Story", hint: "Sends the picture, full screen for stories." },
+  { key: "wide", label: "Link", hint: "Sends the link. It opens as this card, and anyone can tap through, no sign-in needed." },
 ];
 
 /**
@@ -98,14 +101,17 @@ function ShareDialog({ shareRef, title, onClose }: { shareRef: ShareRef; title: 
   // The phone's own share sheet with the image attached where the
   // browser allows it, else just the link.
   async function shareOut() {
-    const image = await imageFile();
-    if (navigator.canShare?.({ files: [image] })) {
-      await navigator.share({ files: [image], title, text: `${title} ${link}` });
-    } else if (navigator.share) {
-      await navigator.share({ title, text: title, url: link! });
-    } else {
-      await download();
+    if (format === "wide") {
+      if (navigator.share) await navigator.share({ url: link! });
+      else {
+        await navigator.clipboard.writeText(link!);
+        setNote("Link copied.");
+      }
+      return;
     }
+    const image = await imageFile();
+    if (navigator.canShare?.({ files: [image] })) await navigator.share({ files: [image] });
+    else await download();
   }
 
   async function download() {
@@ -166,7 +172,7 @@ function ShareDialog({ shareRef, title, onClose }: { shareRef: ShareRef; title: 
             </button>
           ))}
         </div>
-        <p className="text-xs text-[#f5f4ec]/55">{FORMATS.find((f) => f.key === format)!.hint} Anyone with the link can see it, no sign-in needed.</p>
+        <p className="text-xs text-[#f5f4ec]/55">{FORMATS.find((f) => f.key === format)!.hint}</p>
 
         {error && <p role="alert" className="text-sm font-semibold text-red-400">{error}</p>}
         {note && <p className="text-sm font-semibold text-[#39ff14]">{note}</p>}

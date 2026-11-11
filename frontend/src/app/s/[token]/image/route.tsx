@@ -61,7 +61,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
 
   const headshotUrls = [...new Set(headshotsIn(data.card))];
   const [fontData, emblemSrc, shots] = await Promise.all([loadFonts(), loadEmblem(), Promise.all(headshotUrls.map(inline))]);
-  const assets: ShareAssets = { emblem: emblemSrc, headshots: Object.fromEntries(headshotUrls.map((u, i) => [u, shots[i]])) };
+  const host = new URL(request.url).host.replace(/^www\./, "");
+  const assets: ShareAssets = { emblem: emblemSrc, headshots: Object.fromEntries(headshotUrls.map((u, i) => [u, shots[i]])), address: `${host}/s/${token}` };
 
   return new ImageResponse(<ShareImage data={data} fmt={fmt} assets={assets} />, {
     ...FORMAT_SIZE[fmt],

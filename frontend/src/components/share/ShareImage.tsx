@@ -29,7 +29,9 @@ const ANTON = "Anton";
 const SCRIPT = "Satisfy";
 const BODY = "Inter";
 
-export type ShareAssets = { emblem: string; headshots: Record<string, string | null> };
+// `address`: the share link written short on Post and Story pictures, which
+// go out without the link itself.
+export type ShareAssets = { emblem: string; headshots: Record<string, string | null>; address?: string };
 
 type U = (n: number) => number;
 
@@ -108,7 +110,10 @@ function Frame({ fmt, league, right, assets, children }: { fmt: ShareFormat; lea
           <img alt="" src={assets.emblem} width={u(34)} height={u(36)} />
           <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(17), letterSpacing: u(0.7), color: GREEN, textShadow: GLOW, textTransform: "uppercase" }}>The Weekend</div>
         </Row>
-        <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(12), letterSpacing: u(1), color: SOFT, textTransform: "uppercase" }}>Get it for your league</div>
+        <Col style={{ alignItems: "flex-end" }}>
+          <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(12), letterSpacing: u(1), color: SOFT, textTransform: "uppercase" }}>Get it for your league</div>
+          {fmt !== "wide" && assets.address && <div style={{ display: "flex", fontSize: u(10.5), color: FAINT, marginTop: u(2) }}>{assets.address}</div>}
+        </Col>
       </Row>
     </div>
   );
