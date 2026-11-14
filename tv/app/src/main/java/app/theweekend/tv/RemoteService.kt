@@ -1,6 +1,9 @@
 package app.theweekend.tv
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 
@@ -14,6 +17,7 @@ import android.view.accessibility.AccessibilityEvent
  */
 class RemoteService : AccessibilityService() {
     private lateinit var store: Store
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onServiceConnected() {
         store = Store(this)
@@ -24,6 +28,25 @@ class RemoteService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         if (pkg in IGNORED) return
         if (store.foregroundPackage != pkg) store.foregroundPackage = pkg
+        // Google TV keeps the Home button for its own home screen, so when
+        // that comes up we put ours in front instead. Its home stays installed
+        // (the "Google TV home" tile still opens it), so nothing can lock you out.
+        if (pkg == GOOGLE_HOME) {
+            if (store.allowGoogleHome) return
+            // Google's home finishes the other tasks as its Home transition
+            // settles, so going straight back loses the race. Wait for it,
+            // then check again once more in case it wasn't done.
+            handler.removeCallbacksAndMessages(null)
+            for (wait in longArrayOf(450, 1300)) {
+                handler.postDelayed({
+                    if (store.foregroundPackage == GOOGLE_HOME && !store.allowGoogleHome) {
+                        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }, wait)
+            }
+        } else if (pkg != packageName && store.allowGoogleHome) {
+            store.allowGoogleHome = false
+        }
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
@@ -53,6 +76,8 @@ class RemoteService : AccessibilityService() {
             KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER,
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE,
         )
+        const val GOOGLE_HOME = "com.google.android.apps.tv.launcherx"
+
         // System surfaces that flash in front of the real app (volume, keyboard).
         private val IGNORED = setOf("com.android.systemui", "com.google.android.inputmethod.latin", "com.google.android.tvrecommendations")
     }

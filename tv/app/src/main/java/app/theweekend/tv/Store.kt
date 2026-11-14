@@ -34,6 +34,11 @@ class Store(context: Context) {
         get() = prefs.getBoolean("popups_on", true)
         set(v) = prefs.edit().putBoolean("popups_on", v).apply()
 
+    /** Set by the "Google TV home" tile so the next visit to Google's home isn't redirected. */
+    var allowGoogleHome: Boolean
+        get() = prefs.getBoolean("allow_google_home", false)
+        set(v) = prefs.edit().putBoolean("allow_google_home", v).apply()
+
     /** Package of the app in front, written by RemoteService. */
     var foregroundPackage: String?
         get() = prefs.getString("fg_pkg", null)

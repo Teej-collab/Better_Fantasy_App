@@ -7,12 +7,13 @@
         "components": [
           { "/": "/start", "?": { "join": "?*" }, "comment": "League invite" },
           { "/": "/join-co-owner", "?": { "code": "?*" }, "comment": "Co-owner invite" },
-          { "/": "/lounge/*", "comment": "Lounge room" }
+          { "/": "/lounge/*", "comment": "Lounge room" },
+          { "/": "/tv", "comment": "Connect a TV (the TV's QR code)" }
         ]
       },
       {
         "appID": "5K8V6776KS.com.weekendleague.native",
-        "paths": ["/start", "/join-co-owner", "/lounge/*"]
+        "paths": ["/start", "/join-co-owner", "/lounge/*", "/tv"]
       }
     ]
   }

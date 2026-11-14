@@ -1,4 +1,4 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import * as Updates from 'expo-updates';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
@@ -149,7 +149,7 @@ function SettingsHome() {
         accessibilityLabel="Search settings"
         style={styles.search}
       />
-      {groups.length === 0 && <Text style={styles.empty}>Nothing matches “{query.trim()}”.</Text>}
+      {groups.length === 0 && q && !'connect a tv chromecast google tv television the weekend tv'.includes(q) && <Text style={styles.empty}>Nothing matches “{query.trim()}”.</Text>}
       {groups.map((g) => (
         <View key={g.title} style={styles.group}>
           <Text style={styles.groupTitle}>{g.title}</Text>
@@ -177,6 +177,25 @@ function SettingsHome() {
           </View>
         </View>
       ))}
+      {(!q || 'connect a tv chromecast google tv television the weekend tv'.includes(q)) && (
+        <View style={styles.group}>
+          <Text style={styles.groupTitle}>DEVICES</Text>
+          <View style={styles.card}>
+            <Pressable
+              onPress={() => {
+                haptics.select();
+                router.push('/connect-tv' as Href);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Connect a TV"
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+              <SettingsIcon name="tv" />
+              <Text style={styles.label}>Connect a TV</Text>
+              <Text style={[styles.chevron, { color: accent }]}>›</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
       <Text style={styles.version}>{appVersionLabel()}</Text>
     </View>
   );

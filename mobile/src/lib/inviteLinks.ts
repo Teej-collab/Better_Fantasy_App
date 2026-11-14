@@ -33,6 +33,11 @@ export function appPathForLink(url: string): string {
     const code = query('code');
     return code ? `/leagues?coOwner=${code}` : '/leagues';
   }
+  // The code a TV shows (its QR code): Connect a TV with the code filled in.
+  if (/^\/tv(\?|$)/.test(path)) {
+    const code = query('c');
+    return code ? `/connect-tv?code=${code}` : '/connect-tv';
+  }
   // A Lounge room.
   const lounge = path.match(/^\/lounge\/([^/?#]+)/);
   if (lounge) return `/lounge-room/${lounge[1]}`;

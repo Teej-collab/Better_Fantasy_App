@@ -19,7 +19,8 @@ export type SettingsIconName =
   | 'kitty'
   | 'admin'
   | 'league'
-  | 'friends';
+  | 'friends'
+  | 'tv';
 
 // iOS system colors, so the rows read like the phone's own Settings.
 export const SETTINGS_ICON_COLORS: Record<SettingsIconName, string> = {
@@ -37,6 +38,7 @@ export const SETTINGS_ICON_COLORS: Record<SettingsIconName, string> = {
   admin: '#bf5af2',
   league: '#0a84ff',
   friends: '#ff9500',
+  tv: '#30b456',
 };
 
 function Glyph({ name }: { name: SettingsIconName }) {
@@ -121,6 +123,13 @@ function Glyph({ name }: { name: SettingsIconName }) {
           <Circle cx={9} cy={8} r={3.5} {...p} />
           <Path d="M2.5 20c.8-3.3 3.4-5.5 6.5-5.5s5.7 2.2 6.5 5.5" {...p} />
           <Path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.7c1.8.7 3 2.6 3.5 5.3" {...p} />
+        </>
+      );
+    case 'tv':
+      return (
+        <>
+          <Rect x={2.5} y={4.5} width={19} height={12.5} rx={2} {...p} />
+          <Path d="M8 20.5h8M12 17v3.5" {...p} />
         </>
       );
     case 'league':

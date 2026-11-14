@@ -2028,3 +2028,11 @@ export type ScheduleSide = { team_id: number; team_name: string; owner_id: numbe
 export type ScheduleMatchup = { matchup_id: number; headline: string | null; is_playoff: boolean; home: ScheduleSide; away: ScheduleSide };
 export type ScheduleWeek = { week: number; status: 'final' | 'live' | 'upcoming'; is_playoff: boolean; matchups: ScheduleMatchup[] };
 export type SeasonSchedule = { season: number; current_week: number | null; weeks: ScheduleWeek[]; records: Record<string, string> };
+
+// A TV signed in to your account (The Weekend TV, backend app/routers/tv.py).
+export type PairedTv = {
+  id: number;
+  name: string;
+  created_at: string;
+  last_seen_at: string | null;
+};

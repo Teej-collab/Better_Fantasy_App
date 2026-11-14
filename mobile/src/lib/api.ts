@@ -49,6 +49,7 @@ import type {
   LoungeInvite,
   FriendsList,
   FriendPerson,
+  PairedTv,
   FriendRelationship,
   WatchPartyRoomMember,
   WatchPartyRoomsResponse,
@@ -844,6 +845,11 @@ export const api = {
     request<{ relationship: FriendRelationship }>('/friends/requests', { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
   acceptFriend: (userId: number) => request<{ relationship: FriendRelationship }>(`/friends/requests/${userId}/accept`, { method: 'POST' }),
   removeFriend: (userId: number) => request<unknown>(`/friends/${userId}`, { method: 'DELETE' }),
+  // ---- The Weekend TV (backend app/routers/tv.py): connect a TV by its code ----
+  approveTv: (code: string) =>
+    request<{ device_name: string }>('/tv/pair/approve', { method: 'POST', body: JSON.stringify({ code }) }),
+  listTvs: async () => (await request<{ devices: PairedTv[] }>('/tv/devices')).devices,
+  disconnectTv: (id: number) => request<{ ok: boolean }>(`/tv/devices/${id}`, { method: 'DELETE' }),
   // ---- Commissioner tools (backend enforces commissioner-only) ----
   leaguesMine: () => request<{ leagues: LeagueInfo[]; active_league_id: number | null }>('/leagues/mine'),
   // Commissioner-only (2026-10). Type, roster and draft style change only

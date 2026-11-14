@@ -1,5 +1,7 @@
 package app.theweekend.tv
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -305,6 +307,16 @@ private fun WeekdayTop(d: HomeData?, apps: List<TvApp>, now: Instant, zone: Zone
 }
 
 @Composable
+private fun SystemTile(title: String, sub: String, onClick: () -> Unit) {
+    Focusable(modifier = Modifier.size(176.dp, 99.dp), corner = 10.dp, background = W.Raised, onClick = onClick) { focused ->
+        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+            BasicText(title, style = W.body(15, if (focused) W.Night else W.Text, bold = true))
+            BasicText(sub, style = W.body(11, if (focused) W.Dim else W.Muted))
+        }
+    }
+}
+
+@Composable
 private fun AppRow(apps: List<TvApp>, firstFocus: FocusRequester?, onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     BasicText("APPS", style = W.label())
@@ -322,6 +334,20 @@ private fun AppRow(apps: List<TvApp>, firstFocus: FocusRequester?, onOpenSetting
                 } else {
                     BasicText(app.label, style = W.body(15, if (focused) W.Night else W.Text, bold = true), modifier = Modifier.align(Alignment.Center))
                 }
+            }
+        }
+        item(key = "google-home") {
+            SystemTile("Google TV home", "Search, inputs, Google apps") {
+                Store(context).allowGoogleHome = true
+                context.startActivity(
+                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                        .setPackage(RemoteService.GOOGLE_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+        item(key = "tv-settings") {
+            SystemTile("TV settings", "Wi-Fi, display, remotes") {
+                context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         }
         item(key = "settings") {
