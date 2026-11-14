@@ -80,6 +80,29 @@ def create_session_token(
     return jwt.encode(payload, secret, algorithm="HS256")
 
 
+TV_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 90  # 90 days; the TV refreshes it well before
+
+
+def create_tv_session_token(
+    secret: str, *, user_id: int, owner_id: int | None, device_id: int, token_version: int,
+) -> str:
+    """A paired TV's session (app/routers/tv.py): an ordinary session
+    token plus a `tv_device_id` claim, so every existing read route
+    works for it unchanged. app/main.py's session_revocation middleware
+    is what keeps it a TV session: read-only, no admin routes, and dead
+    the moment its tv_devices row is revoked."""
+    payload = {
+        "user_id": user_id,
+        "owner_id": owner_id,
+        "discord_user_id": None,
+        "is_commissioner": False,
+        "token_version": token_version,
+        "tv_device_id": device_id,
+        "exp": int(time.time()) + TV_SESSION_MAX_AGE_SECONDS,
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+
+
 def decode_session_token(secret: str, token: str) -> dict | None:
     try:
         return jwt.decode(token, secret, algorithms=["HS256"])

@@ -1,0 +1,145 @@
+package app.theweekend.tv
+
+import android.content.Context
+import android.provider.Settings
+import android.view.KeyEvent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import android.content.SharedPreferences
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.type
+
+fun overlayAllowed(context: Context) = Settings.canDrawOverlays(context)
+
+fun remoteServiceOn(context: Context): Boolean {
+    val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+    return enabled.contains("${context.packageName}/") && enabled.contains("RemoteService")
+}
+
+/** Overlay, remote button, stream delays. Left/right changes a delay; OK toggles. */
+@Composable
+fun SettingsScreen(store: Store, onBack: () -> Unit, onForget: () -> Unit) {
+    val context = LocalContext.current
+    var tick by remember { mutableIntStateOf(0) }  // re-read the store after any change
+    val first = remember { FocusRequester() }
+    DisposableEffect(Unit) {
+        val l = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> tick++ }
+        store.listen(l)
+        onDispose { store.unlisten(l) }
+    }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+
+    Column(Modifier.fillMaxSize().background(W.Night).padding(horizontal = 64.dp, vertical = 32.dp)) {
+        BasicText("OVERLAY & SETTINGS", style = W.big(34))
+        Spacer(Modifier.height(4.dp))
+        BasicText("Back to leave. Left / right changes a delay.", style = W.body(14, W.Muted))
+        Spacer(Modifier.height(18.dp))
+        tick.let { _ ->
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.width(720.dp)) {
+                item {
+                    SettingRow(
+                        label = "Score overlay",
+                        value = if (store.overlayOn) "On" else "Off",
+                        modifier = Modifier.focusRequester(first),
+                        onClick = { store.overlayOn = !store.overlayOn },
+                    )
+                }
+                item { SettingRow("Scoring pop-ups", if (store.popupsOn) "On" else "Off", onClick = { store.popupsOn = !store.popupsOn }) }
+                item {
+                    SettingRow(
+                        "Overlay button",
+                        when {
+                            store.learningHotkey -> "Press the button you want…"
+                            store.hotkey < 0 -> "Not set · OK to pick"
+                            else -> KeyEvent.keyCodeToString(store.hotkey).removePrefix("KEYCODE_").replace('_', ' ').lowercase()
+                        },
+                        onClick = { store.learningHotkey = true },
+                    )
+                }
+                StreamApp.entries.forEach { app ->
+                    item {
+                        SettingRow(
+                            "Stream delay · ${app.label}",
+                            "◀  ${store.delaySeconds(app)} s  ▶",
+                            onClick = {},
+                            onLeftRight = { dir -> store.setDelaySeconds(app, store.delaySeconds(app) + dir * 2) },
+                        )
+                    }
+                }
+                item {
+                    SettingRow(
+                        "Overlay permission",
+                        if (overlayAllowed(context)) "Allowed" else "Not allowed yet (set up from the Mac)",
+                        onClick = {},
+                    )
+                }
+                item {
+                    SettingRow(
+                        "Remote button service",
+                        if (remoteServiceOn(context)) "On" else "Off (set up from the Mac)",
+                        onClick = {},
+                    )
+                }
+                item { SettingRow("Forget this TV's sign-in", "", onClick = onForget, danger = true) }
+                item { SettingRow("Version", BuildConfig.VERSION_NAME, onClick = {}) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    danger: Boolean = false,
+    onLeftRight: ((Int) -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    Focusable(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .onPreviewKeyEvent { e ->
+                if (onLeftRight == null || e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (e.key) {
+                    Key.DirectionLeft -> { onLeftRight(-1); true }
+                    Key.DirectionRight -> { onLeftRight(1); true }
+                    else -> false
+                }
+            },
+        onClick = onClick,
+    ) { focused ->
+        Row(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            BasicText(label, style = W.body(17, if (focused) W.Night else if (danger) W.Orange else W.Text, bold = true))
+            Spacer(Modifier.weight(1f))
+            BasicText(value, style = W.body(15, if (focused) W.Night else W.Muted, bold = true))
+        }
+    }
+}

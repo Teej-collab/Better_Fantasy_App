@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp">
+    <item>
+        <shape><solid android:color="#FF0B0D12" /></shape>
+    </item>
+    <item android:top="12dp" android:bottom="12dp" android:gravity="center"
+        android:width="156dp" android:height="156dp">
+        <bitmap android:src="@drawable/emblem" android:gravity="fill" />
+    </item>
+</layer-list>

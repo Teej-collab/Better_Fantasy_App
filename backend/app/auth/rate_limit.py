@@ -67,6 +67,13 @@ def check_forgot_password_rate_limit(email: str, client_ip: str | None) -> None:
         _check(f"forgot_password:ip:{client_ip}", _IP_WINDOW_SECONDS, _IP_MAX_ATTEMPTS)
 
 
+def check_tv_pairing_rate_limit(action: str, key: str) -> None:
+    """The Weekend TV's pairing (app/routers/tv.py): starting a pairing
+    is unauthenticated (keyed by IP), and typing a code in is a guess at
+    an 8-character code (keyed by account), so both get a cap."""
+    _check(f"tv_{action}:{key}", 10 * 60, 10)
+
+
 def reset_for_tests() -> None:
     """Test-only. httpx's ASGITransport reports the same fixed fake
     client IP for every request, so every /auth/signup or /auth/login

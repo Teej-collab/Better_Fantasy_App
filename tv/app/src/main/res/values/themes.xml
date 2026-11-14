@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Weekend" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/night</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+    <color name="night">#FF0B0D12</color>
+</resources>

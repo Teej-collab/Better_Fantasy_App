@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from app import ai_usage
 from app.auth.config import SessionConfig
 from app.auth.session import decode_session_token, get_session_token
+from app.auth.tv_session import tv_session_rejection
 from app.db import get_pool
 from app.monitoring import monitoring_middleware
 from app.routers import (
@@ -49,6 +50,7 @@ from app.routers import (
     notifications as notifications_router,
     system,
     trades,
+    tv,
     waitlist,
     war_room,
     watch_party,
@@ -150,6 +152,13 @@ async def session_revocation(request, call_next):
                 # including a fresh sign-in's, gets this one answer.
                 if user["under_13_at"] is not None:
                     return JSONResponse(status_code=403, content={"detail": "under_13"})
+                # A paired TV (app/routers/tv.py) can only watch: reads,
+                # plus refreshing its own token. Never admin, and never
+                # once its row has been disconnected.
+                if "tv_device_id" in payload:
+                    rejection = await tv_session_rejection(pool, payload, request.method, request.url.path)
+                    if rejection is not None:
+                        return rejection
     return await call_next(request)
 
 
@@ -217,6 +226,7 @@ app.include_router(war_room.router)
 app.include_router(kitty.router)
 app.include_router(survivor.router)
 app.include_router(share.router)
+app.include_router(tv.router)
 app.include_router(notifications_router.router)
 
 

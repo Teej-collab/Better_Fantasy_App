@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="remote_service_description">Lets one remote button open The Weekend\'s score overlay, and tells the overlay which streaming app is open so it can match that app\'s delay.</string>
+</resources>
