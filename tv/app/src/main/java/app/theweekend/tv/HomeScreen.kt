@@ -461,7 +461,8 @@ private fun AppRow(apps: SnapshotStateList<TvApp>, store: Store, firstFocus: Foc
                 }
             }
         }
-        item(key = "google-home") {
+        // Only while Google's home is still switched on (tv/scripts/google-home.sh).
+        if (googleHomeEnabled(context)) item(key = "google-home") {
             SystemTile("Google TV home", "Search, inputs") {
                 Store(context).allowGoogleHome = true
                 context.startActivity(
@@ -477,6 +478,10 @@ private fun AppRow(apps: SnapshotStateList<TvApp>, store: Store, firstFocus: Foc
         }
     }
 }
+
+fun googleHomeEnabled(context: android.content.Context): Boolean = runCatching {
+    context.packageManager.getApplicationInfo(RemoteService.GOOGLE_HOME, 0).enabled
+}.getOrDefault(false)
 
 @Composable
 private fun SystemTile(title: String, sub: String, onClick: () -> Unit) {
