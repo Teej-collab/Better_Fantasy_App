@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Updates itself from GitHub releases (Updater.kt); Android still asks you first. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- The home screen lists the TV's apps. -->
     <queries>
@@ -43,6 +45,25 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <receiver android:name=".InstallResultReceiver" android:exported="false" />
+
+        <activity
+            android:name=".ScreensaverPreview"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <!-- The Weekend as the TV's screensaver. -->
+        <service
+            android:name=".WeekendDream"
+            android:exported="true"
+            android:label="The Weekend"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".OverlayService"

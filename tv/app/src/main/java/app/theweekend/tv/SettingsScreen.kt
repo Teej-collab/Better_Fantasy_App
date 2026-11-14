@@ -4,6 +4,9 @@ import android.content.Context
 import android.provider.Settings
 import android.view.KeyEvent
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -61,6 +64,13 @@ fun SettingsScreen(store: Store, apps: List<TvApp>, onForget: () -> Unit) {
         onDispose { store.unlisten(l) }
     }
     val gameApps = apps.mapNotNull { it.streamApp }.distinct()
+    val scope = rememberCoroutineScope()
+    var update by remember { mutableStateOf<Release?>(null) }
+    var updateStatus by remember { mutableStateOf("Checking…") }
+    LaunchedEffect(Unit) {
+        update = runCatching { Updater.latest() }.getOrNull()
+        updateStatus = if (update == null) "Up to date" else "Version ${update!!.versionName} · OK to install"
+    }
     // The remote-button service learns the button in its own process; check back until it has.
     LaunchedEffect(store.learningHotkey, tick) {
         while (store.learningHotkey) {
@@ -123,8 +133,25 @@ fun SettingsScreen(store: Store, apps: List<TvApp>, onForget: () -> Unit) {
                         onClick = {},
                     )
                 }
+                item {
+                    SettingRow("Preview screensaver", "Any button closes it", onClick = {
+                        context.startActivity(android.content.Intent(context, ScreensaverPreview::class.java))
+                    })
+                }
                 item { SettingRow("Forget this TV's sign-in", "", onClick = onForget, danger = true) }
-                item { SettingRow("Version", BuildConfig.VERSION_NAME, onClick = {}) }
+                item {
+                    SettingRow("Updates", updateStatus, onClick = {
+                        val r = update ?: return@SettingRow
+                        scope.launch {
+                            updateStatus = "Downloading…"
+                            runCatching {
+                                Updater.install(context, r) { pct -> updateStatus = "Downloading $pct%" }
+                            }.onSuccess { updateStatus = "Confirm on screen" }
+                                .onFailure { updateStatus = "Couldn't download · OK to retry" }
+                        }
+                    })
+                }
+                item { SettingRow("Version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", onClick = {}) }
             }
         }
     }
