@@ -32,6 +32,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -173,14 +177,41 @@ fun TeamLogo(url: String?, name: String, size: Dp, mine: Boolean = false) {
     }
 }
 
-/** A dark glass card with a hairline edge; `lit` gives it the one neon edge a screen gets. */
+/**
+ * A dark glass card with a hairline edge; `lit` gives it the one neon edge a
+ * screen gets. With `onClick` it's selectable: focus brightens the edge to
+ * full neon and lifts it a touch, but keeps the dark face so the text reads.
+ */
 @Composable
-fun Panel(modifier: Modifier = Modifier, lit: Boolean = false, padding: Dp = 18.dp, content: @Composable () -> Unit) {
+fun Panel(
+    modifier: Modifier = Modifier,
+    lit: Boolean = false,
+    padding: Dp = 18.dp,
+    focusRequester: FocusRequester? = null,
+    onClick: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
     val shape = RoundedCornerShape(18.dp)
+    var focused by remember { mutableStateOf(false) }
+    val selectable = if (onClick == null) Modifier else Modifier
+        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+        .onFocusChanged { focused = it.isFocused }
+        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
     Box(
         modifier
-            .background(Brush.verticalGradient(listOf(Color(0xF0151A22), Color(0xF00E1117))), shape)
-            .border(if (lit) 1.5.dp else 1.dp, if (lit) W.Neon.copy(alpha = 0.7f) else W.Line, shape)
+            .scale(if (focused) 1.015f else 1f)
+            .then(selectable)
+            .background(
+                Brush.verticalGradient(
+                    if (focused) listOf(Color(0xFF1B2330), Color(0xFF121820)) else listOf(Color(0xF0151A22), Color(0xF00E1117)),
+                ),
+                shape,
+            )
+            .border(
+                if (focused) 3.dp else if (lit) 1.5.dp else 1.dp,
+                if (focused) W.Neon else if (lit) W.Neon.copy(alpha = 0.7f) else W.Line,
+                shape,
+            )
             .padding(padding),
     ) { content() }
 }

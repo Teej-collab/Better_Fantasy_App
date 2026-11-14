@@ -2,6 +2,9 @@ package app.theweekend.tv
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Log
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -18,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -51,10 +55,28 @@ class MainActivity : ComponentActivity() {
         if (store.token != null) startOverlay()
     }
 
+    /**
+     * Drops an arrow press that's gone stale before reaching us: if the TV was
+     * busy, presses queue up and then land in a burst, which reads as focus
+     * skipping past where you meant to stop. A held key (repeats) still scrolls.
+     * Each press is logged under "WeekendKeys" so skips can be diagnosed.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.keyCode in ARROWS) {
+            val age = SystemClock.uptimeMillis() - event.eventTime
+            Log.d("WeekendKeys", "key=${KeyEvent.keyCodeToString(event.keyCode)} repeat=${event.repeatCount} age=${age}ms")
+            if (event.repeatCount == 0 && age > STALE_MS) return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     private fun startOverlay() {
         runCatching { startForegroundService(Intent(this, OverlayService::class.java)) }
     }
 }
+
+private val ARROWS = setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT)
+private const val STALE_MS = 250
 
 private val NAV_CLOCK = DateTimeFormatter.ofPattern("EEE h:mm a", Locale.US)
 
@@ -67,8 +89,13 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
     var data by remember { mutableStateOf<HomeData?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(Instant.now()) }
-    val apps = remember { Apps.installed(context) }
+    val apps = remember { Apps.installed(context, store.appOrder).toMutableStateList() }
     val firstFocus = remember { FocusRequester() }
+    val navFocus = remember { FocusRequester() }
+    var reader by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // Where focus should land after a screen change we caused: "nav" (the
+    // tab you just opened) or "content" (Home's main card).
+    var focusTarget by remember { mutableStateOf<String?>(null) }
     val zone = ZoneId.systemDefault()
 
     LaunchedEffect(Unit) {
@@ -106,27 +133,54 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
         tab = h
     }
 
-    // Back anywhere goes Home; Back on Home has nowhere to go (this is the TV's home).
+    LaunchedEffect(tab, focusTarget, reader) {
+        val target = focusTarget ?: return@LaunchedEffect
+        delay(60)
+        runCatching { if (target == "nav") navFocus.requestFocus() else firstFocus.requestFocus() }
+        focusTarget = null
+    }
+
+    fun openTab(t: String) {
+        hovered = null
+        tab = t
+        focusTarget = "nav"
+    }
+
+    // Back closes the reader, then goes Home; on Home it has nowhere to go (this is the TV's home).
     BackHandler {
         hovered = null
-        if (tab != "home") tab = "home"
+        when {
+            reader != null -> {
+                reader = null
+                focusTarget = if (tab == "home") "content" else "nav"
+            }
+            tab != "home" -> {
+                tab = "home"
+                focusTarget = "content"
+            }
+        }
     }
 
     val gameDay = data?.isGameDay(now, zone) == true
     HiveBackground(gameDay) {
         Column(Modifier.fillMaxSize().padding(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 16.dp)) {
-            NavBar(tab, gameDay, now.atZone(zone).format(NAV_CLOCK), onPick = { hovered = null; tab = it }, onHover = { hovered = it })
+            NavBar(tab, gameDay, now.atZone(zone).format(NAV_CLOCK), onPick = { hovered = null; tab = it }, onHover = { hovered = it }, firstTab = navFocus)
             Spacer(Modifier.height(12.dp))
             Box(Modifier.weight(1f)) {
-                when (tab) {
-                    "matchup" -> MatchupScreen(data)
+                val r = reader
+                if (r != null) ReaderScreen(r.first, r.second) else when (tab) {
+                    "matchup" -> MatchupScreen(data, onRead = { t, b -> reader = t to b })
                     "league" -> LeagueScreen(data)
                     "scores" -> ScoresScreen(data, apps)
                     "settings" -> SettingsScreen(store, apps, onForget = {
                         store.token = null
                         onSignedOut()
                     })
-                    else -> HomeScreen(data, error, apps, now, gameDay, firstFocus)
+                    else -> HomeScreen(
+                        data, error, apps, store, now, gameDay, firstFocus,
+                        onOpenTab = ::openTab,
+                        onRead = { t, b -> reader = t to b },
+                    )
                 }
             }
         }

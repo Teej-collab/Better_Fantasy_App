@@ -19,7 +19,23 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,7 +49,7 @@ import java.time.ZoneId
 // ---------- Matchup: both lineups, side by side ----------
 
 @Composable
-fun MatchupScreen(d: HomeData?) {
+fun MatchupScreen(d: HomeData?, onRead: (String, String) -> Unit) {
     val m = d?.myMatchup
     if (d == null || m == null) return Empty("Your matchup shows up here once the week's set.")
     val mine = d.mine(m)
@@ -42,6 +58,16 @@ fun MatchupScreen(d: HomeData?) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionLabel("Week ${d.week?.week} · your matchup")
             Spacer(Modifier.weight(1f))
+            m.narrative?.let { text ->
+                Focusable(Modifier.height(30.dp), corner = 15.dp, background = W.Raised, onClick = { onRead("Week ${d.week?.week} preview", text) }) { focused ->
+                    BasicText(
+                        "READ THE PREVIEW",
+                        style = W.label(if (focused) W.Night else W.Neon),
+                        modifier = Modifier.align(Alignment.Center).padding(horizontal = 14.dp),
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+            }
             BasicText(d.week?.winProbability?.let { "${it.toInt()}% win chance (estimate)" } ?: "", style = W.body(12, W.Muted))
         }
         WinBar(d.week?.winProbability, Modifier.fillMaxWidth())
@@ -225,4 +251,47 @@ fun slotLabel(slot: String?): String = when {
 @Composable
 private fun Empty(text: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { BasicText(text, style = W.body(18, W.Muted)) }
+}
+
+// ---------- Reader: a recap or preview, full length ----------
+
+/** Up / down scrolls; Back closes. */
+@Composable
+fun ReaderScreen(title: String, body: String) {
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    Row(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .width(720.dp)
+                .fillMaxHeight()
+                .focusRequester(focus)
+                .focusable()
+                .onPreviewKeyEvent { e ->
+                    if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (e.key) {
+                        Key.DirectionDown -> { scope.launch { scroll.animateScrollBy(260f) }; true }
+                        Key.DirectionUp -> { scope.launch { scroll.animateScrollBy(-260f) }; true }
+                        else -> false
+                    }
+                }
+                .verticalScroll(scroll),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionLabel(title, W.Neon)
+                Spacer(Modifier.width(10.dp))
+                Chip("WRITTEN BY AI FROM LEAGUE STATS", W.Muted, W.Raised)
+            }
+            BasicText(firstSentence(body), style = W.big(30))
+            body.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { para ->
+                BasicText(para, style = W.body(18, Color(0xFFDDE1E8)).copy(lineHeight = 28.sp))
+            }
+            Spacer(Modifier.height(40.dp))
+        }
+        Spacer(Modifier.weight(1f))
+        BasicText("▲ ▼ to scroll · Back to close", style = W.body(12, W.Dim), modifier = Modifier.align(Alignment.Bottom))
+    }
 }

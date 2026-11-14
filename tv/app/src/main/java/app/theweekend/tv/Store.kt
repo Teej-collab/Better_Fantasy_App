@@ -49,6 +49,11 @@ class Store(context: Context) {
         get() = read("overlay_off") == null
         set(v) = write("overlay_off", if (v) null else "1")
 
+    /** Your order for the home screen's app row (package names). Apps not in it go after, game apps first. */
+    var appOrder: List<String>
+        get() = prefs.getString("app_order", null)?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+        set(v) = prefs.edit().putString("app_order", v.joinToString(",")).apply()
+
     var popupsOn: Boolean
         get() = prefs.getBoolean("popups_on", true)
         set(v) = prefs.edit().putBoolean("popups_on", v).apply()

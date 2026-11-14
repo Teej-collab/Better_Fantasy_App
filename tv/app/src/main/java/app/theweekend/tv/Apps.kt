@@ -13,7 +13,7 @@ data class TvApp(val label: String, val packageName: String, val banner: ImageBi
 }
 
 object Apps {
-    fun installed(context: Context): List<TvApp> {
+    fun installed(context: Context, order: List<String> = emptyList()): List<TvApp> {
         val pm = context.packageManager
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
         return pm.queryIntentActivities(intent, 0)
@@ -28,8 +28,12 @@ object Apps {
                     banner = art?.let { runCatching { it.toBitmap(320, 180).asImageBitmap() }.getOrNull() },
                 )
             }
-            // The game apps first, in the order games are usually on them; then A–Z.
-            .sortedWith(compareBy<TvApp> { it.streamApp?.ordinal ?: Int.MAX_VALUE }.thenBy { it.label.lowercase() })
+            // Your order first; anything new after it: game apps, then A–Z.
+            .sortedWith(
+                compareBy<TvApp> { order.indexOf(it.packageName).let { i -> if (i < 0) Int.MAX_VALUE else i } }
+                    .thenBy { it.streamApp?.ordinal ?: Int.MAX_VALUE }
+                    .thenBy { it.label.lowercase() },
+            )
     }
 
     fun launch(context: Context, packageName: String): Boolean {
