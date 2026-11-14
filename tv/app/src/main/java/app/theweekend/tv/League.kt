@@ -1,5 +1,7 @@
 package app.theweekend.tv
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -145,8 +147,8 @@ data class HomeData(
 }
 
 object League {
-    suspend fun myWeek(token: String): MyWeek? {
-        val j = Api.get("/me/week", token)
+    suspend fun myWeek(token: String, fromCache: Boolean = false): MyWeek? {
+        val j = Api.get("/me/week", token, fromCache)
         val m = j.optJSONObject("matchup") ?: return null
         return MyWeek(
             season = j.optInt("season"),
@@ -172,8 +174,8 @@ object League {
         )
     }
 
-    suspend fun roster(token: String): List<RosterPlayer> =
-        Api.get("/me/team", token).optJSONArray("roster").objects().map {
+    suspend fun roster(token: String, fromCache: Boolean = false): List<RosterPlayer> =
+        Api.get("/me/team", token, fromCache).optJSONArray("roster").objects().map {
             RosterPlayer(
                 id = it.optString("player_id"),
                 name = it.optString("player_name"),
@@ -184,8 +186,8 @@ object League {
             )
         }
 
-    suspend fun ticker(token: String, season: Int, week: Int): List<TickerMatchup> =
-        Api.get("/seasons/$season/weeks/$week/ticker", token).optJSONArray("items").objects().map {
+    suspend fun ticker(token: String, season: Int, week: Int, fromCache: Boolean = false): List<TickerMatchup> =
+        Api.get("/seasons/$season/weeks/$week/ticker", token, fromCache).optJSONArray("items").objects().map {
             TickerMatchup(
                 home = it.optString("home_team_name"),
                 homeScore = it.optDoubleOrNull("home_score"),
@@ -194,8 +196,8 @@ object League {
             )
         }
 
-    suspend fun games(): List<NflGame> =
-        Api.get("/nfl/scoreboard", null).optJSONArray("games").objects().map {
+    suspend fun games(fromCache: Boolean = false): List<NflGame> =
+        Api.get("/nfl/scoreboard", null, fromCache).optJSONArray("games").objects().map {
             NflGame(
                 id = it.optString("id"),
                 home = it.optString("home_team"),
@@ -209,8 +211,8 @@ object League {
             )
         }
 
-    suspend fun weekContext(token: String, season: Int, week: Int): List<LeagueMatchup> =
-        Api.get("/seasons/$season/weeks/$week/matchup-context", token).optJSONArray("matchups").objects().map { m ->
+    suspend fun weekContext(token: String, season: Int, week: Int, fromCache: Boolean = false): List<LeagueMatchup> =
+        Api.get("/seasons/$season/weeks/$week/matchup-context", token, fromCache).optJSONArray("matchups").objects().map { m ->
             LeagueMatchup(
                 id = m.optInt("matchup_id"),
                 home = side(m.getJSONObject("home")),
@@ -245,8 +247,8 @@ object League {
         },
     )
 
-    suspend fun standings(token: String, season: Int): Pair<List<Standing>, Int?> {
-        val j = Api.get("/seasons/$season/standings", token)
+    suspend fun standings(token: String, season: Int, fromCache: Boolean = false): Pair<List<Standing>, Int?> {
+        val j = Api.get("/seasons/$season/standings", token, fromCache)
         val rows = j.optJSONArray("standings").objects().map {
             Standing(
                 teamId = it.optInt("team_id"),
@@ -262,28 +264,35 @@ object League {
         return rows to (if (j.isNull("playoff_team_count")) null else j.optInt("playoff_team_count"))
     }
 
-    suspend fun recap(token: String, season: Int, week: Int): String? =
-        Api.get("/seasons/$season/weeks/$week/recap", token).optJSONObject("narrative")?.optStringOrNull("text")
+    suspend fun recap(token: String, season: Int, week: Int, fromCache: Boolean = false): String? =
+        Api.get("/seasons/$season/weeks/$week/recap", token, fromCache).optJSONObject("narrative")?.optStringOrNull("text")
 
-    /** Everything the home screen shows. Partial data beats none: each piece fails on its own. */
-    suspend fun home(token: String): HomeData {
-        val games = runCatching { games() }.getOrDefault(emptyList())
+    /**
+     * Everything the home screen shows. Partial data beats none: each piece
+     * fails on its own. `fromCache` builds it from the last good copies, for
+     * an instant first frame when the TV wakes.
+     */
+    suspend fun home(token: String, fromCache: Boolean = false): HomeData = coroutineScope {
+        val gamesJob = async { runCatching { games(fromCache) }.getOrDefault(emptyList()) }
+        val rosterJob = async { runCatching { roster(token, fromCache) }.getOrDefault(emptyList()) }
         val week = try {
-            myWeek(token)
+            myWeek(token, fromCache)
         } catch (e: ApiError) {
             if (e.status == 401) throw e  // disconnected: the caller sends the TV back to pairing
+            if (fromCache) throw e
             null
         }
-        val roster = runCatching { roster(token) }.getOrDefault(emptyList())
-        val ticker = week?.let { w -> runCatching { ticker(token, w.season, w.week) }.getOrDefault(emptyList()) }
-            ?: emptyList()
-        if (week == null) return HomeData(null, roster, ticker, games, Instant.now())
-        val matchups = runCatching { weekContext(token, week.season, week.week) }.getOrDefault(emptyList())
-        val (standings, playoffTeams) = runCatching { standings(token, week.season) }.getOrDefault(emptyList<Standing>() to null)
-        val recap = if (week.week > 1) runCatching { recap(token, week.season, week.week - 1) }.getOrNull() else null
-        return HomeData(
-            week, roster, ticker, games, Instant.now(),
-            matchups = matchups, standings = standings, lastRecap = recap,
+        if (week == null) return@coroutineScope HomeData(null, rosterJob.await(), emptyList(), gamesJob.await(), Instant.now())
+        // The rest only need the season and week, so they go in parallel.
+        val tickerJob = async { runCatching { ticker(token, week.season, week.week, fromCache) }.getOrDefault(emptyList()) }
+        val matchupsJob = async { runCatching { weekContext(token, week.season, week.week, fromCache) }.getOrDefault(emptyList()) }
+        val standingsJob = async { runCatching { standings(token, week.season, fromCache) }.getOrDefault(emptyList<Standing>() to null) }
+        val recapJob = async { if (week.week > 1) runCatching { recap(token, week.season, week.week - 1, fromCache) }.getOrNull() else null }
+        val (standings, playoffTeams) = standingsJob.await()
+        HomeData(
+            week, rosterJob.await(), tickerJob.await(), gamesJob.await(),
+            if (fromCache) Instant.ofEpochMilli(Api.cachedAt("/me/week") ?: System.currentTimeMillis()) else Instant.now(),
+            matchups = matchupsJob.await(), standings = standings, lastRecap = recapJob.await(),
             myMatchupId = week.matchupId, playoffTeams = playoffTeams,
         )
     }

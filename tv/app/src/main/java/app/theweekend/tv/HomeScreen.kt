@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package app.theweekend.tv
 
 import android.content.Intent
@@ -41,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -240,9 +243,9 @@ private fun ScoreRow(d: HomeData, w: MyWeek, big: Boolean) {
         Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
             if (big) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    BasicText(fmt(w.myScore), style = W.big(46))
+                    AnimatedScore(w.myScore, W.big(46))
                     BasicText("–", style = W.big(22, W.Dim), modifier = Modifier.padding(horizontal = 8.dp))
-                    BasicText(fmt(w.oppScore), style = W.big(46, Color(0xFFC7CCD6)))
+                    AnimatedScore(w.oppScore, W.big(46, Color(0xFFC7CCD6)))
                 }
             } else {
                 HexBadge("VS", 40.dp)
@@ -306,7 +309,7 @@ private fun NextKickoff(d: HomeData, apps: List<TvApp>, now: Instant, zone: Zone
     val context = LocalContext.current
     val next = d.games.filter { it.state == "pre" && it.kickoff?.isAfter(now) == true }.sortedBy { it.kickoff }.take(3)
     if (next.isEmpty()) return
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(Modifier.focusRestorer(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionLabel("Next up", W.Neon)
         next.forEach { g ->
             val app = Apps.forBroadcast(apps, g.broadcast)
@@ -396,6 +399,7 @@ private fun AppRow(apps: SnapshotStateList<TvApp>, store: Store, firstFocus: Foc
     }
     Spacer(Modifier.height(4.dp))
     LazyRow(
+        modifier = Modifier.focusRestorer(),
         state = listState,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(vertical = 6.dp, horizontal = 4.dp),

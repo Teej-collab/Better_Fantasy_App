@@ -68,7 +68,7 @@ async def snapshot_week(conn, season: int, week: int) -> dict:
         season, week,
     )
     matchup_rows = await conn.fetch(
-        "SELECT id, home_team_id, away_team_id, home_score, away_score "
+        "SELECT id, league_id, home_team_id, away_team_id, home_score, away_score "
         "FROM matchups WHERE season = $1 AND week = $2",
         season, week,
     )

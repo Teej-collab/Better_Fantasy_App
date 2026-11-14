@@ -197,6 +197,7 @@ from app.domain.draft_narratives import generate_draft_narratives
 from app.domain.player_projections import sync_projected_points, sync_weekly_projections
 from app.draft.manager import manager as draft_manager
 from app.gamecast import service as gamecast_service
+from app import tv_live
 from app.notifications import dispatcher, fantasy_events, injury_events
 from app.notifications.draft_events import (
     notify_draft_live,
@@ -351,6 +352,8 @@ async def _run_live_sync_job():
     async with pool.acquire() as conn:
         after = await fantasy_events.snapshot_week(conn, season, week)
         await fantasy_events.notify_fantasy_events(conn, season, before, after)
+        # Paired TVs hear about it now, not on their next poll (app/tv_live.py).
+        await tv_live.publish(conn, season, before, after)
     # Win % through the week, for the living home's turning points.
     try:
         async with pool.acquire() as conn:

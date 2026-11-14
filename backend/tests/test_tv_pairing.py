@@ -87,3 +87,46 @@ async def test_bad_or_reused_codes_are_refused(pool):
         assert (await phone.post("/tv/pair/approve", json={"code": start["code"]})).status_code == 200
         # Already approved: a second approval (someone else's guess) fails.
         assert (await phone.post("/tv/pair/approve", json={"code": start["code"]})).status_code == 404
+
+
+# ---- live events (app/tv_live.py) ----
+
+from app import tv_live  # noqa: E402
+
+
+def _snap(points=None, matchups=None, tds=None):
+    return {"player_points": points or {}, "matchups": matchups or {}, "player_tds": tds or {}}
+
+
+def test_only_leagues_whose_numbers_moved_hear_about_it():
+    before = _snap(
+        points={(1, "p1"): 4.0, (2, "p1"): 5.0},
+        matchups={10: {"league_id": 3, "home_score": 50.0, "away_score": 40.0}},
+    )
+    after = _snap(
+        points={(1, "p1"): 10.0, (2, "p1"): 5.0},
+        matchups={10: {"league_id": 3, "home_score": 56.0, "away_score": 40.0}},
+    )
+    assert tv_live.changed_leagues(before, after) == {1, 3}
+
+
+async def test_scores_go_only_to_that_leagues_tvs():
+    mine = tv_live.subscribe(1)
+    other = tv_live.subscribe(2)
+    try:
+        before = _snap(points={(1, "p1"): 4.0})
+        after = _snap(points={(1, "p1"): 10.0})
+        await tv_live.publish(None, 1900, before, after)  # no touchdowns, so no DB needed
+        assert mine.get_nowait() == {"type": "scores"}
+        assert other.empty()
+    finally:
+        tv_live.unsubscribe(1, mine)
+        tv_live.unsubscribe(2, other)
+    assert tv_live.connection_count() == 0
+
+
+async def test_only_a_tv_can_open_the_live_line(pool):
+    reset_for_tests()
+    async with _client() as phone:
+        await _signed_in(phone)
+        assert (await phone.get("/tv/live")).status_code == 403

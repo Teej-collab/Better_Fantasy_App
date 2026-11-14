@@ -11,13 +11,19 @@ own session token, once. No password ever goes near the TV.
 A TV's token is read-only and dies the moment its row is disconnected —
 app/auth/tv_session.py, enforced in app/main.py's middleware.
 """
+import asyncio
 import hashlib
+import json
 import secrets
+import time
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app import tv_live
 from app.auth.config import SessionConfig
+from app.auth.league_context import resolve_active_league_id
 from app.auth.rate_limit import check_tv_pairing_rate_limit
 from app.auth.session import create_tv_session_token, decode_session_token, get_session_token
 from app.db import get_pool
@@ -191,6 +197,55 @@ async def me(request: Request):
             payload["tv_device_id"],
         )
     return {"device_id": row["id"], "name": row["name"], "paired_at": row["created_at"], "account": row["display_name"]}
+
+
+_PING_SECONDS = 15
+_RECHECK_SECONDS = 60
+
+
+@router.get("/live")
+async def live(request: Request):
+    """The TV's live line (Server-Sent Events): `scores` when its league's
+    numbers move, `touchdown` when a starter scores — see app/tv_live.py.
+    A comment line every 15 s keeps proxies from closing it, and the
+    device is re-checked every minute so a disconnect ends the stream."""
+    payload = _payload(request)
+    if "tv_device_id" not in payload:
+        raise HTTPException(status_code=403, detail="Only a TV listens here")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await resolve_active_league_id(conn, payload)
+    if league_id is None:
+        raise HTTPException(status_code=409, detail="No active league selected")
+
+    async def stream():
+        q = tv_live.subscribe(league_id)
+        last_check = time.monotonic()
+        try:
+            yield "event: hello\ndata: {}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    return
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=_PING_SECONDS)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+                if time.monotonic() - last_check > _RECHECK_SECONDS:
+                    last_check = time.monotonic()
+                    async with pool.acquire() as conn:
+                        alive = await conn.fetchval(
+                            "SELECT 1 FROM tv_devices WHERE id = $1 AND revoked_at IS NULL", payload["tv_device_id"],
+                        )
+                    if not alive:
+                        return
+        finally:
+            tv_live.unsubscribe(league_id, q)
+
+    return StreamingResponse(
+        stream(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/devices")

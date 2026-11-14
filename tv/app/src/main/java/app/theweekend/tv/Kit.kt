@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package app.theweekend.tv
 
 import android.graphics.BitmapFactory
@@ -32,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.clickable
@@ -155,9 +158,13 @@ fun TeamLogo(url: String?, name: String, size: Dp, mine: Boolean = false) {
     var bmp by remember(url) { mutableStateOf(url?.let { logoCache[it] }) }
     LaunchedEffect(url) {
         if (url == null || logoCache.containsKey(url)) return@LaunchedEffect
+        // Saved next to the API cache, so logos are there the instant the TV wakes too.
         val loaded = withContext(Dispatchers.IO) {
             runCatching {
-                URL(url).openStream().use { BitmapFactory.decodeStream(it) }?.asImageBitmap()
+                val file = Api.cacheDir?.let { java.io.File(it.parentFile, "logos/${url.hashCode().toUInt()}") }
+                val bytes = file?.takeIf { it.exists() }?.readBytes()
+                    ?: URL(url).openStream().use { it.readBytes() }.also { b -> file?.let { it.parentFile?.mkdirs(); it.writeBytes(b) } }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
             }.getOrNull()
         }
         logoCache[url] = loaded
@@ -193,13 +200,18 @@ fun Panel(
 ) {
     val shape = RoundedCornerShape(18.dp)
     var focused by remember { mutableStateOf(false) }
+    val view = androidx.compose.ui.platform.LocalView.current
+    val lift by androidx.compose.animation.core.animateFloatAsState(if (focused) 1.015f else 1f, androidx.compose.animation.core.tween(140), label = "lift")
     val selectable = if (onClick == null) Modifier else Modifier
         .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-        .onFocusChanged { focused = it.isFocused }
+        .onFocusChanged {
+            if (it.isFocused && !focused) view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+            focused = it.isFocused
+        }
         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
     Box(
         modifier
-            .scale(if (focused) 1.015f else 1f)
+            .graphicsLayer { scaleX = lift; scaleY = lift }
             .then(selectable)
             .background(
                 Brush.verticalGradient(
@@ -231,11 +243,20 @@ val TABS = listOf("home" to "Home", "matchup" to "Matchup", "league" to "League"
  * just slide left and right; Down drops into that screen. OK opens it at once.
  */
 @Composable
-fun NavBar(current: String, gameDay: Boolean, clock: String, onPick: (String) -> Unit, onHover: (String) -> Unit, firstTab: FocusRequester? = null) {
+fun NavBar(
+    current: String,
+    gameDay: Boolean,
+    clock: String,
+    onPick: (String) -> Unit,
+    onHover: (String) -> Unit,
+    firstTab: FocusRequester? = null,
+    live: Boolean = false,
+) {
     Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(painterResource(R.drawable.emblem), "The Weekend", Modifier.size(46.dp))
         Spacer(Modifier.width(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Coming back up to the menu lands on the tab you're on, not whichever is above.
+        Row(Modifier.focusRestorer(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TABS.forEachIndexed { i, (key, label) ->
                 val on = key == current
                 Focusable(
@@ -255,6 +276,12 @@ fun NavBar(current: String, gameDay: Boolean, clock: String, onPick: (String) ->
         }
         Spacer(Modifier.weight(1f))
         if (gameDay) {
+            if (live) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(W.Neon))
+                Spacer(Modifier.width(6.dp))
+                BasicText("LIVE", style = W.label(W.Neon))
+                Spacer(Modifier.width(12.dp))
+            }
             Chip("GAME DAY", W.Night, W.Neon)
             Spacer(Modifier.width(12.dp))
         }
@@ -284,4 +311,53 @@ fun SectionLabel(text: String, color: Color = W.Muted) {
 @Composable
 fun Stack(gap: Dp, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(gap)) { content() }
+}
+
+/** A score that counts up (or down) to its new value instead of jumping. */
+@Composable
+fun AnimatedScore(value: Double?, style: androidx.compose.ui.text.TextStyle) {
+    if (value == null) {
+        BasicText("–", style = style)
+        return
+    }
+    val shown by androidx.compose.animation.core.animateFloatAsState(
+        value.toFloat(), androidx.compose.animation.core.tween(1200), label = "score",
+    )
+    BasicText(fmt(shown.toDouble()), style = style)
+}
+
+/**
+ * The touchdown moment on the TV's own screens: whose player, how many
+ * points, and whether it's yours (orange), your opponent's, or elsewhere
+ * in the league. The overlay does the same over a streaming app.
+ */
+@Composable
+fun TouchdownBanner(td: LiveEvent.Touchdown, d: HomeData?, modifier: Modifier = Modifier) {
+    val w = d?.week
+    val mine = w != null && td.teamName == w.teamName
+    val theirs = w != null && td.teamName == w.oppTeamName
+    val accent = if (mine) W.Orange else W.Neon
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier
+            .background(W.Night.copy(alpha = 0.96f), shape)
+            .border(2.dp, accent, shape)
+            .clip(shape),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.background(accent).padding(horizontal = 18.dp, vertical = 12.dp)) {
+            BasicText("TOUCHDOWN", style = W.big(28, W.Night))
+            BasicText(
+                when { mine -> "YOUR PLAYER"; theirs -> "YOUR OPPONENT"; else -> "AROUND THE LEAGUE" },
+                style = W.label(W.Night),
+            )
+        }
+        Column(Modifier.padding(horizontal = 18.dp)) {
+            BasicText(td.playerName, style = W.body(20, bold = true))
+            BasicText(listOfNotNull(td.position, td.proTeam, td.teamName).joinToString(" · "), style = W.body(13, W.Muted))
+        }
+        td.pointsDelta?.let {
+            BasicText("+" + String.format("%.1f", it), style = W.big(34, accent), modifier = Modifier.padding(end = 18.dp))
+        }
+    }
 }

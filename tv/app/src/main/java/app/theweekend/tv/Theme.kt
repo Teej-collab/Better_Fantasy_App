@@ -13,7 +13,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import android.view.SoundEffectConstants
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -68,13 +72,19 @@ fun Focusable(
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(corner)
+    val view = LocalView.current
+    val lift by animateFloatAsState(if (focused) 1.05f else 1f, tween(140), label = "lift")
     Box(
         modifier
-            .scale(if (focused) 1.04f else 1f)
+            .graphicsLayer { scaleX = lift; scaleY = lift }
             .background(if (focused) Color.White else background, shape)
             .border(if (focused) 2.dp else 1.dp, if (focused) W.Neon else if (background == Color.Transparent) Color.Transparent else W.Line, shape)
             .onFocusChanged {
-                if (it.isFocused && !focused) onFocus?.invoke()
+                if (it.isFocused && !focused) {
+                    // The same soft tick the TV's own menus make (follows the system sound setting).
+                    view.playSoundEffect(SoundEffectConstants.CLICK)
+                    onFocus?.invoke()
+                }
                 focused = it.isFocused
             }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),

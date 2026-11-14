@@ -27,7 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -40,6 +42,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = Store(this)
+        Api.cacheDir = java.io.File(cacheDir, "api")
         setContent {
             var paired by remember { mutableStateOf(store.token != null) }
             if (!paired) {
@@ -98,7 +101,13 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
     var focusTarget by remember { mutableStateOf<String?>(null) }
     val zone = ZoneId.systemDefault()
 
+    var live by remember { mutableStateOf(false) }
+    var touchdown by remember { mutableStateOf<LiveEvent.Touchdown?>(null) }
+    val refreshNow = remember { Channel<Unit>(Channel.CONFLATED) }
+
     LaunchedEffect(Unit) {
+        // The last known league first, so waking the TV is instant; then the real thing.
+        store.token?.let { t -> runCatching { League.home(t, fromCache = true) }.onSuccess { if (data == null) data = it } }
         while (true) {
             val token = store.token ?: return@LaunchedEffect onSignedOut()
             try {
@@ -113,7 +122,34 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
             } catch (e: Exception) {
                 error = "Can't reach The Weekend right now"
             }
-            delay(if (data?.isGameDay() == true) 30_000L else 300_000L)
+            // The live line says when something moved; polling is the backstop.
+            val wait = when {
+                data?.isGameDay() != true -> 300_000L
+                live -> 120_000L
+                else -> 30_000L
+            }
+            withTimeoutOrNull(wait) { refreshNow.receive() }
+        }
+    }
+    LaunchedEffect(Unit) {
+        LiveFeed.run(
+            token = { store.token },
+            onConnected = { live = it },
+            onEvent = { e ->
+                when (e) {
+                    LiveEvent.Scores -> refreshNow.trySend(Unit)
+                    is LiveEvent.Touchdown -> {
+                        touchdown = e
+                        refreshNow.trySend(Unit)
+                    }
+                }
+            },
+        )
+    }
+    LaunchedEffect(touchdown) {
+        if (touchdown != null) {
+            delay(8_000)
+            touchdown = null
         }
     }
     LaunchedEffect(Unit) {
@@ -164,7 +200,7 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
     val gameDay = data?.isGameDay(now, zone) == true
     HiveBackground(gameDay) {
         Column(Modifier.fillMaxSize().padding(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 16.dp)) {
-            NavBar(tab, gameDay, now.atZone(zone).format(NAV_CLOCK), onPick = { hovered = null; tab = it }, onHover = { hovered = it }, firstTab = navFocus)
+            NavBar(tab, gameDay, now.atZone(zone).format(NAV_CLOCK), onPick = { hovered = null; tab = it }, onHover = { hovered = it }, firstTab = navFocus, live = live)
             Spacer(Modifier.height(12.dp))
             Box(Modifier.weight(1f)) {
                 val r = reader
@@ -184,6 +220,7 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
                 }
             }
         }
+        touchdown?.let { td -> TouchdownBanner(td, data, Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 110.dp)) }
         val d = data
         if (error != null && d != null) {
             BasicText(
