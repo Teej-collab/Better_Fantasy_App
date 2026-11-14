@@ -34,10 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -256,7 +257,10 @@ fun NavBar(
         Image(painterResource(R.drawable.emblem), "The Weekend", Modifier.size(46.dp))
         Spacer(Modifier.width(10.dp))
         // Coming back up to the menu lands on the tab you're on, not whichever is above.
-        Row(Modifier.focusRestorer(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            Modifier.focusProperties { if (firstTab != null) onEnter = { firstTab.requestFocus() } }.focusGroup(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             TABS.forEachIndexed { i, (key, label) ->
                 val on = key == current
                 Focusable(
