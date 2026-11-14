@@ -71,7 +71,6 @@ fun Focusable(
     Box(
         modifier
             .scale(if (focused) 1.04f else 1f)
-            .then(if (focused) Modifier.shadow(18.dp, shape, ambientColor = W.Neon, spotColor = W.Neon) else Modifier)
             .background(if (focused) Color.White else background, shape)
             .border(if (focused) 2.dp else 1.dp, if (focused) W.Neon else if (background == Color.Transparent) Color.Transparent else W.Line, shape)
             .onFocusChanged {

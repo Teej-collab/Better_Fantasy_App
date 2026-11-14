@@ -2,6 +2,7 @@ package app.theweekend.tv
 
 import android.content.Context
 import android.content.SharedPreferences
+import java.io.File
 
 /**
  * Everything the TV remembers, in app-private storage (backups are off in
@@ -12,23 +13,41 @@ class Store(context: Context) {
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences("weekend_tv", Context.MODE_PRIVATE)
 
+    // The few values the remote-button service (its own process, so key
+    // presses never wait on our drawing) shares with the app live in tiny
+    // files: SharedPreferences caches per process and would go stale.
+    private val dir = File(context.applicationContext.filesDir, "shared").apply { mkdirs() }
+
+    private fun read(name: String): String? = runCatching { File(dir, name).takeIf { it.exists() }?.readText() }.getOrNull()
+
+    private fun write(name: String, value: String?) {
+        runCatching {
+            val f = File(dir, name)
+            if (value == null) f.delete() else {
+                val tmp = File(dir, "$name.tmp")
+                tmp.writeText(value)
+                tmp.renameTo(f)
+            }
+        }
+    }
+
     var token: String?
         get() = prefs.getString("token", null)
         set(v) = prefs.edit().putString("token", v).apply()
 
     /** The remote button that opens the overlay, learned by pressing it once. -1 = not set. */
     var hotkey: Int
-        get() = prefs.getInt("hotkey", -1)
-        set(v) = prefs.edit().putInt("hotkey", v).apply()
+        get() = read("hotkey")?.toIntOrNull() ?: prefs.getInt("hotkey", -1)
+        set(v) = write("hotkey", v.toString())
 
     /** True while Settings is waiting for "press the button you want". */
     var learningHotkey: Boolean
-        get() = prefs.getBoolean("learning_hotkey", false)
-        set(v) = prefs.edit().putBoolean("learning_hotkey", v).apply()
+        get() = read("learning_hotkey") == "1"
+        set(v) = write("learning_hotkey", if (v) "1" else null)
 
     var overlayOn: Boolean
-        get() = prefs.getBoolean("overlay_on", true)
-        set(v) = prefs.edit().putBoolean("overlay_on", v).apply()
+        get() = read("overlay_off") == null
+        set(v) = write("overlay_off", if (v) null else "1")
 
     var popupsOn: Boolean
         get() = prefs.getBoolean("popups_on", true)
@@ -36,13 +55,13 @@ class Store(context: Context) {
 
     /** Set by the "Google TV home" tile so the next visit to Google's home isn't redirected. */
     var allowGoogleHome: Boolean
-        get() = prefs.getBoolean("allow_google_home", false)
-        set(v) = prefs.edit().putBoolean("allow_google_home", v).apply()
+        get() = read("allow_google_home") == "1"
+        set(v) = write("allow_google_home", if (v) "1" else null)
 
     /** Package of the app in front, written by RemoteService. */
     var foregroundPackage: String?
-        get() = prefs.getString("fg_pkg", null)
-        set(v) = prefs.edit().putString("fg_pkg", v).apply()
+        get() = read("fg_pkg")
+        set(v) = write("fg_pkg", v)
 
     fun delaySeconds(app: StreamApp): Int = prefs.getInt("delay_${app.key}", app.defaultDelay)
     fun setDelaySeconds(app: StreamApp, seconds: Int) =

@@ -24,7 +24,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 matters on a Chromecast: Compose runs far faster minified than as a debug build.
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug")
         }
     }

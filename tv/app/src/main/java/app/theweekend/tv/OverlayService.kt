@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -50,10 +49,6 @@ class OverlayService : Service() {
     private var shown: Snapshot? = null
     private var lastFetch = 0L
 
-    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "overlay_on" || key == "fg_pkg") scope.launch { render() }
-    }
-
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -68,7 +63,6 @@ class OverlayService : Service() {
             .setSmallIcon(R.mipmap.ic_launcher)
             .build()
         startForeground(1, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        store.listen(prefsListener)
         scope.launch { fetchLoop() }
         scope.launch { displayLoop() }
     }
@@ -76,7 +70,6 @@ class OverlayService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
 
     override fun onDestroy() {
-        store.unlisten(prefsListener)
         scope.cancel()
         removeViews()
         super.onDestroy()

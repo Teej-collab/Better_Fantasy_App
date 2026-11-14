@@ -3,6 +3,7 @@ package app.theweekend.tv
 import android.content.Context
 import android.provider.Settings
 import android.view.KeyEvent
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -35,6 +36,12 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.type
 
+/** What a remote button is called on the Chromecast remote, where we know it. */
+fun buttonName(code: Int): String = when (code) {
+    KeyEvent.KEYCODE_BUTTON_4 -> "Netflix button"
+    else -> KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_").replace('_', ' ').lowercase()
+}
+
 fun overlayAllowed(context: Context) = Settings.canDrawOverlays(context)
 
 fun remoteServiceOn(context: Context): Boolean {
@@ -54,6 +61,13 @@ fun SettingsScreen(store: Store, apps: List<TvApp>, onForget: () -> Unit) {
         onDispose { store.unlisten(l) }
     }
     val gameApps = apps.mapNotNull { it.streamApp }.distinct()
+    // The remote-button service learns the button in its own process; check back until it has.
+    LaunchedEffect(store.learningHotkey, tick) {
+        while (store.learningHotkey) {
+            delay(400)
+            tick++
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         BasicText("Down to move through. OK switches a setting; left / right changes a delay.", style = W.body(13, W.Muted))
@@ -64,7 +78,10 @@ fun SettingsScreen(store: Store, apps: List<TvApp>, onForget: () -> Unit) {
                     SettingRow(
                         label = "Score overlay",
                         value = if (store.overlayOn) "On" else "Off",
-                        onClick = { store.overlayOn = !store.overlayOn },
+                        onClick = {
+                            store.overlayOn = !store.overlayOn
+                            tick++
+                        },
                     )
                 }
                 item { SettingRow("Scoring pop-ups", if (store.popupsOn) "On" else "Off", onClick = { store.popupsOn = !store.popupsOn }) }
@@ -74,9 +91,12 @@ fun SettingsScreen(store: Store, apps: List<TvApp>, onForget: () -> Unit) {
                         when {
                             store.learningHotkey -> "Press the button you want…"
                             store.hotkey < 0 -> "Not set · OK to pick"
-                            else -> KeyEvent.keyCodeToString(store.hotkey).removePrefix("KEYCODE_").replace('_', ' ').lowercase()
+                            else -> buttonName(store.hotkey)
                         },
-                        onClick = { store.learningHotkey = true },
+                        onClick = {
+                            store.learningHotkey = true
+                            tick++
+                        },
                     )
                 }
                 gameApps.forEach { app ->

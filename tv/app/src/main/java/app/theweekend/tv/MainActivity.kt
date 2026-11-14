@@ -63,6 +63,7 @@ private val NAV_CLOCK = DateTimeFormatter.ofPattern("EEE h:mm a", Locale.US)
 private fun Shell(store: Store, onSignedOut: () -> Unit) {
     val context = LocalContext.current
     var tab by remember { mutableStateOf("home") }
+    var hovered by remember { mutableStateOf<String?>(null) }
     var data by remember { mutableStateOf<HomeData?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(Instant.now()) }
@@ -97,13 +98,24 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
     // Land in the content on Home (a game to watch, or the first app), not the menu.
     LaunchedEffect(data != null) { if (tab == "home") runCatching { firstFocus.requestFocus() } }
 
+    // Sliding across the menu opens a screen only once you stop on its tab, so
+    // passing over League on the way to Scores doesn't build League.
+    LaunchedEffect(hovered) {
+        val h = hovered ?: return@LaunchedEffect
+        delay(250)
+        tab = h
+    }
+
     // Back anywhere goes Home; Back on Home has nowhere to go (this is the TV's home).
-    BackHandler { if (tab != "home") tab = "home" }
+    BackHandler {
+        hovered = null
+        if (tab != "home") tab = "home"
+    }
 
     val gameDay = data?.isGameDay(now, zone) == true
     HiveBackground(gameDay) {
         Column(Modifier.fillMaxSize().padding(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 16.dp)) {
-            NavBar(tab, gameDay, now.atZone(zone).format(NAV_CLOCK), onPick = { tab = it })
+            NavBar(tab, gameDay, now.atZone(zone).format(NAV_CLOCK), onPick = { hovered = null; tab = it }, onHover = { hovered = it })
             Spacer(Modifier.height(12.dp))
             Box(Modifier.weight(1f)) {
                 when (tab) {
