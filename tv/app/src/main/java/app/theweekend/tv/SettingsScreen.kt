@@ -44,7 +44,7 @@ fun remoteServiceOn(context: Context): Boolean {
 
 /** Overlay, remote button, stream delays. Left/right changes a delay; OK toggles. */
 @Composable
-fun SettingsScreen(store: Store, onBack: () -> Unit, onForget: () -> Unit) {
+fun SettingsScreen(store: Store, apps: List<TvApp>, onForget: () -> Unit) {
     val context = LocalContext.current
     var tick by remember { mutableIntStateOf(0) }  // re-read the store after any change
     val first = remember { FocusRequester() }
@@ -53,20 +53,17 @@ fun SettingsScreen(store: Store, onBack: () -> Unit, onForget: () -> Unit) {
         store.listen(l)
         onDispose { store.unlisten(l) }
     }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    val gameApps = apps.mapNotNull { it.streamApp }.distinct()
 
-    Column(Modifier.fillMaxSize().background(W.Night).padding(horizontal = 64.dp, vertical = 32.dp)) {
-        BasicText("OVERLAY & SETTINGS", style = W.big(34))
-        Spacer(Modifier.height(4.dp))
-        BasicText("Back to leave. Left / right changes a delay.", style = W.body(14, W.Muted))
-        Spacer(Modifier.height(18.dp))
+    Column(Modifier.fillMaxSize()) {
+        BasicText("Down to move through. OK switches a setting; left / right changes a delay.", style = W.body(13, W.Muted))
+        Spacer(Modifier.height(10.dp))
         tick.let { _ ->
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.width(720.dp)) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.width(640.dp)) {
                 item {
                     SettingRow(
                         label = "Score overlay",
                         value = if (store.overlayOn) "On" else "Off",
-                        modifier = Modifier.focusRequester(first),
                         onClick = { store.overlayOn = !store.overlayOn },
                     )
                 }
@@ -82,7 +79,7 @@ fun SettingsScreen(store: Store, onBack: () -> Unit, onForget: () -> Unit) {
                         onClick = { store.learningHotkey = true },
                     )
                 }
-                StreamApp.entries.forEach { app ->
+                gameApps.forEach { app ->
                     item {
                         SettingRow(
                             "Stream delay · ${app.label}",
@@ -125,7 +122,7 @@ private fun SettingRow(
     Focusable(
         modifier = modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(44.dp)
             .onPreviewKeyEvent { e ->
                 if (onLeftRight == null || e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (e.key) {

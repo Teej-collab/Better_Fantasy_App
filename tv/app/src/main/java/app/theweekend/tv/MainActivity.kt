@@ -5,12 +5,31 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-/** The home screen (this activity is the TV's HOME), plus pairing and settings. */
+/** The home screen (this activity is the TV's HOME), plus pairing and the other tabs. */
 class MainActivity : ComponentActivity() {
     private lateinit var store: Store
 
@@ -18,29 +37,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         store = Store(this)
         setContent {
-            var screen by remember { mutableStateOf(if (store.token == null) "pair" else "home") }
-            when (screen) {
-                "pair" -> PairingScreen(onPaired = { token ->
+            var paired by remember { mutableStateOf(store.token != null) }
+            if (!paired) {
+                PairingScreen(onPaired = { token ->
                     store.token = token
                     startOverlay()
-                    screen = "home"
+                    paired = true
                 })
-                "settings" -> {
-                    BackHandler { screen = "home" }
-                    SettingsScreen(
-                        store,
-                        onBack = { screen = "home" },
-                        onForget = {
-                            store.token = null
-                            screen = "pair"
-                        },
-                    )
-                }
-                else -> {
-                    // Home is home: Back has nowhere to go.
-                    BackHandler {}
-                    HomeScreen(store, onSignedOut = { screen = "pair" }, onOpenSettings = { screen = "settings" })
-                }
+            } else {
+                Shell(store, onSignedOut = { paired = false })
             }
         }
         if (store.token != null) startOverlay()
@@ -48,5 +53,78 @@ class MainActivity : ComponentActivity() {
 
     private fun startOverlay() {
         runCatching { startForegroundService(Intent(this, OverlayService::class.java)) }
+    }
+}
+
+private val NAV_CLOCK = DateTimeFormatter.ofPattern("EEE h:mm a", Locale.US)
+
+/** The top menu and whichever screen is open under it, all fed by one refresh loop. */
+@Composable
+private fun Shell(store: Store, onSignedOut: () -> Unit) {
+    val context = LocalContext.current
+    var tab by remember { mutableStateOf("home") }
+    var data by remember { mutableStateOf<HomeData?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var now by remember { mutableStateOf(Instant.now()) }
+    val apps = remember { Apps.installed(context) }
+    val firstFocus = remember { FocusRequester() }
+    val zone = ZoneId.systemDefault()
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val token = store.token ?: return@LaunchedEffect onSignedOut()
+            try {
+                data = League.home(token)
+                error = null
+            } catch (e: ApiError) {
+                if (e.status == 401) {
+                    store.token = null
+                    return@LaunchedEffect onSignedOut()
+                }
+                error = e.message
+            } catch (e: Exception) {
+                error = "Can't reach The Weekend right now"
+            }
+            delay(if (data?.isGameDay() == true) 30_000L else 300_000L)
+        }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = Instant.now()
+            delay(15_000)
+        }
+    }
+    // Land in the content on Home (a game to watch, or the first app), not the menu.
+    LaunchedEffect(data != null) { if (tab == "home") runCatching { firstFocus.requestFocus() } }
+
+    // Back anywhere goes Home; Back on Home has nowhere to go (this is the TV's home).
+    BackHandler { if (tab != "home") tab = "home" }
+
+    val gameDay = data?.isGameDay(now, zone) == true
+    HiveBackground(gameDay) {
+        Column(Modifier.fillMaxSize().padding(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 16.dp)) {
+            NavBar(tab, gameDay, now.atZone(zone).format(NAV_CLOCK), onPick = { tab = it })
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.weight(1f)) {
+                when (tab) {
+                    "matchup" -> MatchupScreen(data)
+                    "league" -> LeagueScreen(data)
+                    "scores" -> ScoresScreen(data, apps)
+                    "settings" -> SettingsScreen(store, apps, onForget = {
+                        store.token = null
+                        onSignedOut()
+                    })
+                    else -> HomeScreen(data, error, apps, now, gameDay, firstFocus)
+                }
+            }
+        }
+        val d = data
+        if (error != null && d != null) {
+            BasicText(
+                "Not updating · last good ${d.fetchedAt.atZone(zone).format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))}",
+                style = W.body(12, W.Stale, bold = true),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = 4.dp),
+            )
+        }
     }
 }

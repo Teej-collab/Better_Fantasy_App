@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /** The Weekend's look: night background, white type, neon green, one orange spark. */
+fun TextStyle.end(): TextStyle = copy(textAlign = androidx.compose.ui.text.style.TextAlign.End)
+
 object W {
     val Night = Color(0xFF0B0D12)
     val Surface = Color(0xFF12161D)
@@ -60,6 +62,7 @@ fun Focusable(
     modifier: Modifier = Modifier,
     corner: Dp = 14.dp,
     background: Color = W.Surface,
+    onFocus: (() -> Unit)? = null,
     onClick: () -> Unit,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
@@ -70,8 +73,11 @@ fun Focusable(
             .scale(if (focused) 1.04f else 1f)
             .then(if (focused) Modifier.shadow(18.dp, shape, ambientColor = W.Neon, spotColor = W.Neon) else Modifier)
             .background(if (focused) Color.White else background, shape)
-            .border(if (focused) 2.dp else 1.dp, if (focused) W.Neon else W.Line, shape)
-            .onFocusChanged { focused = it.isFocused }
+            .border(if (focused) 2.dp else 1.dp, if (focused) W.Neon else if (background == Color.Transparent) Color.Transparent else W.Line, shape)
+            .onFocusChanged {
+                if (it.isFocused && !focused) onFocus?.invoke()
+                focused = it.isFocused
+            }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
     ) { content(focused) }
 }

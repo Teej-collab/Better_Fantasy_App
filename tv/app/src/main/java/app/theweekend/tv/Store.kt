@@ -56,26 +56,44 @@ class Store(context: Context) {
 }
 
 /**
- * The streaming apps games are watched in, matched by the app's name on
- * the TV (package names differ by region and version). Each one runs a
- * different distance behind the live data; defaults are a starting guess
- * the Settings screen tunes.
+ * The apps games are watched in, matched by the app's name on the TV
+ * (package names differ by region and version). Each one runs a different
+ * distance behind the live data; defaults are a starting guess the
+ * Settings screen tunes. The overlay shows up over any of these.
  */
-enum class StreamApp(val key: String, val label: String, val nameHint: String, val defaultDelay: Int) {
-    PARAMOUNT("paramount", "Paramount+", "paramount", 40),
-    ESPN("espn", "ESPN", "espn", 30),
-    PEACOCK("peacock", "Peacock", "peacock", 45);
+enum class StreamApp(val key: String, val label: String, val nameHints: List<String>, val defaultDelay: Int) {
+    PARAMOUNT("paramount", "Paramount+", listOf("paramount"), 40),
+    PEACOCK("peacock", "Peacock", listOf("peacock"), 45),
+    ESPN("espn", "ESPN", listOf("espn"), 30),
+    HULU("hulu", "Hulu", listOf("hulu"), 45),
+    DISNEY("disney", "Disney+", listOf("disney"), 40),
+    PRIME("prime", "Prime Video", listOf("prime video", "amazon"), 40),
+    NETFLIX("netflix", "Netflix", listOf("netflix"), 40),
+    YOUTUBE_TV("youtubetv", "YouTube TV", listOf("youtube tv"), 40);
+
+    fun matches(appLabel: String): Boolean = nameHints.any { appLabel.lowercase().contains(it) }
 
     companion object {
-        /** Which app carries a network's game, from ESPN's broadcast name. */
-        fun forBroadcast(broadcast: String?): StreamApp? {
-            val b = broadcast?.uppercase() ?: return null
+        /**
+         * The apps that carry a network's games, best first, from ESPN's
+         * broadcast name. FOX lives in Hulu + Live TV; ESPN/ABC games also
+         * stream on Disney+ and Hulu.
+         */
+        fun forBroadcast(broadcast: String?): List<StreamApp> {
+            val b = broadcast?.uppercase() ?: return emptyList()
             return when {
-                "CBS" in b || "PARAMOUNT" in b -> PARAMOUNT
-                "NBC" in b || "PEACOCK" in b -> PEACOCK
-                "ESPN" in b || "ABC" in b -> ESPN
-                else -> null
+                "CBS" in b || "PARAMOUNT" in b -> listOf(PARAMOUNT, YOUTUBE_TV)
+                "NBC" in b || "PEACOCK" in b -> listOf(PEACOCK, YOUTUBE_TV)
+                "ESPN" in b || "ABC" in b -> listOf(ESPN, DISNEY, HULU, YOUTUBE_TV)
+                "FOX" in b -> listOf(HULU, YOUTUBE_TV)
+                "PRIME" in b || "AMAZON" in b -> listOf(PRIME)
+                "NFL NET" in b || "NFLN" in b -> listOf(HULU, YOUTUBE_TV)
+                "NETFLIX" in b -> listOf(NETFLIX)
+                "YOUTUBE" in b -> listOf(YOUTUBE_TV)
+                else -> emptyList()
             }
         }
+
+        fun forLabel(appLabel: String): StreamApp? = entries.firstOrNull { it.matches(appLabel) }
     }
 }

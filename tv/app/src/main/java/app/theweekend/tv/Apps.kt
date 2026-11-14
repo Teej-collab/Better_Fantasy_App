@@ -9,7 +9,7 @@ import androidx.core.graphics.drawable.toBitmap
 
 /** An app installed on the TV, for the home screen's app row. */
 data class TvApp(val label: String, val packageName: String, val banner: ImageBitmap?) {
-    val streamApp: StreamApp? get() = StreamApp.entries.firstOrNull { label.lowercase().contains(it.nameHint) }
+    val streamApp: StreamApp? get() = StreamApp.forLabel(label)
 }
 
 object Apps {
@@ -40,5 +40,7 @@ object Apps {
         return true
     }
 
-    fun find(apps: List<TvApp>, stream: StreamApp?): TvApp? = stream?.let { s -> apps.firstOrNull { it.streamApp == s } }
+    /** The first installed app that carries this broadcast, or null if none of yours do. */
+    fun forBroadcast(apps: List<TvApp>, broadcast: String?): TvApp? =
+        StreamApp.forBroadcast(broadcast).firstNotNullOfOrNull { s -> apps.firstOrNull { it.streamApp == s } }
 }

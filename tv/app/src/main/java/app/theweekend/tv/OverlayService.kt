@@ -89,7 +89,7 @@ class OverlayService : Service() {
         val label = runCatching {
             packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
         }.getOrNull() ?: return null
-        return StreamApp.entries.firstOrNull { label.lowercase().contains(it.nameHint) }
+        return StreamApp.forLabel(label)
     }
 
     private fun wanted(): Boolean = store.overlayOn && frontStreamApp() != null && Settings.canDrawOverlays(this)
