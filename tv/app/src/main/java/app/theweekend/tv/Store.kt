@@ -58,6 +58,20 @@ class Store(context: Context) {
         get() = prefs.getBoolean("popups_on", true)
         set(v) = prefs.edit().putBoolean("popups_on", v).apply()
 
+    /** The "Welcome back" intro when the TV wakes, and whether it makes its sounds. */
+    var introOn: Boolean
+        get() = prefs.getBoolean("intro_on", true)
+        set(v) = prefs.edit().putBoolean("intro_on", v).apply()
+
+    var introSound: Boolean
+        get() = prefs.getBoolean("intro_sound", true)
+        set(v) = prefs.edit().putBoolean("intro_sound", v).apply()
+
+    /** The account's display name (GET /tv/me), for "Welcome back, …". */
+    var accountName: String?
+        get() = prefs.getString("account_name", null)
+        set(v) = prefs.edit().putString("account_name", v).apply()
+
     /** Set by the "Google TV home" tile so the next visit to Google's home isn't redirected. */
     var allowGoogleHome: Boolean
         get() = read("allow_google_home") == "1"

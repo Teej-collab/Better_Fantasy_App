@@ -135,6 +135,8 @@ fun SettingsScreen(store: Store, apps: List<TvApp>, open: Boolean, onForget: () 
                         onClick = {},
                     )
                 }
+                item { SettingRow("Welcome back intro", if (store.introOn) "When the TV wakes" else "Off", onClick = { store.introOn = !store.introOn }) }
+                item { SettingRow("Intro sound", if (store.introSound) "On" else "Off", onClick = { store.introSound = !store.introSound }) }
                 item {
                     SettingRow("Preview screensaver", "Any button closes it", onClick = {
                         context.startActivity(android.content.Intent(context, ScreensaverPreview::class.java))

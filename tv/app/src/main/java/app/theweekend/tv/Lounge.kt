@@ -224,7 +224,7 @@ private fun Commish(post: CommishPost?, onRead: (String, String) -> Unit) {
                 BasicText("Nothing posted in Commish Corner yet.", style = W.body(14, W.Muted))
             } else {
                 BasicText(post.title, style = W.body(16, bold = true), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                BasicText(post.body, style = W.body(13, Color(0xFFC7CCD6)), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                BasicText(post.body.replace(Regex("\\s+"), " "), style = W.body(13, Color(0xFFC7CCD6)), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }

@@ -25,6 +25,7 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.channels.Channel
@@ -38,11 +39,20 @@ import java.util.Locale
 /** The home screen (this activity is the TV's HOME), plus pairing and the other tabs. */
 class MainActivity : ComponentActivity() {
     private lateinit var store: Store
+    private var sounds: IntroSounds? = null
+
+    // The intro plays on a cold start and when the TV wakes from standby,
+    // not when you come back from YouTube: so it's only re-armed when we
+    // were stopped with the screen off.
+    private var intro by mutableStateOf(false)
+    private var stoppedAsleep = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = Store(this)
         Api.cacheDir = java.io.File(cacheDir, "api")
+        sounds = IntroSounds(this)
+        intro = store.introOn && store.token != null
         setContent {
             var paired by remember { mutableStateOf(store.token != null) }
             if (!paired) {
@@ -52,10 +62,39 @@ class MainActivity : ComponentActivity() {
                     paired = true
                 })
             } else {
-                Shell(store, onSignedOut = { paired = false })
+                Box(Modifier.fillMaxSize()) {
+                    // Home is built under the intro but not drawn (alpha 0 skips it), so it's ready the moment the intro fades.
+                    Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (intro && !introFading) 0f else 1f }) {
+                        Shell(store, onSignedOut = { paired = false })
+                    }
+                    if (intro) {
+                        WelcomeIntro(store.accountName, sounds.takeIf { store.introSound }, onFading = { introFading = true }) {
+                            intro = false
+                            introFading = false
+                        }
+                    }
+                }
             }
         }
         if (store.token != null) startOverlay()
+    }
+
+    private var introFading by mutableStateOf(false)
+
+    override fun onStart() {
+        super.onStart()
+        if (stoppedAsleep && store.introOn && store.token != null) intro = true
+        stoppedAsleep = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        stoppedAsleep = !(getSystemService(POWER_SERVICE) as android.os.PowerManager).isInteractive
+    }
+
+    override fun onDestroy() {
+        sounds?.release()
+        super.onDestroy()
     }
 
     /**
@@ -65,6 +104,14 @@ class MainActivity : ComponentActivity() {
      * Each press is logged under "WeekendKeys" so skips can be diagnosed.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Any button skips the intro (and isn't also acted on behind it).
+        if (intro) {
+            if (event.action == KeyEvent.ACTION_UP) {
+                intro = false
+                introFading = false
+            }
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN && event.keyCode in ARROWS) {
             val age = SystemClock.uptimeMillis() - event.eventTime
             Log.d("WeekendKeys", "key=${KeyEvent.keyCodeToString(event.keyCode)} repeat=${event.repeatCount} age=${age}ms")
@@ -110,6 +157,11 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
     var touchdown by remember { mutableStateOf<LiveEvent.Touchdown?>(null) }
     val refreshNow = remember { Channel<Unit>(Channel.CONFLATED) }
 
+    LaunchedEffect(Unit) {
+        // Who's signed in, for the intro's "Welcome back, …" next time.
+        // Same name the website's Welcome Back uses: your owner name, else the account's.
+        store.token?.let { t -> runCatching { Api.get("/auth/me", t) }.onSuccess { store.accountName = it.optStringOrNull("display_name") } }
+    }
     LaunchedEffect(Unit) {
         // The last known league first, so waking the TV is instant; then the real thing.
         store.token?.let { t -> runCatching { League.home(t, fromCache = true) }.onSuccess { if (data == null) data = it } }
