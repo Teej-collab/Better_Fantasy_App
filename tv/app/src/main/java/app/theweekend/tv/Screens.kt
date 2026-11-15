@@ -190,7 +190,7 @@ fun LeagueScreen(d: HomeData?) {
 // ---------- Scores: every NFL game, and where you can watch it ----------
 
 @Composable
-fun ScoresScreen(d: HomeData?, apps: List<TvApp>) {
+fun ScoresScreen(d: HomeData?, apps: List<TvApp>, lastGame: String?, lastCard: FocusRequester, onOpen: (NflGame) -> Unit) {
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
     if (d == null || d.games.isEmpty()) return Empty("No NFL games on the board right now.")
@@ -208,7 +208,8 @@ fun ScoresScreen(d: HomeData?, apps: List<TvApp>) {
             items(games, key = { it.id }) { g ->
                 val app = Apps.forBroadcast(apps, g.broadcast)
                 val mine = starters.filter { g.has(it.proTeam) }
-                Focusable(Modifier.fillMaxWidth().height(70.dp), onClick = { app?.let { Apps.launch(context, it.packageName) } }) { focused ->
+                // OK opens the game's Gamecast, which has a Watch button for the app that carries it.
+                Focusable(Modifier.fillMaxWidth().height(70.dp).then(if (g.id == lastGame) Modifier.focusRequester(lastCard) else Modifier), onClick = { onOpen(g) }) { focused ->
                     val fg = if (focused) W.Night else W.Text
                     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {

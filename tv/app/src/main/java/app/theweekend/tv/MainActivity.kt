@@ -97,6 +97,10 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
     val firstFocus = remember { FocusRequester() }
     val navFocus = remember { FocusRequester() }
     var reader by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // The game whose Gamecast is open (from Scores), and its card to land back on.
+    var gamecast by remember { mutableStateOf<NflGame?>(null) }
+    var lastGame by remember { mutableStateOf<String?>(null) }
+    val gameCard = remember { FocusRequester() }
     // Where focus should land after a screen change we caused: "nav" (the
     // tab you just opened) or "content" (Home's main card).
     var focusTarget by remember { mutableStateOf<String?>(null) }
@@ -175,10 +179,16 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
         tab = h
     }
 
-    LaunchedEffect(tab, focusTarget, reader) {
+    LaunchedEffect(tab, focusTarget, reader, gamecast) {
         val target = focusTarget ?: return@LaunchedEffect
         delay(60)
-        runCatching { if (target == "nav") navFocus.requestFocus() else firstFocus.requestFocus() }
+        runCatching {
+            when (target) {
+                "nav" -> navFocus.requestFocus()
+                "game" -> gameCard.requestFocus()
+                else -> firstFocus.requestFocus()
+            }
+        }
         focusTarget = null
     }
 
@@ -188,10 +198,20 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
         focusTarget = "nav"
     }
 
-    // Back closes the reader, then goes Home; on Home it has nowhere to go (this is the TV's home).
+    // Moving to another tab closes whatever was opened over the last one.
+    LaunchedEffect(tab) {
+        reader = null
+        gamecast = null
+    }
+
+    // Back closes the reader or Gamecast, then goes Home; on Home it has nowhere to go (this is the TV's home).
     BackHandler {
         hovered = null
         when {
+            gamecast != null -> {
+                gamecast = null
+                focusTarget = "game"
+            }
             reader != null -> {
                 reader = null
                 focusTarget = if (tab == "home") "content" else "nav"
@@ -210,14 +230,19 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             Box(Modifier.weight(1f)) {
                 val r = reader
-                val shown = if (r != null) "reader" else tab
+                val gc = gamecast
+                val shown = if (r != null) "reader" else if (gc != null) "gamecast" else tab
                 KeptTabs(shown, warm = data != null) { key ->
                     when (key) {
                         "reader" -> if (r != null) ReaderScreen(r.first, r.second)
+                        "gamecast" -> if (gc != null) GamecastScreen(gc, data, apps, store.token)
                         "matchup" -> MatchupScreen(data, onRead = { t, b -> reader = t to b })
                         "redzone" -> RedZoneScreen(data, apps, touchdown)
                         "league" -> LeagueScreen(data)
-                        "scores" -> ScoresScreen(data, apps)
+                        "scores" -> ScoresScreen(data, apps, lastGame, gameCard, onOpen = { g ->
+                            lastGame = g.id
+                            gamecast = g
+                        })
                         "settings" -> SettingsScreen(store, apps, open = shown == "settings", onForget = {
                             store.token = null
                             onSignedOut()
@@ -253,7 +278,7 @@ private val KEPT = listOf("home", "matchup", "redzone", "league", "scores", "set
  * tab took ~100 ms on the Chromecast, a visible hitch in the menu. They're
  * built a moment after the league loads, then only shown or hidden. Hidden
  * ones aren't placed, so they don't draw and focus can't wander into them.
- * The reader is built when opened.
+ * The reader and Gamecast are built when opened.
  */
 @Composable
 private fun KeptTabs(shown: String, warm: Boolean, screen: @Composable (String) -> Unit) {

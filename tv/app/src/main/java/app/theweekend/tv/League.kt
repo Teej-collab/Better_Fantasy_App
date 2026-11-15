@@ -78,6 +78,7 @@ data class Side(
 )
 
 data class RosterSpot(
+    val id: String?,
     val name: String,
     val position: String?,
     val slot: String?,
@@ -235,6 +236,7 @@ object League {
         powerRank = if (j.isNull("power_rank")) null else j.optInt("power_rank"),
         roster = j.optJSONArray("roster").objects().map {
             RosterSpot(
+                id = it.optStringOrNull("player_id"),
                 name = it.optString("player_name"),
                 position = it.optStringOrNull("position"),
                 slot = it.optStringOrNull("lineup_slot"),
