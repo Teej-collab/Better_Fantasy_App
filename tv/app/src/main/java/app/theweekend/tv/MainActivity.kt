@@ -210,19 +210,23 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             Box(Modifier.weight(1f)) {
                 val r = reader
-                if (r != null) ReaderScreen(r.first, r.second) else when (tab) {
-                    "matchup" -> MatchupScreen(data, onRead = { t, b -> reader = t to b })
-                    "league" -> LeagueScreen(data)
-                    "scores" -> ScoresScreen(data, apps)
-                    "settings" -> SettingsScreen(store, apps, onForget = {
-                        store.token = null
-                        onSignedOut()
-                    })
-                    else -> HomeScreen(
-                        data, error, apps, store, now, gameDay, firstFocus,
-                        onOpenTab = ::openTab,
-                        onRead = { t, b -> reader = t to b },
-                    )
+                val shown = if (r != null) "reader" else tab
+                KeptTabs(shown, warm = data != null) { key ->
+                    when (key) {
+                        "reader" -> if (r != null) ReaderScreen(r.first, r.second)
+                        "matchup" -> MatchupScreen(data, onRead = { t, b -> reader = t to b })
+                        "league" -> LeagueScreen(data)
+                        "scores" -> ScoresScreen(data, apps)
+                        "settings" -> SettingsScreen(store, apps, open = shown == "settings", onForget = {
+                            store.token = null
+                            onSignedOut()
+                        })
+                        else -> HomeScreen(
+                            data, error, apps, store, now, gameDay, firstFocus,
+                            onOpenTab = ::openTab,
+                            onRead = { t, b -> reader = t to b },
+                        )
+                    }
                 }
             }
         }
@@ -234,6 +238,46 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
                 style = W.body(12, W.Stale, bold = true),
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = 4.dp),
             )
+        }
+    }
+}
+
+/** Tabs kept built in the background, so opening one only has to show it. */
+private val KEPT = listOf("home", "matchup", "league", "scores", "settings")
+
+/**
+ * Shows one screen, but keeps every tab built (and
+ * laid out) behind it: building a screen the first time you stopped on its
+ * tab took ~100 ms on the Chromecast, a visible hitch in the menu. They're
+ * built a moment after the league loads, then only shown or hidden. Hidden
+ * ones aren't placed, so they don't draw and focus can't wander into them.
+ * The reader is built when opened.
+ */
+@Composable
+private fun KeptTabs(shown: String, warm: Boolean, screen: @Composable (String) -> Unit) {
+    var built by remember { mutableStateOf(setOf(shown)) }
+    LaunchedEffect(warm) {
+        if (!warm) return@LaunchedEffect
+        delay(1_500)  // after Home has drawn and settled
+        for (k in KEPT) {
+            if (k !in built) built = built + k
+            delay(400)  // one at a time, so a press in the meantime still gets a frame
+        }
+    }
+    if (shown !in built) built = built + shown
+    val keys = (built.filter { it in KEPT } + shown).distinct()
+    androidx.compose.ui.layout.Layout(
+        content = {
+            keys.forEach { k ->
+                androidx.compose.runtime.key(k) {
+                    Box(Modifier.fillMaxSize()) { screen(k) }
+                }
+            }
+        },
+    ) { measurables, constraints ->
+        val placeables = measurables.map { it.measure(constraints) }
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            placeables[keys.indexOf(shown)].place(0, 0)
         }
     }
 }

@@ -54,7 +54,7 @@ fun remoteServiceOn(context: Context): Boolean {
 
 /** Overlay, remote button, stream delays. Left/right changes a delay; OK toggles. */
 @Composable
-fun SettingsScreen(store: Store, apps: List<TvApp>, onForget: () -> Unit) {
+fun SettingsScreen(store: Store, apps: List<TvApp>, open: Boolean, onForget: () -> Unit) {
     val context = LocalContext.current
     var tick by remember { mutableIntStateOf(0) }  // re-read the store after any change
     val first = remember { FocusRequester() }
@@ -67,7 +67,9 @@ fun SettingsScreen(store: Store, apps: List<TvApp>, onForget: () -> Unit) {
     val scope = rememberCoroutineScope()
     var update by remember { mutableStateOf<Release?>(null) }
     var updateStatus by remember { mutableStateOf("Checking…") }
-    LaunchedEffect(Unit) {
+    // Kept built in the background (KeptTabs), so check each time it's opened.
+    LaunchedEffect(open) {
+        if (!open) return@LaunchedEffect
         update = runCatching { Updater.latest() }.getOrNull()
         updateStatus = if (update == null) "Up to date" else "Version ${update!!.versionName} · OK to install"
     }
