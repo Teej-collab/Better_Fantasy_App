@@ -90,6 +90,7 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
     var tab by remember { mutableStateOf("home") }
     var hovered by remember { mutableStateOf<String?>(null) }
     var data by remember { mutableStateOf<HomeData?>(null) }
+    var lastGood by remember { mutableStateOf<Instant?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(Instant.now()) }
     val apps = remember { Apps.installed(context, store.appOrder).toMutableStateList() }
@@ -111,7 +112,11 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
         while (true) {
             val token = store.token ?: return@LaunchedEffect onSignedOut()
             try {
-                data = League.home(token)
+                val fresh = League.home(token)
+                // A refresh that changed nothing leaves the screen alone; swapping in
+                // an equal copy rebuilt every card, and could land mid-press.
+                if (fresh.copy(fetchedAt = Instant.EPOCH) != data?.copy(fetchedAt = Instant.EPOCH)) data = fresh
+                lastGood = fresh.fetchedAt
                 error = null
             } catch (e: ApiError) {
                 if (e.status == 401) {
@@ -153,9 +158,10 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
         }
     }
     LaunchedEffect(Unit) {
+        // On the minute, so the clocks turn over on time without rebuilding the screen every few seconds.
         while (true) {
             now = Instant.now()
-            delay(15_000)
+            delay(60_000 - System.currentTimeMillis() % 60_000 + 50)
         }
     }
     // Land in the content on Home (a game to watch, or the first app), not the menu.
@@ -224,7 +230,7 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
         val d = data
         if (error != null && d != null) {
             BasicText(
-                "Not updating · last good ${d.fetchedAt.atZone(zone).format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))}",
+                "Not updating · last good ${(lastGood ?: d.fetchedAt).atZone(zone).format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))}",
                 style = W.body(12, W.Stale, bold = true),
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = 4.dp),
             )

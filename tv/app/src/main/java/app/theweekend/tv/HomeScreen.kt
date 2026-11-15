@@ -388,6 +388,7 @@ private fun AppRow(apps: SnapshotStateList<TvApp>, store: Store, firstFocus: Foc
     val scope = rememberCoroutineScope()
     var moving by remember { mutableStateOf<String?>(null) }
     var swallowUp by remember { mutableStateOf(false) }
+    val googleHome = remember { googleHomeEnabled(context) }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         SectionLabel("Apps")
@@ -462,7 +463,7 @@ private fun AppRow(apps: SnapshotStateList<TvApp>, store: Store, firstFocus: Foc
             }
         }
         // Only while Google's home is still switched on (tv/scripts/google-home.sh).
-        if (googleHomeEnabled(context)) item(key = "google-home") {
+        if (googleHome) item(key = "google-home") {
             SystemTile("Google TV home", "Search, inputs") {
                 Store(context).allowGoogleHome = true
                 context.startActivity(

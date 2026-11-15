@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -75,7 +76,12 @@ import kotlin.math.sqrt
 fun HiveBackground(gameDay: Boolean, content: @Composable BoxScope.() -> Unit) {
     var size by remember { mutableStateOf(IntSize.Zero) }
     val art = remember(size, gameDay) { if (size == IntSize.Zero) null else paintHive(size.width, size.height, gameDay) }
-    Box(Modifier.fillMaxSize().background(W.Night).onSizeChanged { size = it }) {
+    // The opaque bitmap is the only full-screen paint: no window color and no
+    // night fill under it. Each extra full-screen layer costs the Chromecast's
+    // GPU a few ms a frame, and the screen used to be painted three times over.
+    val view = androidx.compose.ui.platform.LocalView.current
+    LaunchedEffect(art != null) { if (art != null) view.rootView.background = null }
+    Box(Modifier.fillMaxSize().then(if (art == null) Modifier.background(W.Night) else Modifier).onSizeChanged { size = it }) {
         if (art != null) {
             Image(art, null, Modifier.fillMaxSize().graphicsLayer(), contentScale = ContentScale.FillBounds)
         }
@@ -85,7 +91,9 @@ fun HiveBackground(gameDay: Boolean, content: @Composable BoxScope.() -> Unit) {
 
 private fun paintHive(width: Int, height: Int, gameDay: Boolean): ImageBitmap {
     val bmp = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+    bmp.setHasAlpha(false)
     val c = android.graphics.Canvas(bmp)
+    c.drawColor(W.Night.toArgb())
     val density = width / 960f
     val r = 46f * density
     val w = sqrt(3f) * r
@@ -216,7 +224,7 @@ fun Panel(
             .then(selectable)
             .background(
                 Brush.verticalGradient(
-                    if (focused) listOf(Color(0xFF1B2330), Color(0xFF121820)) else listOf(Color(0xF0151A22), Color(0xF00E1117)),
+                    if (focused) listOf(Color(0xFF1B2330), Color(0xFF121820)) else listOf(Color(0xFF151A22), Color(0xFF0E1117)),
                 ),
                 shape,
             )
