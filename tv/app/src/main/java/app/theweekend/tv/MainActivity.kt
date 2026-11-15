@@ -215,6 +215,7 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
                     when (key) {
                         "reader" -> if (r != null) ReaderScreen(r.first, r.second)
                         "matchup" -> MatchupScreen(data, onRead = { t, b -> reader = t to b })
+                        "redzone" -> RedZoneScreen(data, apps, touchdown)
                         "league" -> LeagueScreen(data)
                         "scores" -> ScoresScreen(data, apps)
                         "settings" -> SettingsScreen(store, apps, open = shown == "settings", onForget = {
@@ -230,7 +231,8 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
                 }
             }
         }
-        touchdown?.let { td -> TouchdownBanner(td, data, Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 110.dp)) }
+        // On Red Zone the scoring team's tile lights up instead.
+        touchdown?.takeIf { tab != "redzone" || reader != null }?.let { td -> TouchdownBanner(td, data, Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 110.dp)) }
         val d = data
         if (error != null && d != null) {
             BasicText(
@@ -243,7 +245,7 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
 }
 
 /** Tabs kept built in the background, so opening one only has to show it. */
-private val KEPT = listOf("home", "matchup", "league", "scores", "settings")
+private val KEPT = listOf("home", "matchup", "redzone", "league", "scores", "settings")
 
 /**
  * Shows one screen, but keeps every tab built (and

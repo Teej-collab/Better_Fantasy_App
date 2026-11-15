@@ -249,7 +249,7 @@ fun slotLabel(slot: String?): String = when {
 }
 
 @Composable
-private fun Empty(text: String) {
+fun Empty(text: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { BasicText(text, style = W.body(18, W.Muted)) }
 }
 

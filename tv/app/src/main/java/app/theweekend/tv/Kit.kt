@@ -245,7 +245,7 @@ fun Chip(text: String, fg: Color, bg: Color) {
     )
 }
 
-val TABS = listOf("home" to "Home", "matchup" to "Matchup", "league" to "League", "scores" to "Scores", "settings" to "Settings")
+val TABS = listOf("home" to "Home", "matchup" to "Matchup", "redzone" to "Red Zone", "league" to "League", "scores" to "Scores", "settings" to "Settings")
 
 /**
  * The top menu. Resting on a tab opens it (the way TV apps work), so you
