@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         store = Store(this)
         Api.cacheDir = java.io.File(cacheDir, "api")
+        ensureRemoteService()
         sounds = IntroSounds(this)
         intro = store.introOn && store.token != null
         setContent {
@@ -65,7 +66,7 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize()) {
                     // Home is built under the intro but not drawn (alpha 0 skips it), so it's ready the moment the intro fades.
                     Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (intro && !introFading) 0f else 1f }) {
-                        Shell(store, onSignedOut = { paired = false })
+                        Shell(store, onSignedOut = { paired = false }, open = openRequest, onOpened = { openRequest = null })
                     }
                     if (intro) {
                         WelcomeIntro(store.accountName, sounds.takeIf { store.introSound }, onFading = { introFading = true }) {
@@ -77,12 +78,28 @@ class MainActivity : ComponentActivity() {
             }
         }
         if (store.token != null) startOverlay()
+        takeOpen(intent)
     }
 
     private var introFading by mutableStateOf(false)
 
+    // "Send to TV" from the phone (RemoteService): a screen, and a game for Gamecast.
+    private var openRequest by mutableStateOf<Pair<String, String?>?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        takeOpen(intent)
+    }
+
+    private fun takeOpen(intent: Intent?) {
+        val screen = intent?.getStringExtra(EXTRA_SCREEN) ?: return
+        openRequest = screen to intent.getStringExtra(EXTRA_GAME)
+        intro = false  // the phone asked for something; show it
+    }
+
     override fun onStart() {
         super.onStart()
+        ensureRemoteService()
         if (stoppedAsleep && store.introOn && store.token != null) intro = true
         stoppedAsleep = false
     }
@@ -103,6 +120,11 @@ class MainActivity : ComponentActivity() {
      * skipping past where you meant to stop. A held key (repeats) still scrolls.
      * Each press is logged under "WeekendKeys" so skips can be diagnosed.
      */
+    companion object {
+        const val EXTRA_SCREEN = "screen"
+        const val EXTRA_GAME = "game_id"
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         // Any button skips the intro (and isn't also acted on behind it).
         if (intro) {
@@ -120,6 +142,24 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    /**
+     * Android switches an accessibility service off whenever its app is
+     * stopped for an update or reinstall, which would quietly kill the
+     * overlay button and the phone remote. With WRITE_SECURE_SETTINGS
+     * (granted once over adb) the app puts it back; without it, nothing.
+     */
+    private fun ensureRemoteService() {
+        runCatching {
+            val me = "$packageName/${RemoteService::class.java.name}"
+            val cr = contentResolver
+            val on = android.provider.Settings.Secure.getString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+                ?.takeIf { it.isNotBlank() && it != "null" }
+            if (on?.split(':')?.contains(me) == true) return
+            android.provider.Settings.Secure.putString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, listOfNotNull(on, me).joinToString(":"))
+            android.provider.Settings.Secure.putInt(cr, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 1)
+        }
+    }
+
     private fun startOverlay() {
         runCatching { startForegroundService(Intent(this, OverlayService::class.java)) }
     }
@@ -128,11 +168,11 @@ class MainActivity : ComponentActivity() {
 private val ARROWS = setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT)
 private const val STALE_MS = 250
 
-private val NAV_CLOCK = DateTimeFormatter.ofPattern("EEE h:mm a", Locale.US)
+private val NAV_CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
 /** The top menu and whichever screen is open under it, all fed by one refresh loop. */
 @Composable
-private fun Shell(store: Store, onSignedOut: () -> Unit) {
+private fun Shell(store: Store, onSignedOut: () -> Unit, open: Pair<String, String?>? = null, onOpened: () -> Unit = {}) {
     val context = LocalContext.current
     var tab by remember { mutableStateOf("home") }
     var hovered by remember { mutableStateOf<String?>(null) }
@@ -155,6 +195,8 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
 
     var live by remember { mutableStateOf(false) }
     var touchdown by remember { mutableStateOf<LiveEvent.Touchdown?>(null) }
+    // Your starters named inactive today (the live line); the roster's injury report covers the rest.
+    var inactive by remember { mutableStateOf(emptySet<String>()) }
     val refreshNow = remember { Channel<Unit>(Channel.CONFLATED) }
 
     LaunchedEffect(Unit) {
@@ -203,6 +245,7 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
                         touchdown = e
                         refreshNow.trySend(Unit)
                     }
+                    is LiveEvent.Inactive -> if (e.teamName == data?.week?.teamName) inactive = inactive + e.playerName
                 }
             },
         )
@@ -250,10 +293,31 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
         focusTarget = "nav"
     }
 
-    // Moving to another tab closes whatever was opened over the last one.
+    // Moving to another tab closes whatever was opened over the last one (Gamecast belongs to Scores).
     LaunchedEffect(tab) {
         reader = null
-        gamecast = null
+        if (tab != "scores") gamecast = null
+    }
+
+    // The phone sent a screen (Send to TV). Gamecast waits for the league to load to find the game.
+    LaunchedEffect(open, data != null) {
+        val (screen, gameId) = open ?: return@LaunchedEffect
+        hovered = null
+        reader = null
+        if (screen == "gamecast") {
+            val games = data?.games ?: return@LaunchedEffect
+            val g = games.firstOrNull { it.id == gameId }
+                ?: NflGame(gameId ?: return@LaunchedEffect, "", "", null, null, "in", null, null, null)
+            tab = "scores"
+            lastGame = g.id
+            gamecast = g
+            focusTarget = null
+        } else {
+            gamecast = null
+            tab = screen
+            focusTarget = if (screen == "home") "content" else "nav"
+        }
+        onOpened()
     }
 
     // Back closes the reader or Gamecast, then goes Home; on Home it has nowhere to go (this is the TV's home).
@@ -278,7 +342,13 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
     val gameDay = data?.isGameDay(now, zone) == true
     HiveBackground(gameDay) {
         Column(Modifier.fillMaxSize().padding(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 16.dp)) {
-            NavBar(tab, gameDay, now.atZone(zone).format(NAV_CLOCK), onPick = { hovered = null; tab = it }, onHover = { hovered = it }, firstTab = navFocus, live = live)
+            val alerts = data?.let { lineupAlerts(it.roster, it.games, inactive) }.orEmpty()
+            val alert = when (alerts.size) {
+                0 -> null
+                1 -> alerts[0].let { a -> a.short + (a.kickoff?.let { " · swap by " + it.atZone(zone).format(NAV_CLOCK) } ?: "") }
+                else -> "${alerts.size} starters can't play"
+            }
+            NavBar(tab, gameDay, now.atZone(zone).format(NAV_CLOCK), onPick = { hovered = null; tab = it }, onHover = { hovered = it }, firstTab = navFocus, live = live, alert = alert)
             Spacer(Modifier.height(12.dp))
             Box(Modifier.weight(1f)) {
                 val r = reader

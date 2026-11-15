@@ -178,6 +178,9 @@ private val TEAM_COLORS = mapOf(
 )
 
 private fun teamColor(abbr: String) = Color(TEAM_COLORS[abbr] ?: 0xFF1C222C)
+
+/** The same colors as plain ints, for the overlay's Views. */
+fun teamColorInt(abbr: String): Int = (TEAM_COLORS[abbr] ?: 0xFF1C222C).toInt()
 private fun lightTeam(abbr: String) = abbr in setOf("PIT", "NO")
 
 private val LOS = Color(0xFF4DA3FF)

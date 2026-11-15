@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { type Href, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
@@ -7,6 +7,7 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { haptics } from '@/lib/haptics';
+import { resetHasTv } from '@/lib/tv';
 import type { PairedTv } from '@/lib/types';
 
 // Connect a TV (2026-11-14, The Weekend TV): type the code your
@@ -57,6 +58,7 @@ export default function ConnectTvScreen() {
       haptics.success();
       setDone(`${device_name} is connected. It'll go live in a few seconds.`);
       setCode('');
+      resetHasTv();
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Try again in a moment.');
@@ -74,6 +76,7 @@ export default function ConnectTvScreen() {
         onPress: async () => {
           try {
             await api.disconnectTv(tv.id);
+            resetHasTv();
             await refresh();
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Try again in a moment.');
@@ -147,6 +150,17 @@ export default function ConnectTvScreen() {
               </Pressable>
             </View>
           ))
+        )}
+        {tvs !== null && tvs.length > 0 && (
+          <Pressable
+            onPress={() => {
+              haptics.tap();
+              router.push('/tv-remote' as Href);
+            }}
+            style={[styles.cta, { backgroundColor: accent }]}
+            accessibilityRole="button">
+            <Text style={styles.ctaText}>Use your phone as the remote</Text>
+          </Pressable>
         )}
       </View>
     </ScrollView>

@@ -97,6 +97,7 @@ fun SettingsScreen(store: Store, apps: List<TvApp>, open: Boolean, onForget: () 
                     )
                 }
                 item { SettingRow("Scoring pop-ups", if (store.popupsOn) "On" else "Off", onClick = { store.popupsOn = !store.popupsOn }) }
+                item { SettingRow("League chat over the game", if (store.chatOn) "On" else "Off", onClick = { store.chatOn = !store.chatOn }) }
                 item {
                     SettingRow(
                         "Overlay button",

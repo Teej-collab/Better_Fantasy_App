@@ -19,6 +19,9 @@ sealed interface LiveEvent {
         val teamName: String,
         val pointsDelta: Double?,
     ) : LiveEvent
+
+    /** A starter named inactive ~90 min before kickoff (backend app/notifications/inactives.py). */
+    data class Inactive(val playerName: String, val teamName: String, val kickoff: String?) : LiveEvent
 }
 
 /**
@@ -27,11 +30,38 @@ sealed interface LiveEvent {
  * reports whether it's up so the screen can poll as a fallback when it isn't.
  */
 object LiveFeed {
-    suspend fun run(token: () -> String?, onConnected: (Boolean) -> Unit, onEvent: (LiveEvent) -> Unit) {
+    /**
+     * Every event the home screen hears, for the rest of the app too: the
+     * overlay (same process) shows inactive starters over a stream.
+     */
+    val events = kotlinx.coroutines.flow.MutableSharedFlow<LiveEvent>(extraBufferCapacity = 16)
+
+    suspend fun run(token: () -> String?, onConnected: (Boolean) -> Unit, onEvent: (LiveEvent) -> Unit) =
+        stream("/tv/live", token, onConnected) { j ->
+            val e = when (j.optString("type")) {
+                "scores" -> LiveEvent.Scores
+                "touchdown" -> LiveEvent.Touchdown(
+                    playerName = j.optString("player_name"),
+                    position = j.optStringOrNull("position"),
+                    proTeam = j.optStringOrNull("pro_team"),
+                    teamName = j.optString("team_name"),
+                    pointsDelta = j.optDoubleOrNull("points_delta"),
+                )
+                "inactive" -> LiveEvent.Inactive(j.optString("player_name"), j.optString("team_name"), j.optStringOrNull("kickoff"))
+                else -> null
+            }
+            if (e != null) {
+                events.tryEmit(e)
+                onEvent(e)
+            }
+        }
+
+    /** Holds one Server-Sent Events line open (GET `path`), handing each `data:` object to `onJson`. */
+    suspend fun stream(path: String, token: () -> String?, onConnected: (Boolean) -> Unit, onJson: (JSONObject) -> Unit) {
         var backoff = 2_000L
         while (coroutineContext.isActive) {
             val t = token() ?: return
-            val ok = runCatching { listen(t, onConnected, onEvent) }.isSuccess
+            val ok = runCatching { listen(path, t, onConnected, onJson) }.isSuccess
             onConnected(false)
             if (ok) backoff = 2_000L
             delay(backoff)
@@ -39,9 +69,9 @@ object LiveFeed {
         }
     }
 
-    private suspend fun listen(token: String, onConnected: (Boolean) -> Unit, onEvent: (LiveEvent) -> Unit) =
+    private suspend fun listen(path: String, token: String, onConnected: (Boolean) -> Unit, onJson: (JSONObject) -> Unit) =
         withContext(Dispatchers.IO) {
-            val conn = URL(BuildConfig.API_BASE + "/tv/live").openConnection() as HttpURLConnection
+            val conn = URL(BuildConfig.API_BASE + path).openConnection() as HttpURLConnection
             try {
                 conn.connectTimeout = 15_000
                 conn.readTimeout = 45_000  // the server pings every 15 s; silence this long means it's gone
@@ -53,18 +83,7 @@ object LiveFeed {
                     for (line in lines) {
                         if (!line.startsWith("data:")) continue
                         val j = runCatching { JSONObject(line.removePrefix("data:").trim()) }.getOrNull() ?: continue
-                        when (j.optString("type")) {
-                            "scores" -> onEvent(LiveEvent.Scores)
-                            "touchdown" -> onEvent(
-                                LiveEvent.Touchdown(
-                                    playerName = j.optString("player_name"),
-                                    position = j.optStringOrNull("position"),
-                                    proTeam = j.optStringOrNull("pro_team"),
-                                    teamName = j.optString("team_name"),
-                                    pointsDelta = j.optDoubleOrNull("points_delta"),
-                                ),
-                            )
-                        }
+                        withContext(Dispatchers.Main) { onJson(j) }
                     }
                 }
             } finally {

@@ -260,6 +260,7 @@ fun NavBar(
     onHover: (String) -> Unit,
     firstTab: FocusRequester? = null,
     live: Boolean = false,
+    alert: String? = null,
 ) {
     Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(painterResource(R.drawable.emblem), "The Weekend", Modifier.size(46.dp))
@@ -281,21 +282,22 @@ fun NavBar(
                     BasicText(
                         label.uppercase(),
                         style = W.label(if (focused) W.Night else if (on) W.Text else W.Muted),
-                        modifier = Modifier.align(Alignment.Center).padding(horizontal = 14.dp),
+                        modifier = Modifier.align(Alignment.Center).padding(horizontal = 12.dp),
                     )
                 }
             }
         }
         Spacer(Modifier.weight(1f))
-        if (gameDay) {
-            if (live) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(W.Neon))
-                Spacer(Modifier.width(6.dp))
-                BasicText("LIVE", style = W.label(W.Neon))
-                Spacer(Modifier.width(12.dp))
-            }
-            Chip("GAME DAY", W.Night, W.Neon)
-            Spacer(Modifier.width(12.dp))
+        // A starter who can't play, on every screen until his game starts (Alerts.kt).
+        if (alert != null) {
+            Chip("⚠ $alert", W.Night, W.Orange)
+            Spacer(Modifier.width(10.dp))
+        }
+        if (gameDay && live) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(W.Neon))
+            Spacer(Modifier.width(6.dp))
+            BasicText("LIVE", style = W.label(W.Neon))
+            Spacer(Modifier.width(10.dp))
         }
         BasicText(clock, style = W.body(16, W.Muted).end())
     }

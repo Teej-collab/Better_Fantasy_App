@@ -16,7 +16,9 @@ import { trackGamecastGameSelected } from '@/lib/analytics';
 import { useAppearance } from '@/lib/appearance';
 import { api, gamecastSocketUrl } from '@/lib/api';
 import { isLive, lastSnap } from '@/lib/gamecast';
+import { haptics } from '@/lib/haptics';
 import { queryClient, useFantasyImpact, useGamecastBoxScore, useGamecastGame, useGamecastGames, usePlayFantasy } from '@/lib/queries';
+import { sendToTv, useHasTv } from '@/lib/tv';
 import type { LiveGame } from '@/lib/types';
 
 const RECONNECT_DELAY_MS = 2000;
@@ -108,6 +110,15 @@ export default function GamecastScreen() {
   const { moment, dismiss } = useGameMoments(game.data, lastPlay, playFantasy.data);
   useKeepAwakeWhile(live);
   const [refreshing, setRefreshing] = useState(false);
+  const hasTv = useHasTv();
+  const [tvNote, setTvNote] = useState<string | null>(null);
+
+  async function watchOnTv() {
+    haptics.tap();
+    const problem = await sendToTv({ kind: 'open', screen: 'gamecast', game_id: id });
+    setTvNote(problem ? 'TV off' : 'On TV ✓');
+    setTimeout(() => setTvNote(null), 2500);
+  }
 
   async function onRefresh() {
     setRefreshing(true);
@@ -121,7 +132,19 @@ export default function GamecastScreen() {
 
   return (
     <View style={styles.screen}>
-      <Stack.Screen options={{ title: `${g.away_team.abbr} @ ${g.home_team.abbr}` }} />
+      <Stack.Screen
+        options={{
+          title: `${g.away_team.abbr} @ ${g.home_team.abbr}`,
+          // Opens this game's Gamecast on your TV (The Weekend TV).
+          headerRight: hasTv
+            ? () => (
+                <Pressable onPress={() => void watchOnTv()} accessibilityRole="button" accessibilityLabel="Watch on TV" hitSlop={10}>
+                  <Text style={{ color: accent, fontSize: 15, fontWeight: '700' }}>{tvNote ?? 'Watch on TV'}</Text>
+                </Pressable>
+              )
+            : undefined,
+        }}
+      />
       <ScrollView
         style={styles.screen}
         contentContainerStyle={styles.content}

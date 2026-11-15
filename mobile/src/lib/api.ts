@@ -132,6 +132,7 @@ import type {
   ChugsOwed,
   SeasonSchedule,
   LeagueNotificationLevel,
+  TvCommand,
 } from '@/lib/types';
 import type { FormatOptions, LeagueFormat } from '@/lib/leagueFormat';
 import type { PreviewPlayer, ScoringCatalog } from '@/lib/scoringCatalog';
@@ -850,6 +851,8 @@ export const api = {
     request<{ device_name: string }>('/tv/pair/approve', { method: 'POST', body: JSON.stringify({ code }) }),
   listTvs: async () => (await request<{ devices: PairedTv[] }>('/tv/devices')).devices,
   disconnectTv: (id: number) => request<{ ok: boolean }>(`/tv/devices/${id}`, { method: 'DELETE' }),
+  // Phone to TV: open a screen on your TVs, or press one remote button. `delivered` = TVs that got it.
+  sendToTv: (cmd: TvCommand) => request<{ delivered: number }>('/tv/send', { method: 'POST', body: JSON.stringify(cmd) }),
   // ---- Commissioner tools (backend enforces commissioner-only) ----
   leaguesMine: () => request<{ leagues: LeagueInfo[]; active_league_id: number | null }>('/leagues/mine'),
   // Commissioner-only (2026-10). Type, roster and draft style change only

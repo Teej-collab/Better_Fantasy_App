@@ -26,6 +26,7 @@ import { useAppearance } from '@/lib/appearance';
 import { COLOR_PRESETS, isMulti } from '@/lib/colorChoice';
 import { getIntroSoundMode } from '@/lib/introSound';
 import { useMyUsername, useMySettings, usePreferences } from '@/lib/queries';
+import { useHasTv } from '@/lib/tv';
 
 // Settings (2026-10-28 cleanup, the approved mockup): one grouped list,
 // like the iPhone's, each row showing what it's set to, and a search
@@ -113,6 +114,7 @@ function HomeButton({ to }: { to: '/' | '/settings' }) {
 
 function SettingsHome() {
   const accent = useAppearance().accent;
+  const hasTv = useHasTv();
   const prefs = usePreferences().data;
   const me = useMySettings().data;
   const username = useMyUsername().data ?? null;
@@ -149,7 +151,7 @@ function SettingsHome() {
         accessibilityLabel="Search settings"
         style={styles.search}
       />
-      {groups.length === 0 && q && !'connect a tv chromecast google tv television the weekend tv'.includes(q) && <Text style={styles.empty}>Nothing matches “{query.trim()}”.</Text>}
+      {groups.length === 0 && q && !'connect a tv chromecast google tv television the weekend tv remote'.includes(q) && <Text style={styles.empty}>Nothing matches “{query.trim()}”.</Text>}
       {groups.map((g) => (
         <View key={g.title} style={styles.group}>
           <Text style={styles.groupTitle}>{g.title}</Text>
@@ -177,7 +179,7 @@ function SettingsHome() {
           </View>
         </View>
       ))}
-      {(!q || 'connect a tv chromecast google tv television the weekend tv'.includes(q)) && (
+      {(!q || 'connect a tv chromecast google tv television the weekend tv remote'.includes(q)) && (
         <View style={styles.group}>
           <Text style={styles.groupTitle}>DEVICES</Text>
           <View style={styles.card}>
@@ -193,6 +195,20 @@ function SettingsHome() {
               <Text style={styles.label}>Connect a TV</Text>
               <Text style={[styles.chevron, { color: accent }]}>›</Text>
             </Pressable>
+            {hasTv && (
+              <Pressable
+                onPress={() => {
+                  haptics.select();
+                  router.push('/tv-remote' as Href);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="TV remote"
+                style={({ pressed }) => [styles.row, styles.rowLine, pressed && styles.pressed]}>
+                <SettingsIcon name="tv" />
+                <Text style={styles.label}>TV remote</Text>
+                <Text style={[styles.chevron, { color: accent }]}>›</Text>
+              </Pressable>
+            )}
           </View>
         </View>
       )}

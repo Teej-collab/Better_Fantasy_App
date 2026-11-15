@@ -2030,6 +2030,11 @@ export type ScheduleWeek = { week: number; status: 'final' | 'live' | 'upcoming'
 export type SeasonSchedule = { season: number; current_week: number | null; weeks: ScheduleWeek[]; records: Record<string, string> };
 
 // A TV signed in to your account (The Weekend TV, backend app/routers/tv.py).
+/** POST /tv/send (backend app/routers/tv.py). */
+export type TvScreen = 'home' | 'matchup' | 'redzone' | 'league' | 'lounge' | 'scores' | 'gamecast';
+export type TvKey = 'up' | 'down' | 'left' | 'right' | 'ok' | 'back' | 'home' | 'playpause' | 'menu';
+export type TvCommand = { kind: 'open'; screen: TvScreen; game_id?: string } | { kind: 'key'; key: TvKey };
+
 export type PairedTv = {
   id: number;
   name: string;

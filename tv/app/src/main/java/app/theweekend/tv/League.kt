@@ -40,6 +40,9 @@ data class RosterPlayer(
     val proTeam: String?,
     val slot: String?,
     val points: Double?,
+    /** "Out", "Doubtful", "Questionable", "IR"… from the injury report, or null. */
+    val injury: String? = null,
+    val onBye: Boolean = false,
 ) {
     val starting: Boolean get() = slot != null && slot !in setOf("BE", "IR", "TAXI")
 }
@@ -184,6 +187,8 @@ object League {
                 proTeam = it.optStringOrNull("pro_team"),
                 slot = it.optStringOrNull("lineup_slot"),
                 points = it.optDoubleOrNull("points"),
+                injury = it.optStringOrNull("injury_status"),
+                onBye = it.optBoolean("on_bye"),
             )
         }
 

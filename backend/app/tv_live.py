@@ -9,6 +9,11 @@ moment the new points land instead of on its next poll:
 
   {"type": "scores"}                       refetch, something moved
   {"type": "touchdown", "player_name", "team_name", "points_delta", ...}
+  {"type": "inactive", "player_name", "team_name", "kickoff"}   (app/notifications/inactives.py)
+
+A second channel is per account rather than per league: the phone's
+"Send to TV" and remote (POST /tv/send) reach every TV that account has
+paired, on the stream the TV's remote service holds (GET /tv/remote).
 
 In-process, one queue per open stream — the same "one backend instance,
 no Redis" reasoning as app/gamecast/manager.py. Nothing here ever calls a
@@ -24,6 +29,8 @@ _QUEUE_SIZE = 50
 
 # league_id -> the open streams' queues
 _subscribers: dict[int, set[asyncio.Queue]] = {}
+# user_id -> the account's TVs' remote streams
+_remotes: dict[int, set[asyncio.Queue]] = {}
 
 
 def subscribe(league_id: int) -> asyncio.Queue:
@@ -39,6 +46,36 @@ def unsubscribe(league_id: int, q: asyncio.Queue) -> None:
     subs.discard(q)
     if not subs:
         del _subscribers[league_id]
+
+
+def subscribe_remote(user_id: int) -> asyncio.Queue:
+    q: asyncio.Queue = asyncio.Queue(maxsize=_QUEUE_SIZE)
+    _remotes.setdefault(user_id, set()).add(q)
+    return q
+
+
+def unsubscribe_remote(user_id: int, q: asyncio.Queue) -> None:
+    subs = _remotes.get(user_id)
+    if subs:
+        subs.discard(q)
+        if not subs:
+            del _remotes[user_id]
+
+
+def send_to_account(user_id: int, event: dict) -> int:
+    """Hands an event to every TV this account has listening; returns how many."""
+    subs = list(_remotes.get(user_id, ()))
+    for q in subs:
+        try:
+            q.put_nowait(event)
+        except asyncio.QueueFull:
+            pass
+    return len(subs)
+
+
+def send_inactive(league_id: int, player_name: str, team_name: str, kickoff: str) -> None:
+    """A starter named inactive (app/notifications/inactives.py): the TV warns in time to swap him."""
+    _send(league_id, {"type": "inactive", "player_name": player_name, "team_name": team_name, "kickoff": kickoff})
 
 
 def connection_count() -> int:

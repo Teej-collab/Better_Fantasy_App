@@ -263,6 +263,80 @@ async def live(request: Request):
     )
 
 
+# ---- phone to TV ----
+
+_SCREENS = {"home", "matchup", "redzone", "league", "lounge", "scores", "gamecast"}
+# "menu" is the overlay button: the overlay's menu over whatever is playing.
+_KEYS = {"up", "down", "left", "right", "ok", "back", "home", "playpause", "menu"}
+
+
+class SendToTv(BaseModel):
+    # "open": bring a screen up (game_id with gamecast); "key": one remote press.
+    kind: str = Field(..., pattern="^(open|key)$")
+    screen: str | None = None
+    game_id: str | None = Field(None, max_length=20)
+    key: str | None = None
+
+
+@router.post("/send")
+async def send_to_tv(body: SendToTv, request: Request):
+    """The phone's "Send to TV" and remote: hands one command to every TV
+    the signed-in account has listening (GET /tv/remote). A TV can't call
+    this (its token only reads). `delivered` is how many TVs got it, so the
+    phone can say when none is on."""
+    payload = _payload(request)
+    if body.kind == "open":
+        if body.screen not in _SCREENS or (body.screen == "gamecast" and not body.game_id):
+            raise HTTPException(status_code=400, detail="Unknown screen")
+        event = {"type": "open", "screen": body.screen, "game_id": body.game_id}
+    else:
+        if body.key not in _KEYS:
+            raise HTTPException(status_code=400, detail="Unknown key")
+        event = {"type": "key", "key": body.key}
+    return {"delivered": tv_live.send_to_account(payload["user_id"], event)}
+
+
+@router.get("/remote")
+async def remote(request: Request):
+    """A TV's line for its account's phone (Server-Sent Events): `open` and
+    `key` from POST /tv/send. Held by the TV's remote service, which can
+    press buttons in any app. Same keep-alive and disconnect check as
+    /tv/live."""
+    payload = _payload(request)
+    if "tv_device_id" not in payload:
+        raise HTTPException(status_code=403, detail="Only a TV listens here")
+    pool = await get_pool()
+
+    async def stream():
+        q = tv_live.subscribe_remote(payload["user_id"])
+        last_check = time.monotonic()
+        try:
+            yield "event: hello\ndata: {}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    return
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=_PING_SECONDS)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+                if time.monotonic() - last_check > _RECHECK_SECONDS:
+                    last_check = time.monotonic()
+                    async with pool.acquire() as conn:
+                        alive = await conn.fetchval(
+                            "SELECT 1 FROM tv_devices WHERE id = $1 AND revoked_at IS NULL", payload["tv_device_id"],
+                        )
+                    if not alive:
+                        return
+        finally:
+            tv_live.unsubscribe_remote(payload["user_id"], q)
+
+    return StreamingResponse(
+        stream(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/devices")
 async def list_devices(request: Request):
     payload = _payload(request)

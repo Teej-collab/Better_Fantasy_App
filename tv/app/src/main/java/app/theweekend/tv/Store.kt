@@ -58,6 +58,21 @@ class Store(context: Context) {
         get() = prefs.getBoolean("popups_on", true)
         set(v) = prefs.edit().putBoolean("popups_on", v).apply()
 
+    /** The overlay shows the Gamecast panel instead of the score bug. */
+    var overlayPanel: Boolean
+        get() = prefs.getBoolean("overlay_panel", false)
+        set(v) = prefs.edit().putBoolean("overlay_panel", v).apply()
+
+    /** The NFL game the Gamecast panel follows; null picks the one with most of your starters. */
+    var followGame: String?
+        get() = prefs.getString("follow_game", null)
+        set(v) = prefs.edit().putString("follow_game", v).apply()
+
+    /** League chat messages over the stream (held back by the stream delay like everything else). */
+    var chatOn: Boolean
+        get() = prefs.getBoolean("chat_on", true)
+        set(v) = prefs.edit().putBoolean("chat_on", v).apply()
+
     /** The "Welcome back" intro when the TV wakes, and whether it makes its sounds. */
     var introOn: Boolean
         get() = prefs.getBoolean("intro_on", true)

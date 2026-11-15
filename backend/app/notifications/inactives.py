@@ -28,6 +28,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from app import tv_live
 from app.notifications import dispatcher, formatter
 from app.notifications.game_alerts import BENCHED, _kickoff_label, claim_once
 from app.queries import owner_preferences as preferences_queries
@@ -95,7 +96,7 @@ async def notify_inactive_starters(conn, season: int, week: int, espn_ids: list[
         return 0
     rows = await conn.fetch(
         """
-        SELECT cr.team_id, cr.lineup_slot, t.owner_id, t.league_id, p.full_name, p.sleeper_player_id, p.injury_status
+        SELECT cr.team_id, cr.lineup_slot, t.owner_id, t.league_id, t.team_name, p.full_name, p.sleeper_player_id, p.injury_status
         FROM players p
         JOIN current_rosters cr ON cr.sleeper_player_id = p.sleeper_player_id AND cr.season = $1
         JOIN teams_by_season t ON t.id = cr.team_id
@@ -115,6 +116,8 @@ async def notify_inactive_starters(conn, season: int, week: int, espn_ids: list[
         key = f"inactive-{r['league_id']}-{season}-{week}-{r['team_id']}-{r['sleeper_player_id']}"
         if not await claim_once(conn, key):
             continue
+        # Paired TVs in the league put it on screen too (whatever the push settings).
+        tv_live.send_inactive(r["league_id"], r["full_name"], r.get("team_name") or "", kickoff)
         prefs = await preferences_queries.get_preferences(conn, r["owner_id"])
         if prefs["push_enabled"] and prefs.get("notify_injuries", True):
             await dispatcher.send_to_owner(

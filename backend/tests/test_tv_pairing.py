@@ -132,3 +132,38 @@ async def test_only_a_tv_can_open_the_live_line(pool):
     async with _client() as phone:
         await _signed_in(phone)
         assert (await phone.get("/tv/live")).status_code == 403
+
+
+# ---- phone to TV ----
+
+async def test_phone_commands_reach_only_that_accounts_tvs(pool):
+    reset_for_tests()
+    async with _client() as phone:
+        await _signed_in(phone)
+        me = (await phone.get("/auth/me")).json()
+        mine = tv_live.subscribe_remote(me["user_id"])
+        other = tv_live.subscribe_remote(-1)
+        try:
+            sent = await phone.post("/tv/send", json={"kind": "open", "screen": "gamecast", "game_id": "401"})
+            assert sent.status_code == 200 and sent.json()["delivered"] == 1
+            assert mine.get_nowait() == {"type": "open", "screen": "gamecast", "game_id": "401"}
+            assert (await phone.post("/tv/send", json={"kind": "key", "key": "left"})).json()["delivered"] == 1
+            assert mine.get_nowait() == {"type": "key", "key": "left"}
+            assert other.empty()
+            # Nonsense is refused rather than forwarded.
+            assert (await phone.post("/tv/send", json={"kind": "key", "key": "power"})).status_code == 400
+            assert (await phone.post("/tv/send", json={"kind": "open", "screen": "gamecast"})).status_code == 400
+            # The remote line is a TV's, not a phone's.
+            assert (await phone.get("/tv/remote")).status_code == 403
+        finally:
+            tv_live.unsubscribe_remote(me["user_id"], mine)
+            tv_live.unsubscribe_remote(-1, other)
+
+
+def test_inactive_starters_reach_the_leagues_tvs():
+    q = tv_live.subscribe(7)
+    try:
+        tv_live.send_inactive(7, "Puka Nacua", "Bench Mob", "Sun 1:05 PM")
+        assert q.get_nowait() == {"type": "inactive", "player_name": "Puka Nacua", "team_name": "Bench Mob", "kickoff": "Sun 1:05 PM"}
+    finally:
+        tv_live.unsubscribe(7, q)
