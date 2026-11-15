@@ -123,7 +123,7 @@ private fun GameDay(d: HomeData, apps: List<TvApp>, firstFocus: FocusRequester, 
         }
     }
     Spacer(Modifier.height(10.dp))
-    LeagueStrip(d)
+    TickerBar(d)
 }
 
 @Composable
@@ -178,21 +178,23 @@ private fun Weekday(
 ) {
     val t = now.atZone(zone)
     Row(verticalAlignment = Alignment.Bottom) {
-        BasicText(t.format(CLOCK), style = W.big(42))
+        BasicText(t.format(CLOCK), style = W.big(36))
         Spacer(Modifier.width(6.dp))
-        BasicText(t.format(AMPM), style = W.big(15, W.Muted), modifier = Modifier.padding(bottom = 7.dp))
+        BasicText(t.format(AMPM), style = W.big(14, W.Muted), modifier = Modifier.padding(bottom = 6.dp))
         Spacer(Modifier.width(16.dp))
-        BasicText(t.format(DAY), style = W.body(16, W.Muted), modifier = Modifier.padding(bottom = 8.dp))
+        BasicText(t.format(DAY), style = W.body(16, W.Muted), modifier = Modifier.padding(bottom = 6.dp))
     }
-    Spacer(Modifier.height(10.dp))
-    Row(Modifier.fillMaxWidth().height(222.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+    Spacer(Modifier.height(8.dp))
+    Row(Modifier.fillMaxWidth().height(204.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         NextMatchup(d, Modifier.weight(1.5f).fillMaxHeight(), firstFocus, onClick = { onOpenTab("matchup") })
         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             RecapCard(d, Modifier.fillMaxWidth().weight(1.15f), onRead)
             StandingCard(d, Modifier.fillMaxWidth().weight(1f), onClick = { onOpenTab("league") })
         }
     }
-    Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.height(8.dp))
+    TickerBar(d)
+    Spacer(Modifier.height(8.dp))
     NextKickoff(d, apps, now, zone, onOpenTab)
 }
 
@@ -344,27 +346,6 @@ fun WatchLabel(app: TvApp?, g: NflGame, focused: Boolean) {
         },
         style = W.body(11, if (app != null) (if (focused) W.Night else W.Neon) else W.Stale, bold = true),
     )
-}
-
-@Composable
-private fun LeagueStrip(d: HomeData) {
-    val items = d.matchups.filter { it.id != d.myMatchupId }
-    if (items.isEmpty()) return
-    Row(
-        Modifier.fillMaxWidth().height(34.dp).background(W.Surface, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        SectionLabel("League", W.Neon)
-        items.take(6).forEach { m ->
-            val homeAhead = (m.home.score ?: 0.0) >= (m.away.score ?: 0.0)
-            BasicText(
-                "${short(m.home)} ${fmt(m.home.score)} · ${short(m.away)} ${fmt(m.away.score)}",
-                style = W.body(12, if (homeAhead) W.Text else W.Muted),
-                maxLines = 1,
-            )
-        }
-    }
 }
 
 fun short(s: Side): String = (s.ownerName?.substringBefore(' ') ?: s.teamName).take(12)

@@ -239,6 +239,7 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
                         "matchup" -> MatchupScreen(data, onRead = { t, b -> reader = t to b })
                         "redzone" -> RedZoneScreen(data, apps, touchdown)
                         "league" -> LeagueScreen(data)
+                        "lounge" -> LoungeScreen(data, store.token, onRead = { t, b -> reader = t to b })
                         "scores" -> ScoresScreen(data, apps, lastGame, gameCard, onOpen = { g ->
                             lastGame = g.id
                             gamecast = g
@@ -270,7 +271,7 @@ private fun Shell(store: Store, onSignedOut: () -> Unit) {
 }
 
 /** Tabs kept built in the background, so opening one only has to show it. */
-private val KEPT = listOf("home", "matchup", "redzone", "league", "scores", "settings")
+private val KEPT = listOf("home", "matchup", "redzone", "league", "lounge", "scores", "settings")
 
 /**
  * Shows one screen, but keeps every tab built (and

@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app import tv_live
+from app.domain import announcements
 from app.auth.config import SessionConfig
 from app.auth.league_context import resolve_active_league_id
 from app.auth.rate_limit import check_tv_pairing_rate_limit
@@ -197,6 +198,20 @@ async def me(request: Request):
             payload["tv_device_id"],
         )
     return {"device_id": row["id"], "name": row["name"], "paired_at": row["created_at"], "account": row["display_name"]}
+
+
+@router.get("/commish-post")
+async def commish_post(request: Request):
+    """The commissioner's latest Commish Corner announcement, for the TV's
+    Lounge. Members already read these in the Corner itself; this is just
+    the newest one without the chat around it. `post` is null when there
+    isn't one."""
+    payload = _payload(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await resolve_active_league_id(conn, payload)
+        posts = await announcements.list_recent_posts(conn, league_id, limit=1) if league_id is not None else []
+    return {"post": posts[0] if posts else None}
 
 
 _PING_SECONDS = 15

@@ -66,6 +66,8 @@ async def test_pair_redeem_once_then_disconnect(pool):
         headers = {"Authorization": f"Bearer {token}"}
         me = await tv.get("/tv/me", headers=headers)
         assert me.status_code == 200 and me.json()["name"] == "Living room TV"
+        corner = await tv.get("/tv/commish-post", headers=headers)
+        assert corner.status_code == 200 and "post" in corner.json()
         assert (await tv.post("/leagues", headers=headers, json={"name": "x"})).status_code == 403
         assert (await tv.get("/tv/devices", headers=headers)).status_code == 403
         assert (await tv.post("/tv/refresh", headers=headers)).status_code == 200
