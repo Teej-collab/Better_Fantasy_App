@@ -11,7 +11,10 @@
       "android": {
         "buildType": "apk"
       },
-      "node": "24.19.0"
+      "node": "24.19.0",
+      "env": {
+        "ORG_GRADLE_PROJECT_reactNativeArchitectures": "arm64-v8a,armeabi-v7a"
+      }
     },
     "production": {
       "channel": "main",
