@@ -176,7 +176,7 @@ async def build_chug_ledger(conn, season: int, active_season: int, league_id: in
     chugs = await conn.fetch(
         """
         SELECT owners.owner_id, cs.created_at, cs.final_score
-        FROM chug_scores cs JOIN owners ON owners.discord_user_id = cs.discord_user_id
+        FROM chug_scores cs JOIN owners ON owners.owner_id = cs.owner_id
         WHERE cs.league_id = $1 AND cs.season = $2
         """,
         league_id, season,

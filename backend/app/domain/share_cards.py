@@ -366,7 +366,7 @@ async def chug_card(conn, league_id: int, ref: dict) -> dict | None:
         SELECT cs.id, cs.season, cs.week, cs.chug_time_seconds, cs.final_score, cs.roast, cs.hype_detail,
                o.owner_id, o.display_name, o.goes_by,
                (SELECT count(*) FROM chug_cheers cc WHERE cc.chug_id = cs.id) AS cheers
-        FROM chug_scores cs LEFT JOIN owners o ON o.discord_user_id = cs.discord_user_id
+        FROM chug_scores cs LEFT JOIN owners o ON o.owner_id = cs.owner_id
         WHERE cs.id = $1 AND cs.league_id = $2
         """,
         int(ref["chug_id"]), league_id,

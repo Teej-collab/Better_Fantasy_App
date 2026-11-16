@@ -12,6 +12,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token, create_ticket_token
 from app.main import app
+from app.queries import chug as chug_queries
 from tests.conftest import TEST_SEASON, make_safe_session_user_id_for_owner
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -369,12 +370,10 @@ async def test_upload_resolves_discord_user_id_live_even_when_session_lacks_it(p
     assert row is not None  # correctly saved under the owner's real, DB-resolved discord_user_id
 
 
-async def test_upload_rejects_clearly_when_owner_has_no_discord_link_at_all(pool, monkeypatch):
-    """A genuinely self-serve account (email/password or Google, never
-    linked to Discord at all) can't post a chug today — the whole
-    leaderboard is still keyed on discord_user_id (a real, separate
-    design debt, not fixed here). Must be a clear, honest error, not a
-    raw database failure."""
+async def test_upload_works_for_owner_with_no_discord_link_at_all(pool, monkeypatch):
+    """An email/Google account that never linked Discord posts a chug
+    like anyone else (Ryan, 2026-11-16): chug_scores is keyed on
+    owner_id now, so the chug saves and counts for that owner."""
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
     monkeypatch.setattr("app.routers.chug.run_chug_analysis", _fake_analysis)
@@ -384,8 +383,15 @@ async def test_upload_rejects_clearly_when_owner_has_no_discord_link_at_all(pool
         client.cookies.update(await _session_cookie_no_discord_claim(pool, owner_id))
         resp = await client.post("/chug/upload", files={"video": ("clip.mp4", b"fake video bytes", "video/mp4")})
 
-    assert resp.status_code == 200  # streamed — see test_upload_rejects_unsupported_extension's own note
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM chug_scores WHERE owner_id = $1", owner_id)
+        lifetime = (await chug_queries.get_lifetime_completed_by_owner(conn, row["league_id"])).get(owner_id) if row else None
+        await conn.execute("DELETE FROM chug_scores WHERE owner_id = $1", owner_id)
+    await _cleanup(pool)
+
+    assert resp.status_code == 200
     body = resp.json()
-    assert body["error"] is True
-    assert body["status"] == 409
-    assert "discord" in body["message"].lower()
+    assert body.get("error") is not True, body
+    assert body["can_to_mouth"] is True
+    assert row is not None and row["discord_user_id"] is None
+    assert lifetime == 1

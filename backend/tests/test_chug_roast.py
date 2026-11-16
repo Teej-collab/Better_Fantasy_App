@@ -34,7 +34,7 @@ async def _cleanup(pool):
 
 
 async def test_gather_facts_uses_only_real_numbers(pool):
-    await _seed_owner(pool, "a", _DISCORD_A)
+    owner_a = await _seed_owner(pool, "a", _DISCORD_A)
     await _seed_owner(pool, "b", _DISCORD_B)
     try:
         async with pool.acquire() as conn:
@@ -50,7 +50,7 @@ async def test_gather_facts_uses_only_real_numbers(pool):
                 _DISCORD_A, TEST_SEASON,
             )
             facts = await chug_roast.gather_facts(
-                conn, chug_id=this_chug, owner_name="Roast a", discord_user_id=_DISCORD_A, season=TEST_SEASON,
+                conn, chug_id=this_chug, owner_id=owner_a, owner_name="Roast a", season=TEST_SEASON,
                 league_id=1, result=_RESULT, owed_before=2, owed_after=1, fined_owed=3, posted_by_commissioner=True,
             )
     finally:

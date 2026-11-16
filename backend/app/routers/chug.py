@@ -352,28 +352,15 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf
         async with pool.acquire() as conn:
             league_id = await require_active_league_id(conn, payload)
             owner_id = on_behalf_of if on_behalf_of is not None else await resolve_owner_id(conn, payload)
-            # Real production bug, found live: payload["discord_user_id"] is
-            # the JWT's own claim, which is ONLY ever populated by the
-            # Discord OAuth login path (app/routers/auth.py's discord_
-            # callback) — password and Google login both mint a token with
-            # discord_user_id=None, even when that account's owners row has
-            # a real one linked from a past Discord login. chug_scores.
-            # discord_user_id is NOT NULL (the whole chug leaderboard is
-            # still keyed on it — a real, separate design debt, not fixed
-            # here), so any owner who happens to be signed in via password/
-            # Google when they upload got a raw, unexplained failure — "for
-            # funsies," reported directly. Resolved live from the owner's
-            # real row instead of trusting the token's claim, same fix
-            # already applied to owner_id/is_commissioner elsewhere.
+            # chug_scores is keyed on owner_id; discord_user_id is only
+            # kept for history, so owners who never linked Discord can post
+            # too (Ryan, 2026-11-16).
             owner_row = await conn.fetchrow(
                 "SELECT discord_user_id, display_name FROM owners WHERE owner_id = $1", owner_id
             )
-            discord_user_id = owner_row["discord_user_id"] if owner_row else None
-            if discord_user_id is None:
-                raise HTTPException(
-                    status_code=409,
-                    detail="This account needs to be linked to Discord before posting a chug — ask your commissioner.",
-                )
+            if owner_row is None:
+                raise HTTPException(status_code=404, detail="Owner not found")
+            discord_user_id = owner_row["discord_user_id"]
             week = await league_queries.get_cached_current_week(conn, active_season)
 
             # Uploaded (if storage is configured) before the DB insert so
@@ -394,7 +381,7 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf
                     video_key = None
 
             row = await chug_queries.insert_chug_score(
-                conn, discord_user_id, active_season, week,
+                conn, owner_id, discord_user_id, active_season, week,
                 result["duration_seconds"], result["smoothness_score"], result["hype_score"], result["final"],
                 league_id, video_key,
             )
@@ -435,7 +422,7 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf
                     active_season, owner_id, league_id,
                 ) or 0
                 roast_facts = await chug_roast.gather_facts(
-                    conn, chug_id=row["id"], owner_name=owner_row["display_name"], discord_user_id=discord_user_id,
+                    conn, chug_id=row["id"], owner_id=owner_id, owner_name=owner_row["display_name"],
                     season=active_season, league_id=league_id, result=result, owed_before=owed_before,
                     owed_after=owed_after, fined_owed=fined_owed, posted_by_commissioner=on_behalf_of is not None,
                     hype_detail=hype_detail,

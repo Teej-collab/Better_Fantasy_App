@@ -43,7 +43,7 @@ sentences, plain text only: no title, no hashtags, no markdown, at most one emoj
 
 
 async def gather_facts(
-    conn, *, chug_id: int, owner_name: str, discord_user_id: int, season: int, league_id: int,
+    conn, *, chug_id: int, owner_id: int, owner_name: str, season: int, league_id: int,
     result: dict, owed_before: int, owed_after: int, fined_owed: int, posted_by_commissioner: bool,
     hype_detail: dict | None = None,
 ) -> str:
@@ -51,14 +51,14 @@ async def gather_facts(
         """
         SELECT count(*) AS lifetime, min(chug_time_seconds) AS best_time, max(final_score) AS best_grade
         FROM chug_scores
-        WHERE discord_user_id = $1 AND league_id = $2 AND id <> $3
+        WHERE owner_id = $1 AND league_id = $2 AND id <> $3
         """,
-        discord_user_id, league_id, chug_id,
+        owner_id, league_id, chug_id,
     )
     fastest = await conn.fetchrow(
         """
         SELECT owners.display_name, cs.chug_time_seconds
-        FROM chug_scores cs JOIN owners ON owners.discord_user_id = cs.discord_user_id
+        FROM chug_scores cs JOIN owners ON owners.owner_id = cs.owner_id
         WHERE cs.league_id = $1 AND cs.season = $2 AND cs.id <> $3
         ORDER BY cs.chug_time_seconds ASC LIMIT 1
         """,
@@ -96,8 +96,7 @@ async def gather_facts(
         )
     if posted_by_commissioner:
         lines.append("The commissioner had to upload this video for them")
-    owner_id = await conn.fetchval("SELECT owner_id FROM owners WHERE discord_user_id = $1", discord_user_id)
-    people = await pronouns.people_for(conn, {owner_id: owner_name}) if owner_id else ""
+    people = await pronouns.people_for(conn, {owner_id: owner_name})
     if people:
         lines.append(people)
     return "\n".join(lines)

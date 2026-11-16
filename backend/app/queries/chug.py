@@ -2,9 +2,9 @@
 Chug leaderboard read queries. Owed totals come from chug_debts (the
 auto-computed rule — see app/domain/chug_debt.py); real completion
 counts and average grades come from chug_scores (actual graded videos),
-matched to an owner via owners.discord_user_id the same way
-Fantasy_Helper's /chug_leaderboard embed did (chug_scores predates any
-owner_id column of its own).
+matched to an owner via chug_scores.owner_id (added 2026-11-16; before
+that it went through owners.discord_user_id, the way Fantasy_Helper's
+/chug_leaderboard embed did).
 """
 
 from app.config import DEFAULT_LEAGUE_ID
@@ -31,7 +31,7 @@ async def get_chug_owed_by_owner(conn, season: int | None, league_id: int = DEFA
 
 
 async def insert_chug_score(
-    conn, discord_user_id: int, season: int, week: int | None,
+    conn, owner_id: int, discord_user_id: int | None, season: int, week: int | None,
     duration_seconds: float, smoothness_score: float, hype_score: float, final_score: float,
     league_id: int = DEFAULT_LEAGUE_ID, video_url: str | None = None,
 ):
@@ -45,11 +45,11 @@ async def insert_chug_score(
     return await conn.fetchrow(
         """
         INSERT INTO chug_scores
-            (discord_user_id, chug_time_seconds, smoothness_score, hype_score, final_score, season, week, league_id, video_url)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            (owner_id, discord_user_id, chug_time_seconds, smoothness_score, hype_score, final_score, season, week, league_id, video_url)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING id, created_at
         """,
-        discord_user_id, duration_seconds, smoothness_score, hype_score, final_score, season, week, league_id, video_url,
+        owner_id, discord_user_id, duration_seconds, smoothness_score, hype_score, final_score, season, week, league_id, video_url,
     )
 
 
@@ -68,7 +68,7 @@ async def list_recent_chugs(conn, league_id: int, season: int | None = None, lim
             SELECT cs.id, owners.owner_id, owners.display_name AS owner_name, cs.week,
                    cs.final_score, cs.created_at, (cs.video_url IS NOT NULL) AS has_video, cs.roast, cs.hype_detail
             FROM chug_scores cs
-            JOIN owners ON owners.discord_user_id = cs.discord_user_id
+            JOIN owners ON owners.owner_id = cs.owner_id
             WHERE cs.league_id = $1 AND cs.season = $2
             ORDER BY cs.created_at DESC
             LIMIT $3
@@ -80,7 +80,7 @@ async def list_recent_chugs(conn, league_id: int, season: int | None = None, lim
         SELECT cs.id, owners.owner_id, owners.display_name AS owner_name, cs.week,
                cs.final_score, cs.created_at, (cs.video_url IS NOT NULL) AS has_video, cs.roast, cs.hype_detail
         FROM chug_scores cs
-        JOIN owners ON owners.discord_user_id = cs.discord_user_id
+        JOIN owners ON owners.owner_id = cs.owner_id
         WHERE cs.league_id = $1
         ORDER BY cs.created_at DESC
         LIMIT $2
@@ -104,7 +104,7 @@ async def get_chug_completions(conn, league_id: int = DEFAULT_LEAGUE_ID):
         """
         SELECT owners.owner_id, cs.season, COUNT(*) AS completed_count, AVG(cs.final_score) AS avg_grade
         FROM chug_scores cs
-        JOIN owners ON owners.discord_user_id = cs.discord_user_id
+        JOIN owners ON owners.owner_id = cs.owner_id
         WHERE cs.season IS NOT NULL AND cs.league_id = $1
         GROUP BY owners.owner_id, cs.season
         """,
@@ -123,7 +123,7 @@ async def get_lifetime_completed_by_owner(conn, league_id: int = DEFAULT_LEAGUE_
         """
         SELECT owners.owner_id, COUNT(*) AS lifetime_completed
         FROM chug_scores cs
-        JOIN owners ON owners.discord_user_id = cs.discord_user_id
+        JOIN owners ON owners.owner_id = cs.owner_id
         WHERE cs.league_id = $1
         GROUP BY owners.owner_id
         """,
@@ -183,7 +183,7 @@ async def get_chug_for_cheers(conn, chug_id: int, league_id: int):
         """
         SELECT cs.id, cs.season, owners.owner_id
         FROM chug_scores cs
-        JOIN owners ON owners.discord_user_id = cs.discord_user_id
+        JOIN owners ON owners.owner_id = cs.owner_id
         WHERE cs.id = $1 AND cs.league_id = $2
         """,
         chug_id, league_id,
