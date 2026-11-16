@@ -187,12 +187,28 @@ async def test_settle_deadline_is_idempotent_per_week(pool):
     assert standing["outstanding_owed"] == 4  # doubled once, not twice
 
 
-async def test_settle_deadline_third_consecutive_miss_converts_to_fine(pool):
-    owner_id = await _seed_owner(pool, 7)
+async def test_settle_deadline_third_consecutive_miss_still_doubles(pool):
+    owner_id = await _seed_owner(pool, "third-miss")
     async with pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO chug_standing (season, owner_id, outstanding_owed, consecutive_missed_weeks) "
             "VALUES ($1, $2, 4, 2)",
+            TEST_SEASON, owner_id,
+        )
+        await settle_deadline_for_week(conn, TEST_SEASON, 1)
+
+    standing = await _standing(pool, owner_id)
+    assert standing["outstanding_owed"] == 8
+    assert standing["fined_owed"] == 0
+    assert standing["consecutive_missed_weeks"] == 3
+
+
+async def test_settle_deadline_fourth_consecutive_miss_converts_to_fine(pool):
+    owner_id = await _seed_owner(pool, 7)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO chug_standing (season, owner_id, outstanding_owed, consecutive_missed_weeks) "
+            "VALUES ($1, $2, 8, 3)",
             TEST_SEASON, owner_id,
         )
         await settle_deadline_for_week(conn, TEST_SEASON, 1)
@@ -204,7 +220,7 @@ async def test_settle_deadline_third_consecutive_miss_converts_to_fine(pool):
     assert action == "fined"
     standing = await _standing(pool, owner_id)
     assert standing["outstanding_owed"] == 0
-    assert standing["fined_owed"] == 4
+    assert standing["fined_owed"] == 8
     assert standing["consecutive_missed_weeks"] == 0  # fresh start after conversion
 
 

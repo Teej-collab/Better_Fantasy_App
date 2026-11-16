@@ -13,9 +13,9 @@ record in chug_debts:
   chug_deadline.py) and settle_deadline_for_week runs for that week
   (once — chug_deadline_settlements is both the idempotency marker and
   the audit trail): anyone with outstanding_owed > 0 has it doubled, up
-  to MAX_CONSECUTIVE_DOUBLINGS consecutive misses. On the miss that
-  hits the cap, the current outstanding balance converts entirely into
-  fined_owed instead of doubling again — a real dollar amount
+  to MAX_CONSECUTIVE_DOUBLINGS consecutive misses (1 -> 2 -> 4 -> 8).
+  On the next miss after that, the current outstanding balance converts
+  entirely into fined_owed instead of doubling again — a real dollar amount
   (FINE_PER_CHUG each) that a real chug can no longer pay down. Only
   clear_fine (a commissioner-only action, see app/routers/chug.py) can
   reduce fined_owed, and only once the fine's actually been paid in
@@ -179,7 +179,9 @@ async def settle_deadline_for_week(conn, season: int, week: int, league_id: int 
             )
         else:
             missed = standing["consecutive_missed_weeks"] + 1
-            if missed >= MAX_CONSECUTIVE_DOUBLINGS:
+            # 2026-11-16: three doublings, then the fine — it used to fine
+            # on the third miss, one doubling short of the house rule.
+            if missed > MAX_CONSECUTIVE_DOUBLINGS:
                 action = "fined"
                 owed_after = 0
                 await conn.execute(
@@ -363,7 +365,7 @@ async def reopen_deadline(conn, season: int, week: int, league_id: int = DEFAULT
                     updated_at = now()
                 WHERE season = $1 AND owner_id = $2 AND league_id = $4
                 """,
-                season, r["owner_id"], r["owed_before"], league_id, MAX_CONSECUTIVE_DOUBLINGS - 1,
+                season, r["owner_id"], r["owed_before"], league_id, MAX_CONSECUTIVE_DOUBLINGS,
             )
     await conn.execute(
         "DELETE FROM chug_deadline_settlements WHERE season = $1 AND week = $2 AND league_id = $3", season, week, league_id

@@ -1263,8 +1263,8 @@ export type ChugLeaderboard = {
 // Seasons that actually have a chug_debts row — a subset of listSeasons(),
 // since not every league season has roster data to compute the rule
 // against (e.g. a season that hasn't started yet).
-export function getChugSeasons() {
-  return get<{ seasons: Season[] }>("/chug/seasons");
+export function getChugSeasons(sessionCookie: string | undefined) {
+  return getServer<{ seasons: Season[] }>("/chug/seasons", sessionCookie);
 }
 
 // season omitted -> all-time (summed across every season), matching the

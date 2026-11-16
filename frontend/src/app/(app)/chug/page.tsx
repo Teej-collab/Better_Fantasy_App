@@ -42,7 +42,7 @@ export default async function ChugLeaderboardPage({
   }
 
   const [{ seasons }, { leaderboard }, { chugs }, { seasons: allSeasons }, activeLeagueName, ledger, deadline] = await Promise.all([
-    getChugSeasons(),
+    getChugSeasons(sessionCookie),
     getChugLeaderboard(sessionCookie, season),
     getChugFeed(sessionCookie, season),
     listSeasons(sessionCookie),
