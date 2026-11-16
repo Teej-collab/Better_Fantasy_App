@@ -405,7 +405,9 @@ const styles = StyleSheet.create({
   linkText: { fontSize: 14, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md, paddingVertical: 8 },
   rowDivided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border },
-  rowLeft: { flex: 1, minWidth: 0 },
+  // Labels keep their words whole; a long value wraps instead ("Your
+  // bench" broke into "benc / h" on Android, 2026-11-16).
+  rowLeft: { flexGrow: 1, flexShrink: 0, maxWidth: '50%' },
   rowText: { color: Colors.text, fontSize: 14 },
   rowRight: { color: Colors.text, fontSize: 14, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
   rowScore: { fontSize: 20 },

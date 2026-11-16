@@ -149,11 +149,17 @@ export function GlowTextSkia({ style, children, numberOfLines }: { style?: Style
       const font = ascent > 0 && line.ascender > 0 ? Skia.Font(typeface, (fontSize * line.ascender) / ascent) : base;
       const ids = font.getGlyphIDs(line.text.replace(/\n$/, ''));
       const widths = font.getGlyphWidths(ids);
+      // Android lays letters out a little tighter than Skia's advances
+      // add up to, so the glow drifted right of the text, worst at the
+      // end of a long label (2026-11-16, first Android build). Fit the
+      // run to the width the real text reports instead.
+      const natural = widths.reduce((sum, w) => sum + w + spacing, 0);
+      const fit = line.width > 0 && natural > 0 ? Math.min(1.2, Math.max(0.8, line.width / natural)) : 1;
       let x = line.x + pad;
       const y = line.y + line.ascender + pad;
       const glyphs = ids.map((id, i) => {
         const g = { id, pos: { x, y } };
-        x += widths[i] + spacing;
+        x += (widths[i] + spacing) * fit;
         return g;
       });
       return { font, glyphs };

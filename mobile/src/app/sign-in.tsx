@@ -190,7 +190,9 @@ function SignInCard({ variant, onBack, onForgot }: { variant: Variant; onBack: (
           {/* League #1 started on Discord, so its members' history lives on
               their Discord logins — keep that door easy to find. */}
           <Pressable onPress={() => onProvider(signInWithDiscord)} disabled={busy} style={({ pressed }) => [styles.discordOutline, (pressed || busy) && styles.pressed]}>
-            <Text style={styles.discordOutlineText}>Played here before? Continue with Discord</Text>
+            <Text style={styles.discordOutlineText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              Played here before? Continue with Discord
+            </Text>
           </Pressable>
         </>
       ) : (
@@ -371,7 +373,7 @@ const styles = StyleSheet.create({
     padding: Spacing.xl + 4,
   },
   apple: { height: 50, marginBottom: -Spacing.sm },
-  discordOutline: { borderRadius: Radius.pill, borderWidth: 1, borderColor: '#5865F2', backgroundColor: 'rgba(88,101,242,0.12)', paddingVertical: 13, alignItems: 'center' },
+  discordOutline: { borderRadius: Radius.pill, borderWidth: 1, borderColor: '#5865F2', backgroundColor: 'rgba(88,101,242,0.12)', paddingVertical: 13, paddingHorizontal: 16, alignItems: 'center' },
   discordOutlineText: { color: '#c7ccff', fontSize: 15, fontWeight: '600' },
   google: { backgroundColor: '#ffffff', borderRadius: Radius.pill, paddingVertical: 15, alignItems: 'center', marginBottom: -Spacing.sm },
   googleText: { color: '#1f1f1f', fontSize: 15, fontWeight: '600' },
