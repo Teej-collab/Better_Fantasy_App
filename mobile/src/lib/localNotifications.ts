@@ -126,7 +126,9 @@ export function setUpReminderHandling(): () => void {
     const { content, trigger } = r.notification.request;
     const payload = trigger && 'payload' in trigger ? (trigger.payload as Record<string, unknown> | null) : null;
     const data = ((payload?.data ?? content.data) ?? {}) as Record<string, unknown>;
-    return { url: content.data?.url ?? payload?.url, leagueId: data.league_id };
+    // FCM (Android) data values are all strings, so league_id arrives as "5".
+    const leagueId = typeof data.league_id === 'string' ? Number(data.league_id) || undefined : data.league_id;
+    return { url: content.data?.url ?? payload?.url, leagueId };
   };
   // A button on the push (lib/notificationActions.ts) does its thing first.
   const respond = (r: import('expo-notifications').NotificationResponse) => {

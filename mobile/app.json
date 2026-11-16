@@ -38,7 +38,8 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
-      "package": "com.weekendleague.mobile"
+      "package": "com.weekendleague.mobile",
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
       "expo-router",

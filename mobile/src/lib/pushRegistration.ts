@@ -5,10 +5,10 @@ import { Platform } from 'react-native';
 import { api } from '@/lib/api';
 import { ensurePermission, load } from '@/lib/localNotifications';
 
-// Real push (2026-10): hands this phone's APNs token to the backend
-// (POST /push/native/register), which sends trade offers, waiver
-// results, chat and injury alerts straight to it — the same events the
-// web's Web Push already gets. iOS only for now.
+// Real push (2026-10): hands this phone's APNs token (iOS) or FCM token
+// (Android, 2026-11-16) to the backend (POST /push/native/register),
+// which sends trade offers, waiver results, chat and injury alerts
+// straight to it — the same events the web's Web Push already gets.
 //
 // Asked once the owner is in a league (there's nothing to notify about
 // before that), and re-sent on each launch since iOS can rotate tokens.
@@ -18,20 +18,25 @@ import { ensurePermission, load } from '@/lib/localNotifications';
 let registered: string | null = null;
 
 export async function deviceId(): Promise<string | null> {
+  if (Platform.OS === 'android') return Application.getAndroidId();
   if (Platform.OS !== 'ios') return null;
   return Application.getIosIdForVendorAsync().catch(() => null);
 }
 
 export async function registerForPush(): Promise<boolean> {
   const n = load();
-  if (!n || Platform.OS !== 'ios' || !Device.isDevice) return false;
+  if (!n || (Platform.OS !== 'ios' && Platform.OS !== 'android') || !Device.isDevice) return false;
+  // Android 13+ only shows the permission prompt once a channel exists.
+  if (Platform.OS === 'android') {
+    await n.setNotificationChannelAsync('default', { name: 'Notifications', importance: n.AndroidImportance.HIGH });
+  }
   if (!(await ensurePermission(n))) return false;
   const [token, id] = await Promise.all([n.getDevicePushTokenAsync(), deviceId()]);
   if (!id || typeof token.data !== 'string') return false;
   if (registered === `${id}:${token.data}`) return true;
   await api.registerNativePush({
     device_id: id,
-    platform: 'ios',
+    platform: Platform.OS === 'android' ? 'android' : 'ios',
     push_token: token.data,
     app_version: Application.nativeApplicationVersion,
     os_version: Device.osVersion,

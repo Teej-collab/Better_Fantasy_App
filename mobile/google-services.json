@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1030323913284",
+    "project_id": "the-weekend-b5b29",
+    "storage_bucket": "the-weekend-b5b29.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1030323913284:android:4c8281c5d8f1a6ddc1b211",
+        "android_client_info": {
+          "package_name": "com.weekendleague.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDECcz092sNhsqWfqW0PL2yEDMMPYliGVw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
