@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   titleBlock: { gap: 6 },
   center: { alignItems: 'center' },
   textCenter: { textAlign: 'center' },
-  title: { fontFamily: OB.displayBlack, fontSize: 44, lineHeight: 42, color: OB.ink, letterSpacing: 0.2, paddingTop: 4 },
+  title: { fontFamily: OB.displayBlack, fontSize: 44, lineHeight: 50, color: OB.ink, letterSpacing: 0.2, paddingTop: 4 },
   subtitle: { color: OB.ink2, fontSize: 13.5, lineHeight: 19 },
   track: { backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center' },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0 },

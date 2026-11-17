@@ -69,7 +69,8 @@ function scoreboardType(rest: TextStyle, weight: TextStyle['fontWeight']): TextS
     ...rest,
     fontFamily: w >= 800 ? 'BigShoulders_900Black' : 'BigShoulders_800ExtraBold',
     fontSize: Math.round(size * 1.12),
-    lineHeight: typeof rest.lineHeight === 'number' ? Math.round(rest.lineHeight * 1.08) : undefined,
+    // Never shorter than the font, or the tops of the numerals clip.
+    lineHeight: typeof rest.lineHeight === 'number' ? Math.max(Math.round(rest.lineHeight * 1.08), Math.round(size * 1.12 * 1.15)) : undefined,
     textTransform: size >= 26 ? 'uppercase' : rest.textTransform,
     letterSpacing: 0.2,
   };

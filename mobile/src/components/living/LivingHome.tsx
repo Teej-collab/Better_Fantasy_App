@@ -613,7 +613,7 @@ const styles = StyleSheet.create({
   unreadText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
   obContent: { gap: 22 },
   obHeader: { gap: 8, marginTop: 4 },
-  obTitle: { fontFamily: OB.displayBlack, fontSize: 44, lineHeight: 42, letterSpacing: 0.2, paddingTop: 4 },
+  obTitle: { fontFamily: OB.displayBlack, fontSize: 44, lineHeight: 50, letterSpacing: 0.2, paddingTop: 4 },
   obUnread: { backgroundColor: 'rgba(57,255,20,0.07)', borderWidth: 1, borderColor: 'rgba(57,255,20,0.35)' },
   obUnreadText: { color: OB.lamp, fontFamily: Fonts.mono, fontWeight: '400', fontSize: 11 },
 });

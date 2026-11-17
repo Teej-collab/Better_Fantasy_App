@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   body: { padding: 18, gap: 14 },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   league: { color: OB.ink2, fontSize: 12.5, fontFamily: Fonts.bodyMedium, flexShrink: 1 },
-  result: { fontFamily: OB.displayBlack, fontSize: 26, lineHeight: 28, color: OB.lamp, textTransform: 'uppercase' },
+  result: { fontFamily: OB.displayBlack, fontSize: 26, lineHeight: 32, color: OB.lamp, textTransform: 'uppercase' },
   resultLoss: { color: OB.ink2 },
   pressed: { opacity: 0.85 },
   vs: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
@@ -190,7 +190,9 @@ const styles = StyleSheet.create({
   team: { color: OB.ink, fontFamily: Fonts.bodySemiBold, fontSize: 13 },
   meta: { color: OB.mute, fontFamily: Fonts.mono, fontSize: 10.5, marginTop: 2 },
   scoreWrap: { minWidth: 0 },
-  score: { fontFamily: OB.displayBlack, fontSize: 70, lineHeight: 66, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  // Big Shoulders' tall numerals clip if the line is shorter than the font
+  // (the tops of the scores were cut off, 2026-11-17).
+  score: { fontFamily: OB.displayBlack, fontSize: 70, lineHeight: 80, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
   scoreMine: { textShadowColor: 'rgba(57,255,20,0.4)', textShadowRadius: 22 },
   gain: { position: 'absolute', top: -6, fontFamily: OB.display, fontSize: 18, color: OB.lamp },
   gainLeft: { right: 0 },
