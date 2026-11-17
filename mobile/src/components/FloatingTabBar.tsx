@@ -132,7 +132,7 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
         accessibilityLabel={enginesOpen ? 'Close shortcuts' : 'Shortcuts'}
         accessibilityState={{ expanded: enginesOpen }}
         style={({ pressed }) => [styles.obBox, enginesOpen && styles.obBoxOpen, pressed && styles.pressed]}>
-        <BoxButtonIcon open={enginesOpen} width={24} />
+        <BoxButtonIcon open={enginesOpen} width={34} />
       </Pressable>
     </View>
   );
@@ -189,23 +189,10 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
 const styles = StyleSheet.create({
   obBar: { overflow: 'visible', backgroundColor: 'rgba(18,21,26,0.94)', borderColor: 'rgba(255,255,255,0.09)', borderWidth: 1, shadowOpacity: 0.6, shadowRadius: 20 },
   obOn: { position: 'absolute', top: -4, width: 18, height: 2, borderRadius: 2, backgroundColor: OB.lamp, shadowColor: OB.lamp, shadowOpacity: 1, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
-  obBox: {
-    width: 60,
-    height: 60,
-    marginTop: -22,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 6,
-    backgroundColor: '#10150f',
-    borderWidth: 1,
-    borderColor: 'rgba(57,255,20,0.4)',
-    shadowColor: OB.lamp,
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  obBoxOpen: { borderColor: OB.lamp, shadowOpacity: 0.6 },
+  // Just the box, sitting up out of the bar (2026-11-17: the circle
+  // around it was too big).
+  obBox: { width: 64, height: 64, marginTop: -30, alignItems: 'center', justifyContent: 'center' },
+  obBoxOpen: {},
   obSheet: { backgroundColor: '#13161b', borderColor: OB.rim2 },
   obSheetTitle: { color: OB.lamp, fontFamily: Fonts.mono, letterSpacing: 1.6 },
   obTile: { backgroundColor: OB.glass, borderColor: OB.rim },

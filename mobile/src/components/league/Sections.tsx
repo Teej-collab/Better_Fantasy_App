@@ -27,7 +27,8 @@ import { NeonPanel } from '@/components/NeonPanel';
 import { ShareButton } from '@/components/ShareSheet';
 import { Text } from '@/components/Text';
 import { LoadingState, TeamAvatar } from '@/components/ui';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { OpenBox } from '@/components/ob/Ob';
+import { Colors, OwnersBox, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { haptics } from '@/lib/haptics';
@@ -348,6 +349,18 @@ function StandingsTable(props: {
                 {(() => {
                   const ownerId = ownerByTeam.get(row.team_id);
                   const photo = ownerId !== undefined ? photos.get(ownerId) : undefined;
+                  // Owners Box: the seed as a numeral in its own column, then
+                  // the owner's photo or initials, so every team keeps a face.
+                  if (OwnersBox) {
+                    return (
+                      <View style={styles.obSeedCell}>
+                        <OpenBox n={seed} mine={isMine} off={showPlayoffLine && !inPlayoffs} size={24} />
+                        <Hex width={40} color={isMine ? Elite.orange : seedColor} image={photo}>
+                          <Text style={styles.cellInitials}>{initials(row.owner_name)}</Text>
+                        </Hex>
+                      </View>
+                    );
+                  }
                   return (
                     <Hex width={40} color={seedColor} image={photo} badge={photo ? seed : null}>
                       <Text style={[styles.seedText, { color: isMine || inPlayoffs ? seedColor : Elite.cream }]}>{seed}</Text>
@@ -1221,6 +1234,7 @@ function CommishChanges() {
 }
 
 const styles = StyleSheet.create({
+  obSeedCell: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   gap: { gap: Spacing.lg },
   gapSm: { gap: Spacing.sm },
   flex: { flex: 1 },

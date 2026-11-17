@@ -106,12 +106,13 @@ export function ObLitLayer() {
   );
 }
 
-/** What stands in for a honeycomb cell (option 1 "Numerals"): no box.
- *  A photo is round, with a green ring when it's yours or lit; a cell
- *  filled with a light color (a dot, a podium place, a won game) is a round
- *  chip of that color so its dark text still reads; anything else (a
- *  number, an avatar) stands on its own. A rank or seed `badge` is a
- *  numeral under it. */
+/** What stands in for a honeycomb cell (option 1 "Numerals"): a circle,
+ *  not a box. A photo fills it; without one it's a placeholder holding the
+ *  initials or number, so every team keeps its spot (2026-11-17: a bare
+ *  number lost the placeholder). Green ring when it's yours or lit. A cell
+ *  filled with a light color (a dot, a podium place, a won game) is a chip
+ *  of that color so its dark text still reads. A `badge` (a rank) is a
+ *  small tag on the corner, never under the photo. */
 export function ObCell({
   width,
   color,
@@ -139,22 +140,17 @@ export function ObCell({
       ) : solid ? (
         <View style={[round, styles.center, { backgroundColor: fill }]}>{children}</View>
       ) : (
-        <View style={[round, styles.center, lit && !isNumeralChild(children) ? styles.ringLit : null]}>{children}</View>
+        <View style={[round, styles.center, styles.placeholder, lit ? styles.ringLit : styles.ring]}>{children}</View>
       )}
       {badge !== undefined && badge !== null && (
-        <Text style={[styles.cellBadge, lit && styles.numeralMine]} numberOfLines={1}>
-          {badge}
-        </Text>
+        <View style={[styles.cellTag, lit && styles.cellTagLit]}>
+          <Text style={[styles.cellTagText, lit && { color: OB.lamp }]} numberOfLines={1}>
+            {badge}
+          </Text>
+        </View>
       )}
     </View>
   );
-}
-
-// A cell holding just a number or a word (not an avatar) stays bare.
-function isNumeralChild(children: ReactNode): boolean {
-  if (typeof children === 'string' || typeof children === 'number') return true;
-  const el = children as { type?: unknown; props?: { children?: unknown } } | null;
-  return !!el && el.type === Text && (typeof el.props?.children === 'string' || typeof el.props?.children === 'number');
 }
 
 function isLight(color: string): boolean {
@@ -332,16 +328,23 @@ export function BoxButtonIcon({ open, width = 26 }: { open: boolean; width?: num
     t.value = reduce ? (open ? 1 : 0) : withTiming(open ? 1 : 0, { duration: 320, easing: Easing.out(Easing.back(1.6)) });
   }, [open, reduce, t]);
   const scale = width / 208;
+  // At rest the lid sits popped like the intro's; open, it lifts higher
+  // and the light inside comes up.
   const lid = useAnimatedStyle(() => ({
-    transform: [{ translateX: 6 * scale * t.value }, { translateY: -78 * scale * t.value }, { rotate: `${-10 * t.value}deg` }],
+    transform: [
+      { translateX: (6 + 6 * t.value) * scale },
+      { translateY: (-78 - 50 * t.value) * scale },
+      { rotate: `${-10 - 10 * t.value}deg` },
+    ],
   }));
-  const glow = useAnimatedStyle(() => ({ opacity: 0.35 + 0.65 * t.value }));
+  const glow = useAnimatedStyle(() => ({ opacity: 0.75 + 0.25 * t.value }));
   const h = width * 1.5;
   return (
     <View style={{ width, height: h }}>
       <Svg width={width} height={h} viewBox="-104 -112 208 312">
         <Polygon points="-90,42 0,84 0,184 -90,142" fill="#1b2027" stroke="#fff" strokeWidth={11} strokeLinejoin="round" />
         <Polygon points="0,84 90,42 90,142 0,184" fill="#0e1115" stroke="#fff" strokeWidth={11} strokeLinejoin="round" />
+        <Polygon points="0,0 90,42 0,84 -90,42" fill="none" stroke="#fff" strokeWidth={11} strokeLinejoin="round" />
       </Svg>
       <Animated.View style={[StyleSheet.absoluteFill, glow]} pointerEvents="none">
         <Svg width={width} height={h} viewBox="-104 -112 208 312">
@@ -403,7 +406,10 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center' },
   ring: { borderWidth: 1, borderColor: OB.rim2 },
   ringLit: { borderWidth: 1.5, borderColor: 'rgba(57,255,20,0.7)' },
-  cellBadge: { position: 'absolute', bottom: -14, fontFamily: OB.displayBlack, fontSize: 15, lineHeight: 18, color: OB.ink },
+  placeholder: { backgroundColor: 'rgba(255,255,255,0.05)' },
+  cellTag: { position: 'absolute', right: -6, bottom: -4, minWidth: 20, height: 18, paddingHorizontal: 4, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: OB.void, borderWidth: 1, borderColor: OB.rim2 },
+  cellTagLit: { borderColor: 'rgba(57,255,20,0.6)' },
+  cellTagText: { fontFamily: OB.displayBlack, fontSize: 12, lineHeight: 15, color: OB.ink },
   eyebrow: { fontFamily: Fonts.mono, fontSize: 10.5, letterSpacing: 1.6 },
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   secHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
