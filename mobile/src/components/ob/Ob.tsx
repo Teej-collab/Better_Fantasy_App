@@ -127,7 +127,8 @@ export function ObCell({
   children?: ReactNode;
 }) {
   const r = Math.round(width * 0.24);
-  const lit = color === OB.lamp || color === '#39ff14';
+  // Green, or the elite kit's "yours" color (white in Owners Box), lights the box.
+  const lit = color === OB.lamp || color === '#39ff14' || color === OB.ink;
   const solid = fill && fill !== OB.night && !fill.startsWith('#10') && !fill.startsWith('#0');
   return (
     <View style={[{ width, height: width }, style]}>

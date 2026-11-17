@@ -4,9 +4,10 @@ import { AccessibilityInfo, Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeOutUp, SlideInUp } from 'react-native-reanimated';
 
 import { GlowBox, GlowText } from '@/components/fx/Glow';
+import { LiveDot, OB } from '@/components/ob/Ob';
 import { lighten } from '@/components/gamecast/GamecastField';
 import { Text } from '@/components/Text';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, OwnersBox, Radius, Spacing } from '@/constants/theme';
 import { bigMomentFor, type BigMoment } from '@/lib/gamecast';
 import { nflTeamColor } from '@/lib/nflTeams';
 import type { GamecastPlay, LiveGame, PlayFantasyPlayer } from '@/lib/types';
@@ -90,6 +91,34 @@ export function useGameMoments(game: LiveGame | undefined, lastPlay: GamecastPla
 export function MomentBanner({ moment, onDismiss }: { moment: Moment | null; onDismiss: () => void }) {
   if (!moment) return null;
   const color = lighten(moment.color);
+  // Owners Box: a dark glass alert dropping from the top, lit green when
+  // it's points for you.
+  if (OwnersBox) {
+    const good = moment.points === undefined ? moment.kind !== 'turnover' : moment.points >= 0;
+    return (
+      <Animated.View key={moment.key} entering={SlideInUp.springify().damping(16)} exiting={FadeOutUp} style={styles.wrap} pointerEvents="box-none">
+        <Pressable onPress={onDismiss} accessibilityRole="button" accessibilityLabel={`${moment.title}. Dismiss`} style={[styles.obBanner, !good && styles.obBannerQuiet]}>
+          <View style={styles.obDot}>
+            <LiveDot color={good ? OB.lamp : OB.warn} />
+          </View>
+          <View style={styles.obText}>
+            <Text style={[styles.obKicker, !good && { color: OB.warn }]} numberOfLines={1}>
+              {`${moment.title}${moment.team ? ` · ${moment.team}` : ''}`.toUpperCase()}
+            </Text>
+            <Text style={styles.obDetail} numberOfLines={2}>
+              {moment.detail}
+            </Text>
+          </View>
+          {moment.points !== undefined && (
+            <Text style={[styles.obPoints, moment.points < 0 && { color: OB.ink2 }]} maxFontSizeMultiplier={1.2}>
+              {moment.points > 0 ? '+' : ''}
+              {moment.points.toFixed(1)}
+            </Text>
+          )}
+        </Pressable>
+      </Animated.View>
+    );
+  }
   return (
     <Animated.View key={moment.key} entering={SlideInUp.springify().damping(16)} exiting={FadeOutUp} style={styles.wrap} pointerEvents="box-none">
       <GlowBox color={color} radius={Radius.lg} intensity={0.55} spread={16}>
@@ -132,4 +161,25 @@ const styles = StyleSheet.create({
   title: { flexShrink: 1, fontFamily: Fonts.displayBold, fontSize: 22, letterSpacing: 1.5, textShadowRadius: 10 },
   points: { fontFamily: Fonts.monoBold, fontSize: 16 },
   detail: { color: Colors.text, fontSize: 13, lineHeight: 18 },
+  obBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    paddingRight: 16,
+    borderRadius: 24,
+    backgroundColor: 'rgba(10,12,15,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(57,255,20,0.4)',
+    shadowColor: OB.lamp,
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  obBannerQuiet: { borderColor: OB.rim2, shadowOpacity: 0 },
+  obDot: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: OB.rim2 },
+  obText: { flex: 1, minWidth: 0, gap: 2 },
+  obKicker: { color: OB.lamp, fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1.6 },
+  obDetail: { color: OB.ink, fontSize: 13.5, lineHeight: 18, fontFamily: Fonts.bodySemiBold },
+  obPoints: { color: OB.lamp, fontFamily: OB.displayBlack, fontSize: 28 },
 });

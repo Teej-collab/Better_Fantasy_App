@@ -4,8 +4,9 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { lighten } from '@/components/gamecast/GamecastField';
 import { LiveBadge } from '@/components/LiveBadge';
+import { ObPane } from '@/components/ob/Ob';
 import { Text } from '@/components/Text';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, OwnersBox, Radius, Spacing } from '@/constants/theme';
 import {
   driveEndYardsToGoal,
   driveResultLabel,
@@ -40,8 +41,8 @@ export function Scoreboard({ game, connected }: { game: LiveGame; connected: boo
     ? `${game.away_team.name} ${game.away_team.score}, ${game.home_team.name} ${game.home_team.score}. ${status}.`
     : `${game.away_team.name} at ${game.home_team.name}, ${status}.`;
 
-  return (
-    <View style={[styles.card, live && { borderColor: Colors.live }]} accessible accessibilityLabel={a11y}>
+  const inner = (
+    <>
       {live && (
         <View style={styles.liveRow}>
           <LiveBadge />
@@ -62,6 +63,22 @@ export function Scoreboard({ game, connected }: { game: LiveGame; connected: boo
         </View>
         <TeamSide team={game.home_team} started={started} possession={live && game.possession_team_abbr === game.home_team.abbr} dim={game.status === 'final' && !homeLead} />
       </View>
+    </>
+  );
+
+  // Owners Box: the lit panel while the game is live.
+  if (OwnersBox) {
+    return (
+      <ObPane lit={live}>
+        <View accessible accessibilityLabel={a11y} style={styles.obInner}>
+          {inner}
+        </View>
+      </ObPane>
+    );
+  }
+  return (
+    <View style={[styles.card, live && { borderColor: Colors.live }]} accessible accessibilityLabel={a11y}>
+      {inner}
     </View>
   );
 }
@@ -441,6 +458,7 @@ function PlayRow({ play, divided }: { play: GamecastPlay; divided: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  obInner: { gap: Spacing.sm },
   flex: { flex: 1 },
   dim: { opacity: 0.5 },
   pressed: { opacity: 0.7 },

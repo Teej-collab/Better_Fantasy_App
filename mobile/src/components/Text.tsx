@@ -1,6 +1,6 @@
-import { StyleSheet, Text as RNText, type TextProps } from 'react-native';
+import { StyleSheet, Text as RNText, type TextProps, type TextStyle } from 'react-native';
 
-import { Colors, Fonts } from '@/constants/theme';
+import { Colors, Fonts, OwnersBox } from '@/constants/theme';
 
 // Custom fonts on iOS don't synthesize weights: each weight is its own
 // family, and setting fontWeight on top of one can fall back to the
@@ -43,7 +43,7 @@ const NARROW_COLUMN = 140;
 export function Text({ style, maxFontSizeMultiplier, numberOfLines, adjustsFontSizeToFit, minimumFontScale, ...props }: TextProps) {
   const flat = StyleSheet.flatten(style) ?? {};
   const { fontWeight, ...rest } = flat;
-  const resolved = flat.fontFamily ? flat : { ...rest, fontFamily: bodyFamily(fontWeight) };
+  const resolved = flat.fontFamily ? flat : OwnersBox ? scoreboardType(rest, fontWeight) : { ...rest, fontFamily: bodyFamily(fontWeight) };
   const large = typeof flat.fontSize === 'number' && flat.fontSize >= LARGE_TEXT;
   const narrow = typeof flat.width === 'number' && flat.width <= NARROW_COLUMN && numberOfLines === undefined;
   return (
@@ -56,6 +56,23 @@ export function Text({ style, maxFontSizeMultiplier, numberOfLines, adjustsFontS
       style={[styles.base, resolved]}
     />
   );
+}
+
+// Owners Box: big bold text (screen titles, scores) is scoreboard type,
+// Big Shoulders, set a touch larger since it's condensed; the biggest
+// titles go uppercase.
+function scoreboardType(rest: TextStyle, weight: TextStyle['fontWeight']): TextStyle {
+  const size = typeof rest.fontSize === 'number' ? rest.fontSize : 14;
+  const w = Number(weight === 'bold' ? 700 : weight === 'normal' || weight === undefined ? 400 : weight);
+  if (size < 22 || w < 700) return { ...rest, fontFamily: bodyFamily(weight) };
+  return {
+    ...rest,
+    fontFamily: w >= 800 ? 'BigShoulders_900Black' : 'BigShoulders_800ExtraBold',
+    fontSize: Math.round(size * 1.12),
+    lineHeight: typeof rest.lineHeight === 'number' ? Math.round(rest.lineHeight * 1.08) : undefined,
+    textTransform: size >= 26 ? 'uppercase' : rest.textTransform,
+    letterSpacing: 0.2,
+  };
 }
 
 // Oswald, uppercase, tracked out: the web's .font-display headings.
