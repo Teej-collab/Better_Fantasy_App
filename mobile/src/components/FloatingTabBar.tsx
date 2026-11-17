@@ -8,8 +8,9 @@ import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EngineIcon, TabIcon, type EngineIconName, type TabIconName } from '@/components/NavIcons';
+import { LiveDot, OB } from '@/components/ob/Ob';
 import { Text } from '@/components/Text';
-import { Colors, withAlpha } from '@/constants/theme';
+import { Colors, Fonts, OwnersBox, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { useHouseRules, useMyWeek } from '@/lib/queries';
 import { TAB_BAR_HEIGHT, setTabBarHidden, tabBarHidden } from '@/lib/tabBar';
@@ -57,6 +58,7 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
 
   const [enginesOpen, setEnginesOpen] = useState(false);
   const engines = useEngines();
+  const matchup = useMyWeek().data?.matchup ?? null;
 
   const items = state.routes.map((route, index) => {
     const focused = state.index === index;
@@ -80,8 +82,9 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
         }}
         onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
         style={styles.item}>
-        <View style={[styles.itemInner, focused && { backgroundColor: withAlpha(accent, 0.16) }]}>
-          <TabIcon name={name} focused={focused} color={focused ? accent : Colors.textSecondary} />
+        <View style={[styles.itemInner, focused && !OwnersBox && { backgroundColor: withAlpha(accent, 0.16) }]}>
+          {OwnersBox && focused && <View style={styles.obOn} />}
+          <TabIcon name={name} focused={focused} color={focused ? (OwnersBox ? OB.ink : accent) : Colors.textSecondary} />
           {badge > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
@@ -105,17 +108,41 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
         accessibilityRole="button"
         accessibilityLabel={enginesOpen ? 'Close engines' : 'Engines'}
         accessibilityState={{ expanded: enginesOpen }}
-        style={[styles.engineButton, { backgroundColor: enginesOpen ? Colors.text : accent }]}>
+        style={[styles.engineButton, { backgroundColor: enginesOpen ? Colors.text : accent }, OwnersBox && styles.obGrid, OwnersBox && enginesOpen && styles.obGridOpen]}>
         <SymbolView
-          name={enginesOpen ? 'xmark' : 'square.grid.2x2.fill'}
-          size={20}
-          tintColor={Colors.bg}
+          name={enginesOpen ? 'xmark' : OwnersBox ? 'square.grid.3x3' : 'square.grid.2x2.fill'}
+          size={OwnersBox ? 18 : 20}
+          tintColor={OwnersBox ? (enginesOpen ? OB.void : OB.ink2) : Colors.bg}
           fallback={<Text style={{ color: Colors.bg, fontWeight: '800' }}>{enginesOpen ? '×' : '⋯'}</Text>}
         />
       </Pressable>
     </View>
   );
-  items.splice(teamAt + 1, 0, center);
+  // Owners Box: the middle is your live score (it opens Matchup), and the
+  // engines move to a grid button at the end.
+  const scorePill = matchup ? (
+    <Pressable
+      key="score"
+      onPress={() => {
+        haptics.tap();
+        setEnginesOpen(false);
+        router.navigate({ pathname: '/matchup/[id]', params: { id: String(matchup.matchup_id) } });
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`Your matchup, ${fmtScore(matchup.my_score)} to ${fmtScore(matchup.opponent_score)}`}
+      style={styles.obScore}>
+      {matchup.my_in_play + matchup.opponent_in_play > 0 && <LiveDot size={6} />}
+      <Text style={styles.obScoreMine}>{fmtScore(matchup.my_score)}</Text>
+      <View style={styles.obScoreRule} />
+      <Text style={styles.obScoreThem}>{fmtScore(matchup.opponent_score)}</Text>
+    </Pressable>
+  ) : null;
+  if (OwnersBox && scorePill) {
+    items.splice(teamAt + 1, 0, scorePill);
+    items.push(center);
+  } else {
+    items.splice(teamAt + 1, 0, center);
+  }
 
   function openEngine(engine: Engine) {
     haptics.tap();
@@ -127,8 +154,8 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
     <>
       {enginesOpen && (
         <Pressable style={styles.backdrop} onPress={() => setEnginesOpen(false)} accessibilityLabel="Close engines">
-          <View style={[styles.sheet, { bottom: bottom + TAB_BAR_HEIGHT + 12 }]} accessibilityViewIsModal>
-            <Text style={styles.sheetTitle}>ENGINES</Text>
+          <View style={[styles.sheet, OwnersBox && styles.obSheet, { bottom: bottom + TAB_BAR_HEIGHT + 12 }]} accessibilityViewIsModal>
+            <Text style={[styles.sheetTitle, OwnersBox && styles.obSheetTitle]}>{OwnersBox ? 'SHORTCUTS' : 'ENGINES'}</Text>
             <View style={styles.grid}>
               {engines.map((engine) => (
                 <Pressable
@@ -138,10 +165,10 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
                   accessibilityLabel={engine.label}
                   style={({ pressed }) => [
                     styles.tile,
-                    { backgroundColor: withAlpha(engine.color, 0.1), borderColor: withAlpha(engine.color, 0.35) },
+                    OwnersBox ? styles.obTile : { backgroundColor: withAlpha(engine.color, 0.1), borderColor: withAlpha(engine.color, 0.35) },
                     pressed && styles.pressed,
                   ]}>
-                  <EngineIcon name={engine.key} color={engine.color} />
+                  <EngineIcon name={engine.key} color={OwnersBox ? OB.ink : engine.color} />
                   <Text style={styles.tileText} numberOfLines={1}>
                     {engine.label}
                   </Text>
@@ -157,14 +184,40 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
             {items}
           </GlassView>
         ) : (
-          <View style={[styles.bar, styles.solid]}>{items}</View>
+          <View style={[styles.bar, styles.solid, OwnersBox && styles.obBar]}>{items}</View>
         )}
       </Animated.View>
     </>
   );
 }
 
+function fmtScore(n: number | null): string {
+  return n === null ? '—' : n.toFixed(1);
+}
+
 const styles = StyleSheet.create({
+  obBar: { backgroundColor: 'rgba(18,21,26,0.94)', borderColor: 'rgba(255,255,255,0.09)', borderWidth: 1, shadowOpacity: 0.6, shadowRadius: 20 },
+  obOn: { position: 'absolute', top: -4, width: 18, height: 2, borderRadius: 2, backgroundColor: OB.lamp, shadowColor: OB.lamp, shadowOpacity: 1, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
+  obScore: {
+    height: 42,
+    paddingHorizontal: 13,
+    marginHorizontal: 2,
+    borderRadius: 21,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: 'rgba(57,255,20,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(57,255,20,0.32)',
+  },
+  obScoreMine: { fontFamily: 'BigShoulders_800ExtraBold', fontSize: 19, color: OB.ink, fontVariant: ['tabular-nums'] },
+  obScoreThem: { fontFamily: 'BigShoulders_800ExtraBold', fontSize: 19, color: OB.mute, fontVariant: ['tabular-nums'] },
+  obScoreRule: { width: 1, height: 15, backgroundColor: 'rgba(255,255,255,0.18)' },
+  obGrid: { backgroundColor: 'transparent', width: 40 },
+  obGridOpen: { backgroundColor: OB.ink },
+  obSheet: { backgroundColor: '#13161b', borderColor: OB.rim2 },
+  obSheetTitle: { color: OB.lamp, fontFamily: Fonts.mono, letterSpacing: 1.6 },
+  obTile: { backgroundColor: OB.glass, borderColor: OB.rim },
   wrap: { position: 'absolute', left: 14, right: 14 },
   bar: {
     height: TAB_BAR_HEIGHT,

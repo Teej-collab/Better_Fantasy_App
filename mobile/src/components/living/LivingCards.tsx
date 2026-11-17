@@ -6,7 +6,8 @@ import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'rea
 import { OutcomeChip } from '@/components/players/OutcomeChip';
 import { Display, Text } from '@/components/Text';
 import { NeonPanel } from '@/components/NeonPanel';
-import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
+import { OB, ObWinBar } from '@/components/ob/Ob';
+import { Colors, Fonts, OwnersBox, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
 import { fmt, isStarter, nextEt, untilText } from '@/lib/livingHome';
@@ -53,7 +54,8 @@ export function Panel({
   label?: string;
 }) {
   const card = (
-    <NeonPanel ring={tint} color={SectionColors.home} contentStyle={[styles.panel, style]} style={onPress ? undefined : outerStyle}>
+    // Owners Box lights only the Your Week card, not every tinted one.
+    <NeonPanel ring={OwnersBox ? undefined : tint} color={SectionColors.home} contentStyle={[styles.panel, style]} style={onPress ? undefined : outerStyle}>
       {children}
     </NeonPanel>
   );
@@ -73,6 +75,8 @@ export function Panel({
 }
 
 export function Kicker({ children, color }: { children: ReactNode; color?: string }) {
+  // Owners Box: a quiet mono label; only live stays red.
+  if (OwnersBox) return <Text style={[styles.kickerOb, color === Colors.live ? { color: OB.live } : null]}>{children}</Text>;
   return <Text style={[styles.kicker, color ? { color } : null]}>{children}</Text>;
 }
 
@@ -140,6 +144,14 @@ export function ScoreLine({
 }
 
 export function Chip({ children, color }: { children: ReactNode; color: string }) {
+  if (OwnersBox) {
+    const lit = color === Colors.accent || color === OB.lamp || color === Colors.win;
+    return (
+      <View style={[styles.chipOb, lit && styles.chipObLit]}>
+        <Text style={[styles.chipTextOb, lit && { color: OB.lamp }]}>{children}</Text>
+      </View>
+    );
+  }
   return (
     <View style={[styles.chip, { backgroundColor: withAlpha(color, 0.16) }]}>
       <Text style={[styles.chipText, { color }]}>{children}</Text>
@@ -148,6 +160,7 @@ export function Chip({ children, color }: { children: ReactNode; color: string }
 }
 
 export function WinBar({ percent, color }: { percent: number; color: string }) {
+  if (OwnersBox) return <ObWinBar percent={percent} />;
   return (
     <View style={styles.bar} accessibilityLabel={`${Math.round(percent)} percent to win`}>
       <View style={[styles.barFill, { width: `${Math.max(2, Math.min(100, percent))}%`, backgroundColor: color }]} />
@@ -401,6 +414,10 @@ const styles = StyleSheet.create({
   panel: { gap: 10 },
   pressed: { opacity: 0.75 },
   kicker: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1.3, textTransform: 'uppercase' },
+  kickerOb: { color: OB.mute, fontFamily: Fonts.mono, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase' },
+  chipOb: { borderRadius: Radius.pill, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: OB.rim2 },
+  chipObLit: { borderColor: 'rgba(57,255,20,0.35)', backgroundColor: 'rgba(57,255,20,0.07)' },
+  chipTextOb: { color: OB.ink2, fontFamily: Fonts.mono, fontSize: 11 },
   link: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
   linkText: { fontSize: 14, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md, paddingVertical: 8 },

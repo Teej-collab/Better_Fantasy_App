@@ -11,7 +11,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { Colors, Radius } from '@/constants/theme';
+import { ObPane } from '@/components/ob/Ob';
+import { Colors, OwnersBox, Radius } from '@/constants/theme';
 import { ringColorFor, ringColorsFor, useAppearance } from '@/lib/appearance';
 import { useScreenFocused } from '@/lib/screenFocus';
 import { hasSkia } from '@/lib/skia';
@@ -66,7 +67,20 @@ type Props = {
 // section color sweeping around the border. Here, a gradient that
 // rotates behind a card inset by the ring width, clipped to the rounded
 // shape. With Reduce Motion on, the ring holds still.
-export function NeonPanel({ children, color: sectionColor, ring, style, contentStyle, radius = Radius.lg }: Props) {
+export function NeonPanel(props: Props) {
+  // Owners Box: smoked glass, no ring. A card given its own ring (the Your
+  // Week card) is the lit one.
+  if (OwnersBox) {
+    return (
+      <ObPane lit={!!props.ring} style={props.style} contentStyle={props.contentStyle} radius={(props.radius ?? Radius.lg) + 4}>
+        {props.children}
+      </ObPane>
+    );
+  }
+  return <NeonPanelClassic {...props} />;
+}
+
+function NeonPanelClassic({ children, color: sectionColor, ring, style, contentStyle, radius = Radius.lg }: Props) {
   const appearance = useAppearance();
   // Multi: the whole ring sweeps through every color instead of one bright
   // segment fading out.

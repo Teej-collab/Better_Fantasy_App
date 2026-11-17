@@ -2,7 +2,8 @@ import { StyleSheet, View } from 'react-native';
 
 import { LiveTicker } from '@/components/home/LiveTicker';
 import { Text } from '@/components/Text';
-import { Fonts } from '@/constants/theme';
+import { OB } from '@/components/ob/Ob';
+import { Fonts, OwnersBox } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 import type { TickerItem } from '@/lib/ticker';
 
@@ -29,10 +30,10 @@ export function TickerStrips({
   const accent = useAppearance().accent;
   if (nfl.length === 0 && league.length === 0) return null;
   return (
-    <View style={framed ? [styles.frame, fast && styles.frameLive] : undefined}>
-      {nfl.length > 0 && <Strip label="NFL" labelColor="#9aa3b2" tint="rgba(255,255,255,0.03)" items={nfl} fast={fast} interactive={interactive} />}
+    <View style={framed ? [styles.frame, fast && styles.frameLive, OwnersBox && styles.obFrame] : undefined}>
+      {nfl.length > 0 && <Strip label="NFL" labelColor={OwnersBox ? OB.mute : '#9aa3b2'} tint={OwnersBox ? 'transparent' : 'rgba(255,255,255,0.03)'} items={nfl} fast={fast} interactive={interactive} />}
       {league.length > 0 && (
-        <Strip label="LEAGUE" labelColor={accent} tint="rgba(57,255,20,0.04)" items={league} fast={leagueFast} interactive={interactive} divided={nfl.length > 0} />
+        <Strip label="LEAGUE" labelColor={OwnersBox ? OB.lamp : accent} tint={OwnersBox ? 'transparent' : 'rgba(57,255,20,0.04)'} items={league} fast={leagueFast} interactive={interactive} divided={nfl.length > 0} />
       )}
     </View>
   );
@@ -41,7 +42,7 @@ export function TickerStrips({
 function Strip(props: { label: string; labelColor: string; tint: string; items: TickerItem[]; fast: boolean; interactive: boolean; divided?: boolean }) {
   return (
     <View style={[styles.strip, { backgroundColor: props.tint }, props.divided && styles.divided]}>
-      <Text style={[styles.label, { color: props.labelColor }]} maxFontSizeMultiplier={1}>
+      <Text style={[styles.label, OwnersBox && styles.obLabel, { color: props.labelColor }]} maxFontSizeMultiplier={1}>
         {props.label}
       </Text>
       <LiveTicker items={props.items} fast={props.fast} interactive={props.interactive} bare />
@@ -55,4 +56,7 @@ const styles = StyleSheet.create({
   strip: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 32, paddingLeft: 12 },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.06)' },
   label: { fontFamily: Fonts.displayBold, fontSize: 10, letterSpacing: 1.2 },
+  // Owners Box: edge lines instead of a box, mono labels.
+  obFrame: { borderRadius: 0, borderWidth: 0, borderTopWidth: 1, borderBottomWidth: 1, borderColor: OB.rim, backgroundColor: 'rgba(6,7,8,0.6)' },
+  obLabel: { fontFamily: Fonts.mono, fontSize: 9.5, letterSpacing: 1.6 },
 });

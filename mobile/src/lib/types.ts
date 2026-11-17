@@ -819,7 +819,7 @@ export type OwnerPreferences = {
   border_glow_color: string | null;
   // A hex, "off", or null for the default crimson.
   honeycomb_color: string | null;
-  theme: 'calm' | 'cosmic' | 'midnight' | 'graphite' | 'ember' | 'gridiron';
+  theme: 'calm' | 'cosmic' | 'midnight' | 'graphite' | 'ember' | 'gridiron' | 'ownersbox';
   beta_layout: boolean;
   design_direction: 'default' | 'broadcast' | 'stadium';
   home_card_order: string | null;

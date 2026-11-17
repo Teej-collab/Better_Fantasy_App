@@ -1048,6 +1048,7 @@ export const LOOKS: { key: ThemeName; name: string; blurb: string; bg: string; s
   { key: 'graphite', name: 'Graphite', blurb: 'True black and silver', bg: '#000000', surface: '#121214', accent: '#f2f2f7' },
   { key: 'ember', name: 'Ember', blurb: 'Warm charcoal, orange accent', bg: '#110a07', surface: '#1a110c', accent: '#ff7a2f' },
   { key: 'gridiron', name: 'Gridiron', blurb: 'Field green, lime accent', bg: '#06100a', surface: '#0c1a12', accent: '#b4f03a' },
+  { key: 'ownersbox', name: 'Owners Box', blurb: 'The new design: floodlit glass, scoreboard numbers, green only as light', bg: '#0b0d10', surface: '#121519', accent: '#39ff14' },
 ];
 
 export function lookName(theme: string | undefined): string {

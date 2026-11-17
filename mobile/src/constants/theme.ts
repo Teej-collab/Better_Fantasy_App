@@ -1,8 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 
-export type ThemeName = 'calm' | 'cosmic' | 'midnight' | 'graphite' | 'ember' | 'gridiron';
+export type ThemeName = 'calm' | 'cosmic' | 'midnight' | 'graphite' | 'ember' | 'gridiron' | 'ownersbox';
 
-export const THEME_NAMES: ThemeName[] = ['calm', 'cosmic', 'midnight', 'graphite', 'ember', 'gridiron'];
+export const THEME_NAMES: ThemeName[] = ['calm', 'cosmic', 'midnight', 'graphite', 'ember', 'gridiron', 'ownersbox'];
 
 // Settings > Appearance > Look, as last saved on this phone. Read
 // synchronously here because every StyleSheet in the app is built from
@@ -21,6 +21,12 @@ function storedTheme(): ThemeName {
 }
 
 export const ActiveTheme: ThemeName = storedTheme();
+
+// Owners Box (2026-11-17): a whole different design, not just a palette:
+// one floodlight per screen, glass panels, scoreboard numbers, green only
+// as light (components/ob/). Shared pieces check this once at launch and
+// draw their Owners Box version instead.
+export const OwnersBox = ActiveTheme === 'ownersbox';
 
 // Settings > Appearance > Accent Color, saved on this phone the same way
 // (lib/appearance.ts), so the many screens styled from Colors.accent at
@@ -52,6 +58,7 @@ const PALETTES: Record<ThemeName, { bg: string; surface: string; tile: string; t
   graphite: { bg: '#000000', surface: '#121214', tile: '#1c1c1f', tileRaised: '#232327', border: '#2a2a2e', accent: '#f2f2f7' },
   ember: { bg: '#110a07', surface: '#1a110c', tile: '#241812', tileRaised: '#2b1d16', border: '#3a2418', accent: '#ff7a2f' },
   gridiron: { bg: '#06100a', surface: '#0c1a12', tile: '#12261a', tileRaised: '#17301f', border: '#1c3a27', accent: '#b4f03a' },
+  ownersbox: { bg: '#0b0d10', surface: '#121519', tile: '#171a1f', tileRaised: '#1c2026', border: '#1e2228', accent: '#39ff14' },
 };
 
 // The brand, the same for everyone whatever their look or accent, like
@@ -78,8 +85,8 @@ export const Colors: {
 } = {
   ...PALETTES[ActiveTheme],
   accent: storedAccent() ?? DefaultAccent,
-  text: '#eceef1',
-  textSecondary: '#8790a0',
+  text: OwnersBox ? '#f2f3ee' : '#eceef1',
+  textSecondary: OwnersBox ? '#808894' : '#8790a0',
   live: '#ef4444',
   win: '#22c55e',
   loss: '#f87171',
@@ -109,7 +116,7 @@ export function inkOn(hex: string): string {
 
 // Each destination's color (frontend/src/lib/navDestinations.ts): the
 // neon ring on its cards and its section headers.
-export const SectionColors = {
+const SECTION_COLORS = {
   team: '#a855f7',
   home: '#f5f4ec',
   league: '#6366f1',
@@ -131,6 +138,12 @@ export const SectionColors = {
   trades: '#d946ef',
 } as const;
 
+// Owners Box keeps color for light, not for sections: every section reads
+// in quiet white, and green stays for what's live or yours.
+export const SectionColors: Record<keyof typeof SECTION_COLORS, string> = OwnersBox
+  ? (Object.fromEntries(Object.keys(SECTION_COLORS).map((k) => [k, k === 'chat' ? '#39ff14' : '#c8ccd2'])) as Record<keyof typeof SECTION_COLORS, string>)
+  : SECTION_COLORS;
+
 // The honeycomb background's default color (frontend/src/components/
 // CinematicHoneycombBackground.tsx).
 // Each look has its own default (2026-10-28); a color picked in Settings
@@ -142,23 +155,38 @@ const THEME_HONEYCOMB: Record<ThemeName, string> = {
   graphite: '#636366',
   ember: '#ea580c',
   gridiron: '#16a34a',
+  ownersbox: '#39ff14',
 };
 export const HoneycombColor = THEME_HONEYCOMB[ActiveTheme];
 
 // Same families as the web (frontend/src/app/layout.tsx): Oswald for
 // display type, IBM Plex Sans for body, Geist Mono for numbers. Loaded
 // in app/_layout.tsx.
-export const Fonts = {
-  display: 'Oswald_600SemiBold',
-  displayMedium: 'Oswald_500Medium',
-  displayBold: 'Oswald_700Bold',
-  body: 'IBMPlexSans_400Regular',
-  bodyMedium: 'IBMPlexSans_500Medium',
-  bodySemiBold: 'IBMPlexSans_600SemiBold',
-  bodyBold: 'IBMPlexSans_700Bold',
-  mono: 'GeistMono_500Medium',
-  monoBold: 'GeistMono_700Bold',
-} as const;
+// Owners Box swaps in Big Shoulders (stadium-scoreboard numbers and
+// titles) and Geist for body text.
+export const Fonts = OwnersBox
+  ? {
+      display: 'BigShoulders_800ExtraBold',
+      displayMedium: 'BigShoulders_700Bold',
+      displayBold: 'BigShoulders_900Black',
+      body: 'Geist_400Regular',
+      bodyMedium: 'Geist_500Medium',
+      bodySemiBold: 'Geist_600SemiBold',
+      bodyBold: 'Geist_700Bold',
+      mono: 'GeistMono_500Medium',
+      monoBold: 'GeistMono_700Bold',
+    }
+  : {
+      display: 'Oswald_600SemiBold',
+      displayMedium: 'Oswald_500Medium',
+      displayBold: 'Oswald_700Bold',
+      body: 'IBMPlexSans_400Regular',
+      bodyMedium: 'IBMPlexSans_500Medium',
+      bodySemiBold: 'IBMPlexSans_600SemiBold',
+      bodyBold: 'IBMPlexSans_700Bold',
+      mono: 'GeistMono_500Medium',
+      monoBold: 'GeistMono_700Bold',
+    };
 
 export const Spacing = {
   xs: 4,

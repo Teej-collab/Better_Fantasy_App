@@ -2,6 +2,8 @@
 // reads the time (lib/demoClock.ts; does nothing in a real build).
 import '@/lib/demoClock';
 import { Anton_400Regular } from '@expo-google-fonts/anton';
+import { BigShoulders_700Bold, BigShoulders_800ExtraBold, BigShoulders_900Black } from '@expo-google-fonts/big-shoulders';
+import { Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold } from '@expo-google-fonts/geist';
 import { GeistMono_500Medium, GeistMono_700Bold } from '@expo-google-fonts/geist-mono';
 import {
   IBMPlexSans_400Regular,
@@ -27,7 +29,7 @@ import { AboutYou } from '@/components/AboutYou';
 import { LaunchPicker } from '@/components/LaunchPicker';
 import { NewHereTourHost } from '@/components/tour/NewHereTour';
 import { OfflineBanner } from '@/components/OfflineBanner';
-import { Colors } from '@/constants/theme';
+import { Colors, OwnersBox } from '@/constants/theme';
 import { startErrorReporter, useScreenTracking } from '@/lib/analytics';
 import { applyUpdateOnLaunch } from '@/lib/appUpdates';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -152,6 +154,8 @@ function RootStack() {
     GeistMono_700Bold,
     Anton_400Regular,
     Satisfy_400Regular,
+    // Only the Owners Box look uses these (constants/theme.ts Fonts).
+    ...(OwnersBox ? { BigShoulders_700Bold, BigShoulders_800ExtraBold, BigShoulders_900Black, Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold } : {}),
   });
   const ready = token !== undefined && fontsLoaded;
 

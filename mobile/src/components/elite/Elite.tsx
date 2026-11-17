@@ -2,7 +2,9 @@ import { useId, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { ClipPath, Defs, Image as SvgImage, Polygon } from 'react-native-svg';
 
+import { OB, ObCell, ObLitLayer, ObPortrait, ObTitle, ObWinBar } from '@/components/ob/Ob';
 import { Text } from '@/components/Text';
+import { Fonts, OwnersBox } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 
 // The elite pass's shared kit (2026-10-31, canvas "Elite League Pages"):
@@ -10,7 +12,25 @@ import { haptics } from '@/lib/haptics';
 // orange — for Chug, Awards, the League sections and the matchup page.
 // Fixed brand colors like the Wheel and the Hive Builder, not the theme
 // accent, so every league's pages read as the same product.
-export const Elite = {
+// Owners Box keeps green as the only light: orange turns white, the glass
+// goes neutral (components/ob/Ob.tsx).
+const OB_ELITE = {
+  green: '#39ff14',
+  mint: '#d4ffc6',
+  orange: '#f2f3ee',
+  peach: '#c8ccd2',
+  cream: '#f2f3ee',
+  blue: '#c8ccd2',
+  card: '#121519',
+  cell: '#0f1215',
+  deep: '#08090b',
+  line: 'rgba(255,255,255,0.075)',
+  soft: 'rgba(242,243,238,0.65)',
+  faint: 'rgba(242,243,238,0.5)',
+  grey: 'rgba(242,243,238,0.4)',
+} as const;
+
+const CLASSIC_ELITE = {
   green: '#39ff14',
   mint: '#9dff86',
   orange: '#ff7a1a',
@@ -26,8 +46,11 @@ export const Elite = {
   grey: 'rgba(245,244,236,0.4)',
 } as const;
 
-export const ANTON = 'Anton_400Regular';
-export const SATISFY = 'Satisfy_400Regular';
+export const Elite: { [K in keyof typeof CLASSIC_ELITE]: string } = OwnersBox ? OB_ELITE : CLASSIC_ELITE;
+
+export const ANTON = OwnersBox ? 'BigShoulders_900Black' : 'Anton_400Regular';
+// Owners Box keeps script only for the logo.
+export const SATISFY = OwnersBox ? Fonts.bodyMedium : 'Satisfy_400Regular';
 
 // A pointy-top hexagon `w` wide and `h` tall, pulled in by `inset` and
 // moved by `offset` (room for a glow around it).
@@ -51,7 +74,24 @@ export const HEX_RATIO = 1.1547;
  *  `fill` the glass, `glow` a soft halo of the rim's color. `image` (an
  *  owner's profile picture) fills the cell instead of its content, and
  *  `badge` (a rank or seed) sits on its bottom edge. */
-export function Hex({
+type HexProps = {
+  width: number;
+  color: string;
+  fill?: string;
+  glow?: boolean;
+  strokeWidth?: number;
+  image?: string | null;
+  badge?: string | number | null;
+  style?: StyleProp<ViewStyle>;
+  children?: ReactNode;
+};
+
+export function Hex(props: HexProps) {
+  if (OwnersBox) return <ObCell width={props.width} color={props.color} fill={props.fill} image={props.image} badge={props.badge} style={props.style}>{props.children}</ObCell>;
+  return <HexClassic {...props} />;
+}
+
+function HexClassic({
   width,
   color,
   fill = Elite.cell,
@@ -110,7 +150,12 @@ export function Hex({
 
 /** A player in a cell: his headshot standing over a faint team logo, or
  *  — a D/ST, or no headshot — the team logo alone. */
-export function HexPortrait({
+export function HexPortrait(props: { width: number; color: string; glow?: boolean; strokeWidth?: number; headshot?: string | null; logo?: string | null }) {
+  if (OwnersBox) return <ObPortrait width={props.width} color={props.color} headshot={props.headshot} logo={props.logo} />;
+  return <HexPortraitClassic {...props} />;
+}
+
+function HexPortraitClassic({
   width,
   color,
   glow = false,
@@ -177,6 +222,8 @@ export function HexPortrait({
 /** Rows of `wide` and `wide - 1` cells, each short row tucked into the
  *  gaps of the rows around it. */
 export function Honeycomb({ cell, wide = 4, gap = 6, children }: { cell: number; wide?: number; gap?: number; children: ReactNode[] }) {
+  // Owners Box: open boxes in plain rows.
+  if (OwnersBox) return <View style={[styles.obGrid, { gap: gap + 4 }]}>{children}</View>;
   const h = cell * HEX_RATIO;
   const rows: ReactNode[][] = [];
   let i = 0;
@@ -207,6 +254,7 @@ export function initials(name: string): string {
 
 /** The pages' heading: an orange script kicker over a green neon title. */
 export function EliteTitle({ kicker, title, subtitle }: { kicker?: string | null; title: string; subtitle?: string | null }) {
+  if (OwnersBox) return <ObTitle kicker={kicker} title={title} subtitle={subtitle} />;
   return (
     <View style={styles.titleBlock}>
       {kicker ? <Text style={styles.kicker}>{kicker}</Text> : null}
@@ -243,8 +291,8 @@ export function EliteChips(props: {
       }}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      style={[styles.chip, active && styles.chipOn]}>
-      <Text style={[styles.chipText, active && styles.chipTextOn]}>{label}</Text>
+      style={[styles.chip, active && styles.chipOn, OwnersBox && styles.obChip, OwnersBox && active && styles.obChipOn]}>
+      <Text style={[styles.chipText, active && styles.chipTextOn, OwnersBox && styles.obChipText, OwnersBox && active && styles.obChipTextOn]}>{label}</Text>
     </Pressable>
   );
   return (
@@ -258,7 +306,7 @@ export function EliteChips(props: {
 // The segmented control (Segmented's props), the picked one lit green.
 export function EliteSegmented<T extends string>(props: { options: { key: T; label: string }[]; value: T; onChange: (v: T) => void }) {
   return (
-    <View style={styles.segmented}>
+    <View style={[styles.segmented, OwnersBox && styles.obSegmented]}>
       {props.options.map((o) => {
         const on = props.value === o.key;
         return (
@@ -270,8 +318,8 @@ export function EliteSegmented<T extends string>(props: { options: { key: T; lab
             }}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
-            style={[styles.segment, on && styles.segmentOn]}>
-            <Text style={[styles.segmentText, on && styles.segmentTextOn]} numberOfLines={1}>
+            style={[styles.segment, on && styles.segmentOn, OwnersBox && on && styles.obSegmentOn]}>
+            <Text style={[styles.segmentText, on && styles.segmentTextOn, OwnersBox && on && styles.obSegmentTextOn]} numberOfLines={1}>
               {o.label}
             </Text>
           </Pressable>
@@ -284,6 +332,15 @@ export function EliteSegmented<T extends string>(props: { options: { key: T; lab
 /** A glass card: plain, `green` (lit), `orange` (the hero) or `deep`
  *  (the black LED plates). */
 export function EliteCard({ tone = 'plain', style, children }: { tone?: 'plain' | 'green' | 'orange' | 'deep'; style?: StyleProp<ViewStyle>; children: ReactNode }) {
+  if (OwnersBox) {
+    const lit = tone === 'green' || tone === 'orange';
+    return (
+      <View style={[styles.card, styles.obCard, lit && styles.obCardLit, style]}>
+        {lit && <ObLitLayer />}
+        {children}
+      </View>
+    );
+  }
   return <View style={[styles.card, tone !== 'plain' && styles[tone], style]}>{children}</View>;
 }
 
@@ -318,6 +375,17 @@ export function EliteWinBar({
 }) {
   const total = left + right || 1;
   const pct = Math.max(2, Math.min(98, (left / total) * 100));
+  if (OwnersBox) {
+    return (
+      <View accessible accessibilityLabel={`Win chance ${Math.round(left)} percent to ${Math.round(right)} percent`} style={styles.obWin}>
+        <ObWinBar percent={pct} />
+        <View style={styles.winLabels}>
+          <Text style={[styles.obWinLabel, left >= right && { color: OB.lamp }]}>{leftLabel ?? `${Math.round(left)}%`}</Text>
+          <Text style={[styles.obWinLabel, right > left && { color: OB.ink }]}>{rightLabel ?? `${Math.round(right)}%`}</Text>
+        </View>
+      </View>
+    );
+  }
   return (
     <View accessible accessibilityLabel={`Win chance ${Math.round(left)} percent to ${Math.round(right)} percent`}>
       <View style={styles.winTrack}>
@@ -401,6 +469,18 @@ export const eliteText = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  obGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', paddingVertical: 4 },
+  obCard: { backgroundColor: OB.glass, borderColor: OB.rim, shadowOpacity: 0 },
+  obCardLit: { borderColor: 'rgba(57,255,20,0.2)', overflow: 'hidden' },
+  obWin: { marginTop: 8 },
+  obWinLabel: { fontFamily: Fonts.mono, fontSize: 11, color: OB.mute },
+  obChip: { borderRadius: 999, borderColor: OB.rim2, backgroundColor: 'transparent', shadowOpacity: 0 },
+  obChipOn: { backgroundColor: OB.ink, borderColor: OB.ink },
+  obChipText: { color: OB.ink2, fontWeight: '500' },
+  obChipTextOn: { color: OB.void },
+  obSegmented: { backgroundColor: 'rgba(255,255,255,0.04)', borderColor: OB.rim },
+  obSegmentOn: { backgroundColor: 'rgba(255,255,255,0.09)', borderWidth: 0, shadowOpacity: 0 },
+  obSegmentTextOn: { color: OB.ink },
   honeycomb: { alignItems: 'center', paddingVertical: 4 },
   hexBadge: { position: 'absolute', bottom: -4, minWidth: 22, paddingHorizontal: 5, borderRadius: 8, borderWidth: 1, backgroundColor: Elite.deep, alignItems: 'center' },
   hexBadgeText: { fontFamily: ANTON, fontSize: 11, lineHeight: 15 },

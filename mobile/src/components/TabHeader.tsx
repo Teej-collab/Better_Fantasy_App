@@ -5,9 +5,10 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
+import { OB, Wordmark } from '@/components/ob/Ob';
 import { SettingsIcon, type SettingsIconName } from '@/components/settings/SettingsIcon';
 import { Text } from '@/components/Text';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, OwnersBox, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { haptics } from '@/lib/haptics';
@@ -33,36 +34,44 @@ export function TabHeader() {
     .join('')
     .toUpperCase();
 
+  const league = (
+    <Pressable
+      onPress={() => {
+        haptics.tap();
+        // The league picker everyone sees on launch (new, or in 2+
+        // leagues): your leagues as cards, plus Join and Create.
+        router.push('/start');
+      }}
+      style={[styles.league, OwnersBox && styles.obLeague]}
+      accessibilityRole="button"
+      accessibilityLabel={`${leagueName ?? 'Your league'}. Switch leagues`}>
+      {OwnersBox && <View style={styles.obDot} />}
+      <Text style={[styles.leagueName, OwnersBox && styles.obLeagueName]} numberOfLines={1}>
+        {leagueName ?? 'Leagues'}
+      </Text>
+      <Svg width={OwnersBox ? 10 : 12} height={OwnersBox ? 10 : 12} viewBox="0 0 24 24" fill="none" stroke={Colors.textSecondary} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+        <Path d="M6 9l6 6 6-6" />
+      </Svg>
+    </Pressable>
+  );
+
+  // Owners Box (components/ob/Ob.tsx): the wordmark on the left, your
+  // league, the bell and you on the right.
   return (
     <View style={[styles.bar, { paddingTop: insets.top + 6 }]}>
-      <Pressable
-        onPress={() => {
-          haptics.tap();
-          // The league picker everyone sees on launch (new, or in 2+
-          // leagues): your leagues as cards, plus Join and Create.
-          router.push('/start');
-        }}
-        style={styles.league}
-        accessibilityRole="button"
-        accessibilityLabel={`${leagueName ?? 'Your league'}. Switch leagues`}>
-        <Text style={styles.leagueName} numberOfLines={1}>
-          {leagueName ?? 'Leagues'}
-        </Text>
-        <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={Colors.textSecondary} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
-          <Path d="M6 9l6 6 6-6" />
-        </Svg>
-      </Pressable>
-      <View style={styles.right}>
+      {OwnersBox ? <Wordmark width={92} /> : league}
+      <View style={[styles.right, OwnersBox && styles.obRight]}>
+        {OwnersBox && league}
         <InboxBell />
         <Pressable
           onPress={() => {
             haptics.tap();
             setMenuOpen(true);
           }}
-          style={[styles.avatar, { borderColor: accent }]}
+          style={[styles.avatar, { borderColor: accent }, OwnersBox && styles.obAvatar]}
           accessibilityRole="button"
           accessibilityLabel="Account menu">
-          <Text style={styles.avatarText}>{initials}</Text>
+          <Text style={[styles.avatarText, OwnersBox && styles.obAvatarText]}>{initials}</Text>
         </Pressable>
       </View>
       <AccountMenu
@@ -86,16 +95,16 @@ function InboxBell() {
         router.push('/inbox' as Href);
       }}
       hitSlop={6}
-      style={styles.bell}
+      style={[styles.bell, OwnersBox && styles.obBell]}
       accessibilityRole="button"
       accessibilityLabel={unread ? `Notifications, ${unread} unread` : 'Notifications'}>
-      <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={Colors.text} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Svg width={OwnersBox ? 17 : 22} height={OwnersBox ? 17 : 22} viewBox="0 0 24 24" fill="none" stroke={Colors.text} strokeWidth={OwnersBox ? 1.8 : 2} strokeLinecap="round" strokeLinejoin="round">
         <Path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
         <Path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
       </Svg>
       {unread > 0 && (
-        <View style={styles.bellBadge}>
-          <Text style={styles.bellBadgeText}>{unread > 99 ? '99+' : unread}</Text>
+        <View style={[styles.bellBadge, OwnersBox && styles.obBadge]}>
+          <Text style={[styles.bellBadgeText, OwnersBox && styles.obBadgeText]}>{unread > 99 ? '99+' : unread}</Text>
         </View>
       )}
     </Pressable>
@@ -226,4 +235,13 @@ const styles = StyleSheet.create({
   menuSub: { color: Colors.textSecondary, fontSize: 12 },
   menuChevron: { color: '#5b6372', fontSize: 18 },
   flex: { flex: 1, minWidth: 0 },
+  obRight: { gap: 8, flexShrink: 1 },
+  obLeague: { minHeight: 32, paddingHorizontal: 10, gap: 7, borderColor: OB.rim, backgroundColor: OB.glass },
+  obDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: OB.lamp, shadowColor: OB.lamp, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } },
+  obLeagueName: { fontFamily: Fonts.bodyMedium, fontSize: 12.5, letterSpacing: 0, textTransform: 'none' },
+  obBell: { borderRadius: 17, borderWidth: 1, borderColor: OB.rim, backgroundColor: OB.glass },
+  obBadge: { top: -3, right: -3, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: OB.lamp },
+  obBadgeText: { color: OB.void, fontFamily: Fonts.monoBold, fontSize: 9.5 },
+  obAvatar: { borderWidth: 1.5, borderColor: 'rgba(57,255,20,0.6)', backgroundColor: OB.ink },
+  obAvatarText: { color: OB.void, fontFamily: Fonts.bodyBold },
 });

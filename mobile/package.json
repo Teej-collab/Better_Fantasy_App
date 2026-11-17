@@ -5,6 +5,8 @@
   "dependencies": {
     "@config-plugins/react-native-webrtc": "^15.0.2",
     "@expo-google-fonts/anton": "^0.4.2",
+    "@expo-google-fonts/big-shoulders": "^0.4.1",
+    "@expo-google-fonts/geist": "^0.4.2",
     "@expo-google-fonts/geist-mono": "^0.4.3",
     "@expo-google-fonts/ibm-plex-sans": "^0.4.1",
     "@expo-google-fonts/oswald": "^0.4.2",

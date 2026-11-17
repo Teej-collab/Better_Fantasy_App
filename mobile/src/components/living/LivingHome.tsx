@@ -51,7 +51,8 @@ import {
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { ApiError } from '@/lib/api';
-import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
+import { Eyebrow, OB } from '@/components/ob/Ob';
+import { Colors, Fonts, OwnersBox, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 import {
   dayName,
@@ -528,25 +529,31 @@ export function LivingHome() {
       ref={scrollRef}
       {...tabBarScroll}
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, OwnersBox && styles.obContent]}
       contentInsetAdjustmentBehavior="automatic"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color} />}>
       <TickerStrips nfl={tickerItems} league={leagueTickerItems} fast={live} />
-      <View style={styles.header}>
+      <View style={[styles.header, OwnersBox && styles.obHeader]}>
         <View style={styles.spread}>
-          <View style={styles.kickerRow}>
-            {header.live && <View style={styles.liveDot} />}
-            <Kicker color={header.live ? Colors.live : color}>{header.kicker}</Kicker>
-          </View>
+          {OwnersBox ? (
+            <Eyebrow live={header.live} color={header.live ? OB.mute : OB.lamp}>
+              {header.kicker}
+            </Eyebrow>
+          ) : (
+            <View style={styles.kickerRow}>
+              {header.live && <View style={styles.liveDot} />}
+              <Kicker color={header.live ? Colors.live : color}>{header.kicker}</Kicker>
+            </View>
+          )}
           {header.right ? (
             <Text style={styles.muted}>{header.right}</Text>
           ) : unread > 0 ? (
-            <Pressable onPress={() => router.navigate('/chat')} style={styles.unread} accessibilityRole="button" accessibilityLabel={`${unread} unread chat messages`}>
-              <Text style={styles.unreadText}>{unread > 99 ? '99+' : unread} unread</Text>
+            <Pressable onPress={() => router.navigate('/chat')} style={[styles.unread, OwnersBox && styles.obUnread]} accessibilityRole="button" accessibilityLabel={`${unread} unread chat messages`}>
+              <Text style={[styles.unreadText, OwnersBox && styles.obUnreadText]}>{unread > 99 ? '99+' : unread} unread</Text>
             </Pressable>
           ) : null}
         </View>
-        <Text style={styles.title}>{header.title}</Text>
+        <Text style={[styles.title, OwnersBox && styles.obTitle]}>{OwnersBox ? header.title.toUpperCase() : header.title}</Text>
       </View>
       {last && lastWeek !== null ? (
         <YourWeekCard
@@ -604,4 +611,9 @@ const styles = StyleSheet.create({
   buttonQuietText: { color: Colors.text, fontSize: 14, fontWeight: '600' },
   unread: { backgroundColor: withAlpha(Colors.accent, 0.16), borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
   unreadText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
+  obContent: { gap: 22 },
+  obHeader: { gap: 8, marginTop: 4 },
+  obTitle: { fontFamily: OB.displayBlack, fontSize: 44, lineHeight: 42, letterSpacing: 0.2, paddingTop: 4 },
+  obUnread: { backgroundColor: 'rgba(57,255,20,0.07)', borderWidth: 1, borderColor: 'rgba(57,255,20,0.35)' },
+  obUnreadText: { color: OB.lamp, fontFamily: Fonts.mono, fontWeight: '400', fontSize: 11 },
 });

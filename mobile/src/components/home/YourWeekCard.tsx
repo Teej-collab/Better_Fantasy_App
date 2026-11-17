@@ -4,9 +4,10 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { openTeam } from '@/components/league/LeagueUI';
 import { NeonPanel } from '@/components/NeonPanel';
+import { ObYourWeek } from '@/components/ob/ObYourWeek';
 import { Display, Text } from '@/components/Text';
 import { TeamAvatar } from '@/components/ui';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, OwnersBox, Radius, Spacing } from '@/constants/theme';
 import { seasonalEmblem } from '@/lib/seasonal';
 import type { YourWeek } from '@/lib/types';
 
@@ -17,14 +18,21 @@ import type { YourWeek } from '@/lib/types';
 // `final` (the living home, once a matchup is decided): the card says
 // it's your final and makes the winner unmistakable — a result banner,
 // a green or red ring, a W/L on each score and the loser's score dimmed.
-export function YourWeekCard(props: {
+type YourWeekProps = {
   myWeek: YourWeek;
   isGameDay: boolean;
   leagueName: string | null;
   color: string;
   colors?: string[] | null;
   final?: boolean;
-}) {
+};
+
+export function YourWeekCard(props: YourWeekProps) {
+  if (OwnersBox) return <ObYourWeek myWeek={props.myWeek} isGameDay={props.isGameDay} leagueName={props.leagueName} final={props.final} />;
+  return <YourWeekClassic {...props} />;
+}
+
+function YourWeekClassic(props: YourWeekProps) {
   const { myWeek } = props;
   const m = myWeek.matchup!;
   const isLive = m.started && props.isGameDay && !props.final;

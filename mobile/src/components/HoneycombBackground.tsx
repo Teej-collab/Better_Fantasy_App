@@ -11,7 +11,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
 
-import { Colors } from '@/constants/theme';
+import { Floodlight } from '@/components/ob/Ob';
+import { Colors, OwnersBox } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 
 // The web's CinematicHoneycombBackground: big charcoal hex plates with a
@@ -83,7 +84,12 @@ function Light({ spec, clock, cx, cy, color }: { spec: LightSpec; clock: SharedV
   );
 }
 
+// Owners Box draws a floodlight instead (components/ob/Ob.tsx).
 export function HoneycombBackground() {
+  return OwnersBox ? <Floodlight /> : <HoneycombClassic />;
+}
+
+function HoneycombClassic() {
   const { width, height } = useWindowDimensions();
   const color = useAppearance().honeycomb;
   const lightColors = useAppearance().honeycombColors;

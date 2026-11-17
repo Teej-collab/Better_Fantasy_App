@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
-import { View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { Text } from '@/components/Text';
+import { OwnersBox } from '@/constants/theme';
 import { hasSkia } from '@/lib/skia';
 
 // The app's glows (2026-10-29 glow pass): real light drawn with Skia on
@@ -33,6 +34,9 @@ export function GlowBox({
   style?: StyleProp<ViewStyle>;
   children: ReactNode;
 }) {
+  // Owners Box keeps light for the one thing on a screen that matters
+  // (components/ob/Ob.tsx), so boxes don't glow.
+  if (OwnersBox) return <View style={style}>{children}</View>;
   if (hasSkia) {
     const { GlowBoxSkia } = skia();
     return (
@@ -55,6 +59,7 @@ function ShadowBox({ color, intensity, spread, opacity, style, children }: { col
 
 /** A line drawing (24-unit SVG paths) glowing in `color`. */
 export function GlowIcon({ paths, color, size, width, fallback }: { paths: string[]; color: string; size: number; width: number; fallback: ReactNode }) {
+  if (OwnersBox) return <View>{fallback}</View>;
   if (!hasSkia) return <View style={{ shadowColor: color, shadowOpacity: 0.9, shadowRadius: 4, shadowOffset: { width: 0, height: 0 } }}>{fallback}</View>;
   const { GlowIconSkia } = skia();
   return <GlowIconSkia paths={paths} color={color} size={size} width={width} />;
@@ -63,6 +68,14 @@ export function GlowIcon({ paths, color, size, width, fallback }: { paths: strin
 /** Text glowing in its own letter shapes, colored and sized by the
  *  style's textShadowColor / textShadowRadius. */
 export function GlowText({ style, children, numberOfLines }: { style?: StyleProp<TextStyle>; children: string; numberOfLines?: number }) {
+  if (OwnersBox) {
+    const { textShadowColor: _c, textShadowRadius: _r, textShadowOffset: _o, ...plain } = StyleSheet.flatten(style) ?? {};
+    return (
+      <Text style={plain} numberOfLines={numberOfLines}>
+        {children}
+      </Text>
+    );
+  }
   if (!hasSkia) {
     return (
       <Text style={style} numberOfLines={numberOfLines}>
