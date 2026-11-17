@@ -106,9 +106,12 @@ export function ObLitLayer() {
   );
 }
 
-/** The honeycomb cell, Owners Box style: a box open at the top, its edge
- *  lit. Holds a picture (an owner) or anything else, with an optional
- *  rank or seed on its bottom edge. */
+/** What stands in for a honeycomb cell (option 1 "Numerals"): no box.
+ *  A photo is round, with a green ring when it's yours or lit; a cell
+ *  filled with a light color (a dot, a podium place, a won game) is a round
+ *  chip of that color so its dark text still reads; anything else (a
+ *  number, an avatar) stands on its own. A rank or seed `badge` is a
+ *  numeral under it. */
 export function ObCell({
   width,
   color,
@@ -126,35 +129,49 @@ export function ObCell({
   style?: StyleProp<ViewStyle>;
   children?: ReactNode;
 }) {
-  const r = Math.round(width * 0.24);
-  // Green, or the elite kit's "yours" color (white in Owners Box), lights the box.
   const lit = color === OB.lamp || color === '#39ff14' || color === OB.ink;
-  const solid = fill && fill !== OB.night && !fill.startsWith('#10') && !fill.startsWith('#0');
+  const solid = fill ? isLight(fill) : false;
+  const round = { width, height: width, borderRadius: width / 2 };
   return (
-    <View style={[{ width, height: width }, style]}>
-      <View style={[styles.cell, { borderRadius: r }, lit && styles.cellLit, solid ? { backgroundColor: OB.ink, borderColor: OB.ink, borderTopColor: 'transparent' } : null]}>
-        {image ? <Image source={{ uri: image }} style={[StyleSheet.absoluteFill, { borderRadius: r - 1 }]} resizeMode="cover" /> : null}
-        <View style={[styles.boxLamp, { left: r * 0.5, right: r * 0.5 }, !lit && !solid && styles.cellLampQuiet]} />
-        {image ? null : children}
-      </View>
+    <View style={[{ width, height: width, alignItems: 'center', justifyContent: 'center' }, style]}>
+      {image ? (
+        <Image source={{ uri: image }} style={[round, lit ? styles.ringLit : styles.ring]} resizeMode="cover" />
+      ) : solid ? (
+        <View style={[round, styles.center, { backgroundColor: fill }]}>{children}</View>
+      ) : (
+        <View style={[round, styles.center, lit && !isNumeralChild(children) ? styles.ringLit : null]}>{children}</View>
+      )}
       {badge !== undefined && badge !== null && (
-        <View style={styles.cellBadge}>
-          <Text style={styles.cellBadgeText}>{badge}</Text>
-        </View>
+        <Text style={[styles.cellBadge, lit && styles.numeralMine]} numberOfLines={1}>
+          {badge}
+        </Text>
       )}
     </View>
   );
 }
 
-/** A player in an open box: his headshot over a faint team logo. */
+// A cell holding just a number or a word (not an avatar) stays bare.
+function isNumeralChild(children: ReactNode): boolean {
+  if (typeof children === 'string' || typeof children === 'number') return true;
+  const el = children as { type?: unknown; props?: { children?: unknown } } | null;
+  return !!el && el.type === Text && (typeof el.props?.children === 'string' || typeof el.props?.children === 'number');
+}
+
+function isLight(color: string): boolean {
+  const m = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!m) return false;
+  const n = parseInt(m[1], 16);
+  const l = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+  return l > 0.3;
+}
+
+/** A player, round: his headshot over a faint team logo. Green ring when lit. */
 export function ObPortrait({ width, headshot, logo, color }: { width: number; headshot?: string | null; logo?: string | null; color?: string }) {
-  const r = Math.round(width * 0.24);
-  const lit = color === OB.lamp || color === '#39ff14';
+  const lit = color === OB.lamp || color === '#39ff14' || color === OB.ink;
   return (
-    <View style={[styles.cell, { width, height: width, borderRadius: r, overflow: 'hidden' }, lit && styles.cellLit]}>
+    <View style={[styles.center, { width, height: width, borderRadius: width / 2, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.04)' }, lit ? styles.ringLit : styles.ring]}>
       {logo ? <Image source={{ uri: logo }} style={{ position: 'absolute', width: width * 0.9, height: width * 0.9, opacity: headshot ? 0.18 : 1 }} resizeMode="contain" /> : null}
       {headshot ? <Image source={{ uri: headshot }} style={{ position: 'absolute', bottom: 0, width: width * 1.25, height: width * 0.92 }} resizeMode="contain" /> : null}
-      <View style={[styles.boxLamp, { left: r * 0.5, right: r * 0.5 }, !lit && styles.cellLampQuiet]} />
     </View>
   );
 }
@@ -200,14 +217,15 @@ export function Floodlight({ soft = false }: { soft?: boolean }) {
   );
 }
 
-/** A rank or seed in an open box: the top edge open and lit. Yours is
- *  solid white. */
+/** A rank or seed (review round 2, option 1 "Numerals", 2026-11-17): just
+ *  the number in scoreboard type, no container. Yours glows green;
+ *  everyone else's is quiet white, and `off` (outside the playoffs) dims. */
 export function OpenBox({ n, mine = false, off = false, size = 30 }: { n: string | number; mine?: boolean; off?: boolean; size?: number }) {
-  const r = Math.round(size * 0.22);
   return (
-    <View style={[styles.box, { width: size, height: size, borderRadius: r }, mine && styles.boxMine]}>
-      <View style={[styles.boxLamp, { left: r * 0.5, right: r * 0.5 }, off && styles.boxLampOff]} />
-      <Text style={[styles.boxText, { fontSize: size * 0.54, color: mine ? OB.void : OB.ink }]} numberOfLines={1} adjustsFontSizeToFit>
+    <View style={{ minWidth: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Text
+        style={[styles.numeral, { fontSize: size, lineHeight: Math.round(size * 1.18) }, mine ? styles.numeralMine : off ? { color: OB.dim } : null]}
+        numberOfLines={1}>
         {n}
       </Text>
     </View>
@@ -305,6 +323,47 @@ export function Wordmark({ width = 92, color = OB.ink }: { width?: number; color
   );
 }
 
+/** The center of the tab bar (option C, "The box button"): the open box,
+ *  whose lid lifts and lights the inside when the shortcuts are open. */
+export function BoxButtonIcon({ open, width = 26 }: { open: boolean; width?: number }) {
+  const reduce = useReducedMotion();
+  const t = useSharedValue(open ? 1 : 0);
+  useEffect(() => {
+    t.value = reduce ? (open ? 1 : 0) : withTiming(open ? 1 : 0, { duration: 320, easing: Easing.out(Easing.back(1.6)) });
+  }, [open, reduce, t]);
+  const scale = width / 208;
+  const lid = useAnimatedStyle(() => ({
+    transform: [{ translateX: 6 * scale * t.value }, { translateY: -78 * scale * t.value }, { rotate: `${-10 * t.value}deg` }],
+  }));
+  const glow = useAnimatedStyle(() => ({ opacity: 0.35 + 0.65 * t.value }));
+  const h = width * 1.5;
+  return (
+    <View style={{ width, height: h }}>
+      <Svg width={width} height={h} viewBox="-104 -112 208 312">
+        <Polygon points="-90,42 0,84 0,184 -90,142" fill="#1b2027" stroke="#fff" strokeWidth={11} strokeLinejoin="round" />
+        <Polygon points="0,84 90,42 90,142 0,184" fill="#0e1115" stroke="#fff" strokeWidth={11} strokeLinejoin="round" />
+      </Svg>
+      <Animated.View style={[StyleSheet.absoluteFill, glow]} pointerEvents="none">
+        <Svg width={width} height={h} viewBox="-104 -112 208 312">
+          <Defs>
+            <SvgLinear id="boxhole" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#f2ffe9" />
+              <Stop offset="0.6" stopColor={OB.lamp} />
+              <Stop offset="1" stopColor="#1f9a0a" />
+            </SvgLinear>
+          </Defs>
+          <Polygon points="0,7 76,42 0,77 -76,42" fill="url(#boxhole)" />
+        </Svg>
+      </Animated.View>
+      <Animated.View style={[StyleSheet.absoluteFill, lid]} pointerEvents="none">
+        <Svg width={width} height={h} viewBox="-104 -112 208 312">
+          <Polygon points="0,0 90,42 0,84 -90,42" fill="#1a1e25" stroke="#fff" strokeWidth={11} strokeLinejoin="round" />
+        </Svg>
+      </Animated.View>
+    </View>
+  );
+}
+
 /** The open box itself, lid lifted and light inside. */
 export function Cube({ width = 30 }: { width?: number }) {
   return (
@@ -339,16 +398,12 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.85, transform: [{ scale: 0.985 }] },
   edge: { position: 'absolute', top: 0, height: 1.5, width: '50%' },
   flood: { position: 'absolute', top: -20, left: 0, right: 0, alignItems: 'center' },
-  box: { alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)', borderTopColor: 'transparent' },
-  boxMine: { backgroundColor: OB.ink, borderColor: OB.ink, borderTopColor: 'transparent' },
-  boxLamp: { position: 'absolute', top: -1.5, height: 1.5, backgroundColor: OB.lamp, shadowColor: OB.lamp, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: -2 } },
-  boxLampOff: { backgroundColor: OB.dim, shadowOpacity: 0 },
-  cell: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.035)', borderWidth: 1.5, borderColor: OB.rim2, borderTopColor: 'transparent' },
-  cellLit: { borderColor: 'rgba(57,255,20,0.45)', borderTopColor: 'transparent', backgroundColor: 'rgba(57,255,20,0.06)' },
-  cellLampQuiet: { backgroundColor: 'rgba(255,255,255,0.35)', shadowOpacity: 0 },
-  cellBadge: { position: 'absolute', bottom: -6, alignSelf: 'center', minWidth: 22, paddingHorizontal: 5, borderRadius: 8, backgroundColor: OB.void, borderWidth: 1, borderColor: OB.rim2, alignItems: 'center' },
-  cellBadgeText: { fontFamily: OB.display, fontSize: 12, lineHeight: 16, color: OB.ink },
-  boxText: { fontFamily: OB.display, textAlign: 'center' },
+  numeral: { fontFamily: OB.displayBlack, color: OB.ink2, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  numeralMine: { color: OB.lamp, textShadowColor: 'rgba(57,255,20,0.55)', textShadowRadius: 12 },
+  center: { alignItems: 'center', justifyContent: 'center' },
+  ring: { borderWidth: 1, borderColor: OB.rim2 },
+  ringLit: { borderWidth: 1.5, borderColor: 'rgba(57,255,20,0.7)' },
+  cellBadge: { position: 'absolute', bottom: -14, fontFamily: OB.displayBlack, fontSize: 15, lineHeight: 18, color: OB.ink },
   eyebrow: { fontFamily: Fonts.mono, fontSize: 10.5, letterSpacing: 1.6 },
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   secHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -356,7 +411,6 @@ const styles = StyleSheet.create({
   secRule: { flex: 1, height: 1 },
   secLink: { color: OB.ink2, fontSize: 12.5, fontFamily: Fonts.bodyMedium },
   titleBlock: { gap: 6 },
-  center: { alignItems: 'center' },
   textCenter: { textAlign: 'center' },
   title: { fontFamily: OB.displayBlack, fontSize: 44, lineHeight: 50, color: OB.ink, letterSpacing: 0.2, paddingTop: 4 },
   subtitle: { color: OB.ink2, fontSize: 13.5, lineHeight: 19 },

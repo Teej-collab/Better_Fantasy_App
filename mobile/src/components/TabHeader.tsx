@@ -5,14 +5,14 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
-import { OB, Wordmark } from '@/components/ob/Ob';
+import { LiveDot, OB, Wordmark } from '@/components/ob/Ob';
 import { SettingsIcon, type SettingsIconName } from '@/components/settings/SettingsIcon';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, OwnersBox, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { haptics } from '@/lib/haptics';
-import { useActiveLeagueName, useMe, useMySettings, useMyUsername } from '@/lib/queries';
+import { useActiveLeagueName, useMe, useMySettings, useMyUsername, useMyWeek } from '@/lib/queries';
 
 // The bar across the top of every tab (2026-10 navigation pass): your
 // league on the left — tap for the league picker (switch, join, or
@@ -55,13 +55,35 @@ export function TabHeader() {
     </Pressable>
   );
 
-  // Owners Box (components/ob/Ob.tsx): the wordmark on the left, your
-  // league, the bell and you on the right.
+  // Owners Box (components/ob/Ob.tsx; review round 2, option C): the
+  // wordmark with your league under it (tap to switch), then your live
+  // score, the bell and you.
+  const obBrand = (
+    <Pressable
+      onPress={() => {
+        haptics.tap();
+        router.push('/start');
+      }}
+      style={styles.obBrand}
+      accessibilityRole="button"
+      accessibilityLabel={`${leagueName ?? 'Your league'}. Switch leagues`}>
+      <Wordmark width={88} />
+      <View style={styles.obLeagueLine}>
+        <View style={styles.obDot} />
+        <Text style={styles.obLeagueText} numberOfLines={1}>
+          {(leagueName ?? 'Leagues').toUpperCase()}
+        </Text>
+        <Svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke={OB.mute} strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round">
+          <Path d="M6 9l6 6 6-6" />
+        </Svg>
+      </View>
+    </Pressable>
+  );
   return (
     <View style={[styles.bar, { paddingTop: insets.top + 6 }]}>
-      {OwnersBox ? <Wordmark width={92} /> : league}
+      {OwnersBox ? obBrand : league}
       <View style={[styles.right, OwnersBox && styles.obRight]}>
-        {OwnersBox && league}
+        {OwnersBox && <ScoreChip />}
         <InboxBell />
         <Pressable
           onPress={() => {
@@ -82,6 +104,28 @@ export function TabHeader() {
         isSiteOwner={!!me?.is_site_owner}
       />
     </View>
+  );
+}
+
+// Owners Box: your matchup's live score, up in the header (it opens the
+// matchup). Hidden when there's no matchup this week.
+function ScoreChip() {
+  const m = useMyWeek().data?.matchup ?? null;
+  if (!m || m.my_score === null) return null;
+  const live = m.my_in_play + m.opponent_in_play > 0;
+  return (
+    <Pressable
+      onPress={() => {
+        haptics.tap();
+        router.navigate({ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } });
+      }}
+      style={styles.obScore}
+      accessibilityRole="button"
+      accessibilityLabel={`Your matchup, ${m.my_score.toFixed(1)} to ${(m.opponent_score ?? 0).toFixed(1)}`}>
+      {live && <LiveDot size={6} />}
+      <Text style={styles.obScoreMine}>{m.my_score.toFixed(1)}</Text>
+      <Text style={styles.obScoreThem}>{(m.opponent_score ?? 0).toFixed(1)}</Text>
+    </Pressable>
   );
 }
 
@@ -236,6 +280,12 @@ const styles = StyleSheet.create({
   menuChevron: { color: '#5b6372', fontSize: 18 },
   flex: { flex: 1, minWidth: 0 },
   obRight: { gap: 8, flexShrink: 1 },
+  obBrand: { gap: 3, flexShrink: 1 },
+  obLeagueLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  obLeagueText: { color: OB.mute, fontFamily: Fonts.mono, fontSize: 9.5, letterSpacing: 1.4, flexShrink: 1 },
+  obScore: { height: 32, paddingHorizontal: 11, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(14,18,16,0.92)', borderWidth: 1, borderColor: 'rgba(57,255,20,0.35)' },
+  obScoreMine: { fontFamily: 'BigShoulders_800ExtraBold', fontSize: 17, lineHeight: 21, color: OB.ink, fontVariant: ['tabular-nums'] },
+  obScoreThem: { fontFamily: 'BigShoulders_800ExtraBold', fontSize: 17, lineHeight: 21, color: OB.mute, fontVariant: ['tabular-nums'] },
   obLeague: { minHeight: 32, paddingHorizontal: 10, gap: 7, borderColor: OB.rim, backgroundColor: OB.glass },
   obDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: OB.lamp, shadowColor: OB.lamp, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } },
   obLeagueName: { fontFamily: Fonts.bodyMedium, fontSize: 12.5, letterSpacing: 0, textTransform: 'none' },

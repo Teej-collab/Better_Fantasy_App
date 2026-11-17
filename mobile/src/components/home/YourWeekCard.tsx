@@ -9,7 +9,7 @@ import { Display, Text } from '@/components/Text';
 import { TeamAvatar } from '@/components/ui';
 import { Colors, Fonts, OwnersBox, Radius, Spacing } from '@/constants/theme';
 import { seasonalEmblem } from '@/lib/seasonal';
-import type { YourWeek } from '@/lib/types';
+import type { MatchupContextSide, YourWeek } from '@/lib/types';
 
 // Port of the web's YourWeekCard (frontend/src/components/
 // YourWeekCard.tsx): league emblem and week, both scores with live
@@ -25,10 +25,12 @@ type YourWeekProps = {
   color: string;
   colors?: string[] | null;
   final?: boolean;
+  // Your side of the matchup, for the Owners Box card's final facts and touchdowns.
+  me?: MatchupContextSide | null;
 };
 
 export function YourWeekCard(props: YourWeekProps) {
-  if (OwnersBox) return <ObYourWeek myWeek={props.myWeek} isGameDay={props.isGameDay} leagueName={props.leagueName} final={props.final} />;
+  if (OwnersBox) return <ObYourWeek myWeek={props.myWeek} isGameDay={props.isGameDay} leagueName={props.leagueName} final={props.final} me={props.me} />;
   return <YourWeekClassic {...props} />;
 }
 

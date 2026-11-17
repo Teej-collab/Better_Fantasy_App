@@ -8,7 +8,7 @@ import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EngineIcon, TabIcon, type EngineIconName, type TabIconName } from '@/components/NavIcons';
-import { LiveDot, OB } from '@/components/ob/Ob';
+import { BoxButtonIcon, OB } from '@/components/ob/Ob';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, OwnersBox, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
@@ -58,7 +58,6 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
 
   const [enginesOpen, setEnginesOpen] = useState(false);
   const engines = useEngines();
-  const matchup = useMyWeek().data?.matchup ?? null;
 
   const items = state.routes.map((route, index) => {
     const focused = state.index === index;
@@ -108,41 +107,36 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
         accessibilityRole="button"
         accessibilityLabel={enginesOpen ? 'Close engines' : 'Engines'}
         accessibilityState={{ expanded: enginesOpen }}
-        style={[styles.engineButton, { backgroundColor: enginesOpen ? Colors.text : accent }, OwnersBox && styles.obGrid, OwnersBox && enginesOpen && styles.obGridOpen]}>
+        style={[styles.engineButton, { backgroundColor: enginesOpen ? Colors.text : accent }]}>
         <SymbolView
-          name={enginesOpen ? 'xmark' : OwnersBox ? 'square.grid.3x3' : 'square.grid.2x2.fill'}
-          size={OwnersBox ? 18 : 20}
-          tintColor={OwnersBox ? (enginesOpen ? OB.void : OB.ink2) : Colors.bg}
+          name={enginesOpen ? 'xmark' : 'square.grid.2x2.fill'}
+          size={20}
+          tintColor={Colors.bg}
           fallback={<Text style={{ color: Colors.bg, fontWeight: '800' }}>{enginesOpen ? '×' : '⋯'}</Text>}
         />
       </Pressable>
     </View>
   );
-  // Owners Box: the middle is your live score (it opens Matchup), and the
-  // engines move to a grid button at the end.
-  const scorePill = matchup ? (
-    <Pressable
-      key="score"
-      onPress={() => {
-        haptics.tap();
-        setEnginesOpen(false);
-        router.navigate({ pathname: '/matchup/[id]', params: { id: String(matchup.matchup_id) } });
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={`Your matchup, ${fmtScore(matchup.my_score)} to ${fmtScore(matchup.opponent_score)}`}
-      style={styles.obScore}>
-      {matchup.my_in_play + matchup.opponent_in_play > 0 && <LiveDot size={6} />}
-      <Text style={styles.obScoreMine}>{fmtScore(matchup.my_score)}</Text>
-      <View style={styles.obScoreRule} />
-      <Text style={styles.obScoreThem}>{fmtScore(matchup.opponent_score)}</Text>
-    </Pressable>
-  ) : null;
-  if (OwnersBox && scorePill) {
-    items.splice(teamAt + 1, 0, scorePill);
-    items.push(center);
-  } else {
-    items.splice(teamAt + 1, 0, center);
-  }
+  // Owners Box (review round 2, option C "The box button"): the open box
+  // is the middle button, its lid lifting as the shortcuts rise out of it.
+  // Your live score lives in the header instead (TabHeader).
+  const boxButton = (
+    <View key="engines" style={styles.item}>
+      <Pressable
+        onPress={() => {
+          haptics.tap();
+          setEnginesOpen((open) => !open);
+          setTabBarHidden(false);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={enginesOpen ? 'Close shortcuts' : 'Shortcuts'}
+        accessibilityState={{ expanded: enginesOpen }}
+        style={({ pressed }) => [styles.obBox, enginesOpen && styles.obBoxOpen, pressed && styles.pressed]}>
+        <BoxButtonIcon open={enginesOpen} width={24} />
+      </Pressable>
+    </View>
+  );
+  items.splice(teamAt + 1, 0, OwnersBox ? boxButton : center);
 
   function openEngine(engine: Engine) {
     haptics.tap();
@@ -179,7 +173,8 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
         </Pressable>
       )}
       <Animated.View pointerEvents="box-none" style={[styles.wrap, { bottom }, slide]}>
-        {glass ? (
+        {/* Owners Box draws its own bar: the raised box button can't be clipped by the glass. */}
+        {glass && !OwnersBox ? (
           <GlassView glassEffectStyle="regular" colorScheme="dark" style={styles.bar}>
             {items}
           </GlassView>
@@ -191,30 +186,26 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
   );
 }
 
-function fmtScore(n: number | null): string {
-  return n === null ? '—' : n.toFixed(1);
-}
-
 const styles = StyleSheet.create({
-  obBar: { backgroundColor: 'rgba(18,21,26,0.94)', borderColor: 'rgba(255,255,255,0.09)', borderWidth: 1, shadowOpacity: 0.6, shadowRadius: 20 },
+  obBar: { overflow: 'visible', backgroundColor: 'rgba(18,21,26,0.94)', borderColor: 'rgba(255,255,255,0.09)', borderWidth: 1, shadowOpacity: 0.6, shadowRadius: 20 },
   obOn: { position: 'absolute', top: -4, width: 18, height: 2, borderRadius: 2, backgroundColor: OB.lamp, shadowColor: OB.lamp, shadowOpacity: 1, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
-  obScore: {
-    height: 42,
-    paddingHorizontal: 13,
-    marginHorizontal: 2,
-    borderRadius: 21,
-    flexDirection: 'row',
+  obBox: {
+    width: 60,
+    height: 60,
+    marginTop: -22,
+    borderRadius: 30,
     alignItems: 'center',
-    gap: 7,
-    backgroundColor: 'rgba(57,255,20,0.08)',
+    justifyContent: 'center',
+    paddingTop: 6,
+    backgroundColor: '#10150f',
     borderWidth: 1,
-    borderColor: 'rgba(57,255,20,0.32)',
+    borderColor: 'rgba(57,255,20,0.4)',
+    shadowColor: OB.lamp,
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
   },
-  obScoreMine: { fontFamily: 'BigShoulders_800ExtraBold', fontSize: 19, color: OB.ink, fontVariant: ['tabular-nums'] },
-  obScoreThem: { fontFamily: 'BigShoulders_800ExtraBold', fontSize: 19, color: OB.mute, fontVariant: ['tabular-nums'] },
-  obScoreRule: { width: 1, height: 15, backgroundColor: 'rgba(255,255,255,0.18)' },
-  obGrid: { backgroundColor: 'transparent', width: 40 },
-  obGridOpen: { backgroundColor: OB.ink },
+  obBoxOpen: { borderColor: OB.lamp, shadowOpacity: 0.6 },
   obSheet: { backgroundColor: '#13161b', borderColor: OB.rim2 },
   obSheetTitle: { color: OB.lamp, fontFamily: Fonts.mono, letterSpacing: 1.6 },
   obTile: { backgroundColor: OB.glass, borderColor: OB.rim },
