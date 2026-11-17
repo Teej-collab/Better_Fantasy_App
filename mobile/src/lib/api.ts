@@ -502,7 +502,10 @@ export const api = {
       `/nfl/games/${encodeURIComponent(gameId)}/plays/${encodeURIComponent(playId)}/fantasy`,
     ),
   schedule: (season: number) => request<SeasonSchedule>(`/seasons/${season}/schedule`),
-  standings: (season: number) => request<{ standings: StandingsRow[] }>(`/seasons/${season}/standings`),
+  standings: (season: number) =>
+    request<{ standings: StandingsRow[]; playoff_team_count?: number | null; clinch?: { marks: Record<string, string[]>; byes: number; playoff_team_count: number | null } }>(
+      `/seasons/${season}/standings`,
+    ),
   matchupContext: (season: number, week: number) =>
     request<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`),
   matchup: (matchupId: number) => request<WeekMatchupContextItem>(`/matchups/${matchupId}`),

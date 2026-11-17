@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -9,6 +10,7 @@ import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { isStarter } from '@/lib/livingHome';
+import { useOwnerPhotos } from '@/lib/queries';
 import type { MatchupContextSide, YourWeek } from '@/lib/types';
 
 // The Your Week card in the Owners Box look (approved 2026-11-17, review
@@ -18,8 +20,10 @@ import type { MatchupContextSide, YourWeek } from '@/lib/types';
 // touchdowns. Final: the points split and how it was won (MVP, points
 // left on the bench, how far off the projection). `me` is your side of
 // the matchup, for those facts; without it the card just leaves them out.
-export function ObYourWeek(props: { myWeek: YourWeek; isGameDay: boolean; leagueName: string | null; final?: boolean; me?: MatchupContextSide | null }) {
-  const { myWeek, me } = props;
+export function ObYourWeek(props: { myWeek: YourWeek; isGameDay: boolean; leagueName: string | null; final?: boolean; me?: MatchupContextSide | null; them?: MatchupContextSide | null }) {
+  const { myWeek, me, them } = props;
+  // Each side's profile picture, else initials.
+  const photos = useOwnerPhotos();
   const m = myWeek.matchup!;
   const live = m.started && props.isGameDay && !props.final;
   const mine = m.my_score ?? 0;
@@ -60,12 +64,14 @@ export function ObYourWeek(props: { myWeek: YourWeek; isGameDay: boolean; league
         style={({ pressed }) => [styles.tap, pressed && styles.pressed]}>
         <View style={styles.teams}>
           <Team
+            photo={me ? photos.get(me.owner_id) : undefined}
             initials={initialsOf(m.my_owner_name ?? myWeek.team_name)}
             name={myWeek.team_name}
             meta={live ? `${m.my_yet_to_play} left · ${m.my_in_play} playing` : [m.record, myWeek.power_rank ? `#${myWeek.power_rank}` : null, m.my_result_streak].filter(Boolean).join(' · ')}
             mine
           />
           <Team
+            photo={them ? photos.get(them.owner_id) : undefined}
             initials={initialsOf(m.opponent_owner_name ?? m.opponent_team_name)}
             name={m.opponent_team_name}
             meta={live ? `${m.opponent_yet_to_play} left · ${m.opponent_in_play} playing` : [m.opponent_record, m.opponent_power_rank ? `#${m.opponent_power_rank}` : null, m.opponent_result_streak].filter(Boolean).join(' · ')}
@@ -179,11 +185,15 @@ function initialsOf(name: string): string {
     .join('');
 }
 
-function Team({ initials, name, meta, mine, right }: { initials: string; name: string; meta: string; mine?: boolean; right?: boolean }) {
+function Team({ photo, initials, name, meta, mine, right }: { photo?: string; initials: string; name: string; meta: string; mine?: boolean; right?: boolean }) {
   return (
     <View style={[styles.team, right && styles.teamRight]}>
       <View style={[styles.avatar, mine && styles.avatarMine]}>
-        <Text style={[styles.avatarText, mine && { color: OB.void }]}>{initials}</Text>
+        {photo ? (
+          <Image source={{ uri: photo }} style={styles.avatarPhoto} contentFit="cover" accessible={false} />
+        ) : (
+          <Text style={[styles.avatarText, mine && { color: OB.void }]}>{initials}</Text>
+        )}
       </View>
       <View style={[styles.teamText, right && styles.alignRight]}>
         <Text style={styles.teamName} numberOfLines={1}>
@@ -267,7 +277,8 @@ const styles = StyleSheet.create({
   alignRight: { alignItems: 'flex-end' },
   teamName: { color: OB.ink, fontFamily: Fonts.bodySemiBold, fontSize: 13 },
   meta: { color: OB.mute, fontFamily: Fonts.mono, fontSize: 10.5, marginTop: 2 },
-  avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1d2128', borderWidth: 1, borderColor: OB.rim2 },
+  avatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1d2128', borderWidth: 1, borderColor: OB.rim2, overflow: 'hidden' },
+  avatarPhoto: { width: '100%', height: '100%' },
   avatarMine: { backgroundColor: OB.ink, borderWidth: 1.5, borderColor: 'rgba(57,255,20,0.6)' },
   avatarText: { color: OB.ink, fontFamily: Fonts.bodyBold, fontSize: 11.5 },
   scores: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 },

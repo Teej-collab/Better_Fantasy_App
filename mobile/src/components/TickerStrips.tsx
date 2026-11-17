@@ -33,19 +33,20 @@ export function TickerStrips({
     <View style={framed ? [styles.frame, fast && styles.frameLive, OwnersBox && styles.obFrame] : undefined}>
       {nfl.length > 0 && <Strip label="NFL" labelColor={OwnersBox ? OB.mute : '#9aa3b2'} tint={OwnersBox ? 'transparent' : 'rgba(255,255,255,0.03)'} items={nfl} fast={fast} interactive={interactive} />}
       {league.length > 0 && (
-        <Strip label="LEAGUE" labelColor={OwnersBox ? OB.lamp : accent} tint={OwnersBox ? 'transparent' : 'rgba(57,255,20,0.04)'} items={league} fast={leagueFast} interactive={interactive} divided={nfl.length > 0} />
+        <Strip label="LEAGUE" labelColor={OwnersBox ? OB.lamp : accent} tint={OwnersBox ? 'transparent' : 'rgba(57,255,20,0.04)'} items={league} fast={leagueFast} interactive={interactive} divided={nfl.length > 0} reverse={OwnersBox} />
       )}
     </View>
   );
 }
 
-function Strip(props: { label: string; labelColor: string; tint: string; items: TickerItem[]; fast: boolean; interactive: boolean; divided?: boolean }) {
+// Owners Box: the NFL strip runs left and the league strip right.
+function Strip(props: { label: string; labelColor: string; tint: string; items: TickerItem[]; fast: boolean; interactive: boolean; divided?: boolean; reverse?: boolean }) {
   return (
     <View style={[styles.strip, { backgroundColor: props.tint }, props.divided && styles.divided]}>
       <Text style={[styles.label, OwnersBox && styles.obLabel, { color: props.labelColor }]} maxFontSizeMultiplier={1}>
         {props.label}
       </Text>
-      <LiveTicker items={props.items} fast={props.fast} interactive={props.interactive} bare />
+      <LiveTicker items={props.items} fast={props.fast} interactive={props.interactive} bare reverse={props.reverse} />
     </View>
   );
 }

@@ -28,7 +28,7 @@ import { ShareButton } from '@/components/ShareSheet';
 import { Text } from '@/components/Text';
 import { LoadingState, TeamAvatar } from '@/components/ui';
 import { OpenBox } from '@/components/ob/Ob';
-import { Colors, OwnersBox, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, OwnersBox, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { haptics } from '@/lib/haptics';
@@ -41,7 +41,7 @@ import {
   useLeagueChanges,
   useMatchupContext,
   useMe,
-  useOwners,
+  useOwnerPhotos,
   usePlayoffOdds,
   usePolls,
   usePowerRankingsTrend,
@@ -68,13 +68,6 @@ function useMyTeamId(season: number | null): number | null {
   const teams = useSeasonTeams(season).data ?? [];
   if (me?.owner_id == null) return null;
   return teams.find((t) => t.owner_id === me.owner_id)?.team_id ?? null;
-}
-
-// Each owner's profile picture (Settings > Team Logo, per league), so
-// the cells show faces instead of initials (2026-10-31).
-function useOwnerPhotos(): Map<number, string> {
-  const owners = useOwners().data ?? [];
-  return new Map(owners.filter((o) => o.logo_url).map((o) => [o.owner_id, o.logo_url!]));
 }
 
 // ---- League (overview): The Hive ----
@@ -288,7 +281,7 @@ export function StandingsSection({ season, initialView, whatIf }: { season: numb
 
 function StandingsTable(props: {
   season: number | null;
-  data: { standings: StandingsRow[]; playoff_team_count?: number | null } | undefined;
+  data: { standings: StandingsRow[]; playoff_team_count?: number | null; clinch?: ClinchMarks } | undefined;
   loading: boolean;
 }) {
   const me = useMe().data;
@@ -304,6 +297,8 @@ function StandingsTable(props: {
   if (props.loading) return <LoadingState />;
   const standings = props.data?.standings ?? [];
   const playoffCount = props.data?.playoff_team_count ?? null;
+  const clinchMarks = props.data?.clinch?.marks ?? {};
+  const usedMarks = new Set(Object.values(clinchMarks).map(topMark));
   const isFinal = standings.length > 0 && standings[0].final_rank !== null;
   const showPlayoffLine = !isFinal && playoffCount !== null && playoffCount > 0 && playoffCount < standings.length;
   const toiletBowl = 4;
@@ -369,14 +364,18 @@ function StandingsTable(props: {
                 })()}
                 <View style={styles.flex}>
                   <PreviewLink href={{ pathname: '/team/[id]', params: { id: String(row.team_id) } }} style={styles.nameWithBadge}>
+                    <ClinchMark marks={clinchMarks[String(row.team_id)]} />
                     <Text style={eliteText.name}>{row.team_name}</Text>
                     <RankBadge rank={rankByTeam.get(row.team_id)} />
                   </PreviewLink>
                   {row.eliminated_week != null && <Pill text={`🪓 Cut Wk ${row.eliminated_week}`} color="#f87171" bg="rgba(239,68,68,0.15)" />}
                   {champion && <Pill text="🏆 Champion" color="#fcd34d" bg="rgba(251,191,36,0.2)" />}
                   {loser && <Pill text="💩 League Loser" color="#d9b98a" bg="rgba(139,90,43,0.3)" />}
+                  {/* Each stat keeps its label and number together (non-breaking
+                      spaces): a long name wraps whole stats to the next line,
+                      never "PA" away from its number (2026-11-17). */}
                   <Text style={eliteText.small} numberOfLines={2}>
-                    {row.owner_name} · {games ? (Number(row.points_for) / games).toFixed(1) : '—'} PPG · PF {Number(row.points_for).toFixed(1)} · PA{' '}
+                    {row.owner_name} · {games ? (Number(row.points_for) / games).toFixed(1) : '—'}{'\u00A0'}PPG · PF{'\u00A0'}{Number(row.points_for).toFixed(1)} · PA{'\u00A0'}
                     {Number(row.points_against).toFixed(1)}
                   </Text>
                 </View>
@@ -399,6 +398,43 @@ function StandingsTable(props: {
           );
         })}
       </EliteCard>
+      {usedMarks.size > 0 && <ClinchLegend marks={usedMarks} />}
+    </View>
+  );
+}
+
+// Clinch marks (2026-11-17, every Look): set by the server only once
+// they're mathematically certain (backend app/domain/clinch.py). A team
+// shows its strongest one.
+type ClinchMarks = { marks: Record<string, string[]>; byes: number; playoff_team_count: number | null };
+
+const MARK_ORDER = ['*', 'z', 'x', 'e'];
+const MARK_LABELS: Record<string, string> = { x: 'Clinched playoffs', z: 'Clinched a bye', '*': 'Clinched the 1 seed', e: 'Eliminated' };
+
+function topMark(marks: string[]): string {
+  return MARK_ORDER.find((m) => marks.includes(m)) ?? marks[0];
+}
+
+function ClinchMark({ marks }: { marks: string[] | undefined }) {
+  if (!marks || marks.length === 0) return null;
+  const mark = topMark(marks);
+  const out = mark === 'e';
+  return (
+    <View style={[styles.clinch, out && styles.clinchOut]} accessible accessibilityLabel={MARK_LABELS[mark]}>
+      <Text style={[styles.clinchText, out && styles.clinchTextOut]}>{mark}</Text>
+    </View>
+  );
+}
+
+function ClinchLegend({ marks }: { marks: Set<string> }) {
+  return (
+    <View style={styles.clinchLegend}>
+      {MARK_ORDER.filter((m) => marks.has(m)).map((m) => (
+        <View key={m} style={styles.clinchLegendItem}>
+          <ClinchMark marks={[m]} />
+          <Text style={eliteText.small}>{MARK_LABELS[m]}</Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -1234,6 +1270,12 @@ function CommishChanges() {
 }
 
 const styles = StyleSheet.create({
+  clinch: { minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(57,255,20,0.14)', borderWidth: 1, borderColor: 'rgba(57,255,20,0.45)' },
+  clinchOut: { backgroundColor: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.45)' },
+  clinchText: { color: '#39ff14', fontFamily: Fonts.monoBold, fontSize: 11, lineHeight: 14 },
+  clinchTextOut: { color: '#f87171' },
+  clinchLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 4 },
+  clinchLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   obSeedCell: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   gap: { gap: Spacing.lg },
   gapSm: { gap: Spacing.sm },

@@ -18,10 +18,13 @@ carry no league-private information (no team/owner/score/roster data),
 so gating them would just add friction to genuinely non-sensitive
 lookups without closing any real exposure.
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth.league_context import optional_session_payload, require_league_access, resolve_active_league_id
 from app.db import get_pool
+from app.domain import clinch as clinch_domain
 from app.domain import league_activity as league_activity_domain
 from app.domain.headshots import headshot_url
 from app.domain.league_ticker import get_week_ticker_data
@@ -35,6 +38,8 @@ from app.domain import win_prob_history
 from app.domain.nfl_schedule import schedule_lookup_by_pro_team
 from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries import league as queries
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["league"])
 
@@ -70,7 +75,14 @@ async def standings(season: int, league_id: int = Depends(require_league_access)
     async with pool.acquire() as conn:
         rows = await queries.get_standings(conn, season, league_id)
         playoff_team_count = await queries.get_playoff_team_count(conn, season, league_id)
-    return {"standings": [dict(r) for r in rows], "playoff_team_count": playoff_team_count}
+        # x / z / * / e, only once mathematically certain (app/domain/
+        # clinch.py). Best-effort: standings never fail because of them.
+        try:
+            clinch = await clinch_domain.get_clinch_marks(conn, season, league_id)
+        except Exception:
+            logger.warning("Clinch marks failed (season %s, league %s)", season, league_id, exc_info=True)
+            clinch = {"marks": {}, "byes": 0, "playoff_team_count": None}
+    return {"standings": [dict(r) for r in rows], "playoff_team_count": playoff_team_count, "clinch": clinch}
 
 
 @router.get("/seasons/{season}/activity")

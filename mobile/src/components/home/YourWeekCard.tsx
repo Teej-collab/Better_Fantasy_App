@@ -27,10 +27,11 @@ type YourWeekProps = {
   final?: boolean;
   // Your side of the matchup, for the Owners Box card's final facts and touchdowns.
   me?: MatchupContextSide | null;
+  them?: MatchupContextSide | null;
 };
 
 export function YourWeekCard(props: YourWeekProps) {
-  if (OwnersBox) return <ObYourWeek myWeek={props.myWeek} isGameDay={props.isGameDay} leagueName={props.leagueName} final={props.final} me={props.me} />;
+  if (OwnersBox) return <ObYourWeek myWeek={props.myWeek} isGameDay={props.isGameDay} leagueName={props.leagueName} final={props.final} me={props.me} them={props.them} />;
   return <YourWeekClassic {...props} />;
 }
 

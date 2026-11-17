@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
@@ -12,7 +13,7 @@ import { Colors, Fonts, OwnersBox, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { haptics } from '@/lib/haptics';
-import { useActiveLeagueName, useMe, useMySettings, useMyUsername, useMyWeek } from '@/lib/queries';
+import { useActiveLeagueName, useMe, useMySettings, useMyUsername, useMyWeek, useOwnerPhotos } from '@/lib/queries';
 
 // The bar across the top of every tab (2026-10 navigation pass): your
 // league on the left — tap for the league picker (switch, join, or
@@ -27,6 +28,9 @@ export function TabHeader() {
   const me = useMe().data;
   const leagueName = useActiveLeagueName().data;
   const [menuOpen, setMenuOpen] = useState(false);
+  // Your profile picture (Settings > Team Logo), else your initials.
+  const photos = useOwnerPhotos();
+  const photo = me?.owner_id != null ? photos.get(me.owner_id) : undefined;
   const initials = (me?.display_name ?? '?')
     .split(/\s+/)
     .slice(0, 2)
@@ -93,7 +97,11 @@ export function TabHeader() {
           style={[styles.avatar, { borderColor: accent }, OwnersBox && styles.obAvatar]}
           accessibilityRole="button"
           accessibilityLabel="Account menu">
-          <Text style={[styles.avatarText, OwnersBox && styles.obAvatarText]}>{initials}</Text>
+          {photo ? (
+            <Image source={{ uri: photo }} style={styles.avatarPhoto} contentFit="cover" accessible={false} />
+          ) : (
+            <Text style={[styles.avatarText, OwnersBox && styles.obAvatarText]}>{initials}</Text>
+          )}
         </Pressable>
       </View>
       <AccountMenu
@@ -262,8 +270,9 @@ const styles = StyleSheet.create({
   bell: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   bellBadge: { position: 'absolute', top: 0, right: -4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: '#ff3b5c', alignItems: 'center', justifyContent: 'center' },
   bellBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  avatar: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(18,21,29,0.9)' },
+  avatar: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(18,21,29,0.9)', overflow: 'hidden' },
   avatarText: { color: Colors.text, fontSize: 12, fontWeight: '800' },
+  avatarPhoto: { width: '100%', height: '100%', borderRadius: 17 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'flex-end', paddingHorizontal: Spacing.lg },
   menu: { width: 300, maxWidth: '100%', borderRadius: 22, backgroundColor: '#12151d', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', overflow: 'hidden' },
   menuHead: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },

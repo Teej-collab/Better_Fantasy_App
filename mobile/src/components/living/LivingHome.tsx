@@ -564,6 +564,7 @@ export function LivingHome() {
           colors={appearance.yourWeekColors}
           final
           me={last.me}
+          them={last.them}
         />
       ) : m ? (
         <YourWeekCard
@@ -574,6 +575,7 @@ export function LivingHome() {
           colors={appearance.yourWeekColors}
           final={phase === 'final'}
           me={mine?.me ?? null}
+          them={mine?.them ?? null}
         />
       ) : (
         <Panel>

@@ -648,6 +648,13 @@ export function useOwners() {
   return useQuery({ queryKey: ['owners'], queryFn: async () => (await api.owners()).owners });
 }
 
+// Each owner's profile picture (Settings > Team Logo, per league), by
+// owner id: the faces on Standings, the header and the Your Week card.
+export function useOwnerPhotos(): Map<number, string> {
+  const owners = useOwners().data ?? [];
+  return new Map(owners.filter((o) => o.logo_url).map((o) => [o.owner_id, o.logo_url!]));
+}
+
 export function useCareerProfile(ownerId: number) {
   return useQuery({ queryKey: ['career', ownerId], queryFn: () => api.careerProfile(ownerId) });
 }

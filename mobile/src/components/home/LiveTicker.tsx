@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Text } from '@/components/Text';
-import { Colors, Radius, withAlpha } from '@/constants/theme';
+import { Colors, OwnersBox, Radius, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { useGamecastIdFinder } from '@/lib/queries';
 import { useScreenFocused } from '@/lib/screenFocus';
@@ -42,11 +42,14 @@ export function LiveTicker({
   fast = false,
   interactive = true,
   bare = false,
+  reverse = false,
 }: {
   items: TickerItem[];
   fast?: boolean;
   interactive?: boolean;
   bare?: boolean;
+  /** Scroll to the right instead (the Owners Box league strip). */
+  reverse?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
   const findGamecastId = useGamecastIdFinder();
@@ -60,7 +63,8 @@ export function LiveTicker({
   // A flick's leftover speed (points/second), slowing to a stop.
   const velocity = useSharedValue(0);
   const panStart = useSharedValue(0);
-  const speed = fast ? FAST_SPEED : SPEED;
+  // Owners Box runs its strips slower, so they can be read (2026-11-17).
+  const speed = (fast ? FAST_SPEED : SPEED) * (OwnersBox ? 0.6 : 1) * (reverse ? -1 : 1);
 
   // Wraps x into (-2·p, -p]: identical content, so the jump can't be seen.
   function wrap(x: number, p: number) {
