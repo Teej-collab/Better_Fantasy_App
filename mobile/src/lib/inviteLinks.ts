@@ -38,6 +38,9 @@ export function appPathForLink(url: string): string {
     const code = query('c');
     return code ? `/connect-tv?code=${code}` : '/connect-tv';
   }
+  // A shared card (2026-11-17): app/s/[token].tsx opens what it shows.
+  const shared = path.match(/^\/s\/([A-Za-z0-9_-]{4,40})(?:[/?#]|$)/);
+  if (shared) return `/s/${shared[1]}`;
   // A Lounge room.
   const lounge = path.match(/^\/lounge\/([^/?#]+)/);
   if (lounge) return `/lounge-room/${lounge[1]}`;

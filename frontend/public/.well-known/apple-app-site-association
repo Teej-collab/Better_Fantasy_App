@@ -3,17 +3,47 @@
     "apps": [],
     "details": [
       {
-        "appIDs": ["5K8V6776KS.com.weekendleague.native"],
+        "appIDs": [
+          "5K8V6776KS.com.weekendleague.native"
+        ],
         "components": [
-          { "/": "/start", "?": { "join": "?*" }, "comment": "League invite" },
-          { "/": "/join-co-owner", "?": { "code": "?*" }, "comment": "Co-owner invite" },
-          { "/": "/lounge/*", "comment": "Lounge room" },
-          { "/": "/tv", "comment": "Connect a TV (the TV's QR code)" }
+          {
+            "/": "/start",
+            "?": {
+              "join": "?*"
+            },
+            "comment": "League invite"
+          },
+          {
+            "/": "/join-co-owner",
+            "?": {
+              "code": "?*"
+            },
+            "comment": "Co-owner invite"
+          },
+          {
+            "/": "/s/*",
+            "comment": "A shared card"
+          },
+          {
+            "/": "/lounge/*",
+            "comment": "Lounge room"
+          },
+          {
+            "/": "/tv",
+            "comment": "Connect a TV (the TV's QR code)"
+          }
         ]
       },
       {
         "appID": "5K8V6776KS.com.weekendleague.native",
-        "paths": ["/start", "/join-co-owner", "/lounge/*", "/tv"]
+        "paths": [
+          "/start",
+          "/join-co-owner",
+          "/s/*",
+          "/lounge/*",
+          "/tv"
+        ]
       }
     ]
   }

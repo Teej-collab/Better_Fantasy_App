@@ -422,6 +422,11 @@ export const api = {
   // Posts a message to the active league's chat (sharing a What-If).
   // A public link to a designed share card (components/ShareSheet.tsx).
   createShareLink: (ref: ShareRef) => request<{ token: string }>('/share', { method: 'POST', body: JSON.stringify(ref) }),
+  // Public: what a share link shows and what it points at (app/s/[token].tsx).
+  sharedCard: (token: string) =>
+    request<{ kind: string; league_name: string; league_id: number; ref: Record<string, string | number>; card: { invite_code?: string } }>(
+      `/share/${encodeURIComponent(token)}`,
+    ),
   shareToLeagueChat: (body: string) =>
     request<{ conversation_id: number; message_id: number }>('/chat/league/share', { method: 'POST', body: JSON.stringify({ body }) }),
   // "If the season ended today"; null once a real bracket exists.

@@ -39,7 +39,44 @@
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
       "package": "com.weekendleague.mobile",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "weekend-league-web.vercel.app",
+              "pathPrefix": "/s/"
+            },
+            {
+              "scheme": "https",
+              "host": "weekend-league-web.vercel.app",
+              "pathPrefix": "/start"
+            },
+            {
+              "scheme": "https",
+              "host": "weekend-league-web.vercel.app",
+              "pathPrefix": "/join-co-owner"
+            },
+            {
+              "scheme": "https",
+              "host": "weekend-league-web.vercel.app",
+              "pathPrefix": "/lounge/"
+            },
+            {
+              "scheme": "https",
+              "host": "weekend-league-web.vercel.app",
+              "pathPrefix": "/tv"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "plugins": [
       "expo-router",

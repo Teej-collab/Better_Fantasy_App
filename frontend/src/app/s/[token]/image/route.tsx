@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ImageResponse } from "next/og";
+import { LINK_FONT, LinkCard } from "@/components/share/LinkCard";
 import { ShareImage, type ShareAssets } from "@/components/share/ShareImage";
 import { FORMAT_SIZE, getShareCard, type ShareFormat } from "@/lib/share";
 
@@ -20,6 +21,13 @@ function loadFonts() {
     readFile(path.join(DIR, "Inter-Bold.ttf")).then((data) => ({ name: "Inter", data, weight: 700 as const, style: "normal" as const })),
   ]);
   return fonts;
+}
+
+// The link preview's scoreboard type (components/share/LinkCard.tsx).
+let linkFont: Promise<Buffer> | null = null;
+function loadLinkFont() {
+  linkFont ??= readFile(path.join(process.cwd(), "public/fonts/BigShoulders_900Black.ttf"));
+  return linkFont;
 }
 
 function loadEmblem() {
@@ -63,6 +71,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   const [fontData, emblemSrc, shots] = await Promise.all([loadFonts(), loadEmblem(), Promise.all(headshotUrls.map(inline))]);
   const host = new URL(request.url).host.replace(/^www\./, "");
   const assets: ShareAssets = { emblem: emblemSrc, headshots: Object.fromEntries(headshotUrls.map((u, i) => [u, shots[i]])), address: `${host}/s/${token}` };
+
+  // The link preview (what Messages and the like show) is the invite-
+  // card style for every kind (2026-11-17); post and story keep theirs.
+  if (fmt === "wide") {
+    const big = await loadLinkFont();
+    return new ImageResponse(<LinkCard data={data} photos={assets.headshots} />, {
+      ...FORMAT_SIZE.wide,
+      fonts: [...fontData, { name: LINK_FONT, data: big, weight: 400 as const, style: "normal" as const }],
+      headers: { "Cache-Control": "public, max-age=60, s-maxage=60" },
+    });
+  }
 
   return new ImageResponse(<ShareImage data={data} fmt={fmt} assets={assets} />, {
     ...FORMAT_SIZE[fmt],

@@ -101,7 +101,11 @@ async def read_share_link(token: str, pool=Depends(get_pool)):
         )
         if link is None:
             raise HTTPException(status_code=404, detail="That link doesn't go anywhere.")
-        card = await share_cards.BUILDERS[link["kind"]](conn, link["league_id"], json.loads(link["ref"]) if isinstance(link["ref"], str) else link["ref"])
+        ref = json.loads(link["ref"]) if isinstance(link["ref"], str) else link["ref"]
+        card = await share_cards.BUILDERS[link["kind"]](conn, link["league_id"], ref)
     if card is None:
         raise HTTPException(status_code=404, detail="Nothing to show here yet.")
-    return {"kind": link["kind"], "league_name": link["league_name"], "card": card}
+    # league_id and ref (2026-11-17): the app opens a shared link straight
+    # to the thing itself (mobile app/s/[token].tsx). Only ids, nothing
+    # the card doesn't already show.
+    return {"kind": link["kind"], "league_name": link["league_name"], "card": card, "league_id": link["league_id"], "ref": ref}

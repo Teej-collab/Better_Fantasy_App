@@ -17,10 +17,13 @@ import { haptics } from '@/lib/haptics';
 type Format = 'post' | 'story' | 'link';
 
 const SITE = WEB_BASE_URL || 'https://weekend-league-web.vercel.app';
+// The link card first (2026-11-17): one line of text and one link that
+// unfurls into the card, and opens the app for anyone who has it. Post
+// and Story still send the picture itself, for socials.
 const FORMATS: { key: Format; label: string; ratio: number }[] = [
+  { key: 'link', label: 'Card', ratio: 1200 / 630 },
   { key: 'post', label: 'Post', ratio: 1080 / 1350 },
   { key: 'story', label: 'Story', ratio: 1080 / 1920 },
-  { key: 'link', label: 'Link', ratio: 1200 / 630 },
 ];
 
 // The share overhaul (2026-11-10): a designed card, drawn by the web
@@ -59,7 +62,7 @@ function Icon({ d }: { d: string }) {
 function ShareSheet({ shareRef, title, onClose }: { shareRef: ShareRef; title: string; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const [token, setToken] = useState<string | null>(null);
-  const [format, setFormat] = useState<Format>('post');
+  const [format, setFormat] = useState<Format>('link');
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +104,8 @@ function ShareSheet({ shareRef, title, onClose }: { shareRef: ShareRef; title: s
   async function shareOut() {
     if (!link || !imageUrl) return;
     if (format === 'link') {
-      await Share.share(Platform.OS === 'ios' ? { url: link } : { message: link });
+      // iOS: the link as its own item, so Messages shows the card under the text.
+      await Share.share(Platform.OS === 'ios' ? { message: title, url: link } : { message: `${title}\n${link}` });
       return;
     }
     let file: string | null = null;
@@ -148,7 +152,7 @@ function ShareSheet({ shareRef, title, onClose }: { shareRef: ShareRef; title: s
               ? 'Sends the picture, sized for group chats.'
               : format === 'story'
                 ? 'Sends the picture, full screen for stories.'
-                : 'Sends the link. It opens as this card, and anyone can tap through, no sign-in needed.'}
+                : 'Sends one line and this card. Anyone with the app opens it right there; anyone else sees it on the web.'}
           </Text>
 
           {error && <Text style={styles.error}>{error}</Text>}
