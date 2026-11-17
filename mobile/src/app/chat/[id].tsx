@@ -16,7 +16,7 @@ import { SharedBetCard } from '@/components/bets/SharedBetCard';
 import { GifPicker } from '@/components/chat/GifPicker';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
-import { Colors, inkOn, Radius, Spacing, withAlpha } from '@/constants/theme';
+import { Colors, inkOn, OwnersBox, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { trackTap } from '@/lib/analytics';
 import { api, postChatVideo, uploadChatImage, WEB_BASE_URL, type ReportReason } from '@/lib/api';
 import { conversationTitle, formatMessageTime } from '@/lib/chatFormat';
@@ -991,7 +991,9 @@ function ReceiptsLine({ messageId, mine }: { messageId: number; mine: boolean })
 }
 
 // Text on your own bubbles, which are your accent color.
-const MINE_INK = inkOn(Colors.accent);
+// Owners Box: your bubbles are white, theirs smoked glass.
+const MINE_BG = OwnersBox ? '#f2f3ee' : Colors.accent;
+const MINE_INK = inkOn(MINE_BG);
 
 const styles = StyleSheet.create({
   infoButton: { color: Colors.accent, fontSize: 22, fontWeight: '600', paddingHorizontal: 4 },
@@ -1012,9 +1014,11 @@ const styles = StyleSheet.create({
   alignStart: { alignSelf: 'flex-start' },
   alignEnd: { alignSelf: 'flex-end' },
   sender: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 2, marginLeft: Spacing.sm },
-  bubble: { borderRadius: Radius.lg, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
-  bubbleMine: { backgroundColor: Colors.accent },
-  bubbleTheirs: { backgroundColor: Colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border },
+  bubble: { borderRadius: OwnersBox ? 18 : Radius.lg, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  bubbleMine: { backgroundColor: MINE_BG },
+  bubbleTheirs: OwnersBox
+    ? { backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.075)' }
+    : { backgroundColor: Colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border },
   bubbleMentionsMe: { borderWidth: 1.5, borderColor: Colors.accent },
   mention: { color: Colors.accent, fontWeight: '800' },
   mentionMine: { color: MINE_INK, textDecorationLine: 'underline' },

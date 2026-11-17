@@ -189,7 +189,7 @@ async def test_put_preferences_accepts_the_new_looks(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 43)
     async with _client() as client:
         client.cookies.update(await _session_cookie(pool, owner_id))
-        for look in ("midnight", "graphite", "ember", "gridiron"):
+        for look in ("midnight", "graphite", "ember", "gridiron", "ownersbox"):
             resp = await client.put("/settings/preferences", json={"theme": look})
             assert resp.status_code == 200
             assert resp.json()["theme"] == look

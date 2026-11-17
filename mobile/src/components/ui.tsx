@@ -4,8 +4,9 @@ import { Pressable, StyleSheet, View, type DimensionValue, type StyleProp, type 
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
 import { NeonPanel } from '@/components/NeonPanel';
+import { SectionHead } from '@/components/ob/Ob';
 import { Text } from '@/components/Text';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, OwnersBox, Radius, Spacing } from '@/constants/theme';
 
 // A card is the web's .neon-panel (components/NeonPanel.tsx): `color`
 // is its section color, `style` styles the inside of the card, and
@@ -29,6 +30,14 @@ export function Card({
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
+  // Owners Box: the mono label with a hairline running off it.
+  if (OwnersBox && typeof children === 'string') {
+    return (
+      <View style={styles.obSection} accessibilityRole="header">
+        <SectionHead label={children} />
+      </View>
+    );
+  }
   return (
     <Text style={styles.sectionTitle} accessibilityRole="header">
       {children}
@@ -108,6 +117,7 @@ export function MessageState({ message, actionLabel, onAction }: { message: stri
 }
 
 const styles = StyleSheet.create({
+  obSection: { marginTop: Spacing.xl, marginBottom: Spacing.sm },
   skeleton: { flex: 1, gap: Spacing.md, padding: Spacing.lg },
   bone: { borderRadius: Radius.md, backgroundColor: Colors.tileRaised },
   sectionTitle: {
