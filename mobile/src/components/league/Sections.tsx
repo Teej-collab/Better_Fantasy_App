@@ -298,7 +298,6 @@ function StandingsTable(props: {
   const standings = props.data?.standings ?? [];
   const playoffCount = props.data?.playoff_team_count ?? null;
   const clinchMarks = props.data?.clinch?.marks ?? {};
-  const usedMarks = new Set(Object.values(clinchMarks).map(topMark));
   const isFinal = standings.length > 0 && standings[0].final_rank !== null;
   const showPlayoffLine = !isFinal && playoffCount !== null && playoffCount > 0 && playoffCount < standings.length;
   const toiletBowl = 4;
@@ -398,7 +397,8 @@ function StandingsTable(props: {
           );
         })}
       </EliteCard>
-      {usedMarks.size > 0 && <ClinchLegend marks={usedMarks} />}
+      {/* Always shown, so the marks are known before the first one appears. */}
+      <ClinchLegend byes={(props.data?.clinch?.byes ?? 0) > 0} />
     </View>
   );
 }
@@ -426,15 +426,18 @@ function ClinchMark({ marks }: { marks: string[] | undefined }) {
   );
 }
 
-function ClinchLegend({ marks }: { marks: Set<string> }) {
+// Every mark the league can get (no bye mark without byes), and that
+// they only appear once certain.
+function ClinchLegend({ byes }: { byes: boolean }) {
   return (
     <View style={styles.clinchLegend}>
-      {MARK_ORDER.filter((m) => marks.has(m)).map((m) => (
+      {MARK_ORDER.filter((m) => m !== 'z' || byes).map((m) => (
         <View key={m} style={styles.clinchLegendItem}>
           <ClinchMark marks={[m]} />
           <Text style={eliteText.small}>{MARK_LABELS[m]}</Text>
         </View>
       ))}
+      <Text style={[eliteText.small, styles.clinchNote]}>Marks appear only once it&apos;s mathematically certain.</Text>
     </View>
   );
 }
@@ -1275,6 +1278,7 @@ const styles = StyleSheet.create({
   clinchText: { color: '#39ff14', fontFamily: Fonts.monoBold, fontSize: 11, lineHeight: 14 },
   clinchTextOut: { color: '#f87171' },
   clinchLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 4 },
+  clinchNote: { width: '100%', opacity: 0.7 },
   clinchLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   obSeedCell: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   gap: { gap: Spacing.lg },

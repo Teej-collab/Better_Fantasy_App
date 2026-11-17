@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
-import { Modal, Pressable, Share, StyleSheet, View } from 'react-native';
+import { Modal, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,21 +9,24 @@ import { Kicker, NeonButton } from '@/components/start/StartUI';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
-import { IOS_APP_URL } from '@/lib/appLinks';
 import { joinLinkFor } from '@/lib/qrJoin';
 import { useMe } from '@/lib/queries';
 
-/** The invite text: the app download (TestFlight, 2026-10-28), the web
- *  join link everyone can open, and a link that opens the app's join
- *  screen for anyone who already has the app. */
+/** The invite (2026-11-17: it used to be three raw links): one line and
+ *  one link. The link opens the app's join screen for anyone who has the
+ *  app, and for everyone else unfurls into a card with the league's name
+ *  and code, landing on a page with the app download (web /start). */
 export function inviteMessage(leagueName: string, code: string): string {
-  return [
-    `Join my league "${leagueName}" on The Weekend!`,
-    `Invite code: ${code}`,
-    `Get the iPhone app: ${IOS_APP_URL}`,
-    `Then join here: ${joinLinkFor(code)}`,
-    `Have the app? Open: weekendleague://start/join?code=${encodeURIComponent(code)}`,
-  ].join('\n');
+  return `Join "${leagueName}" on The Weekend. Code ${code}\n${joinLinkFor(code)}`;
+}
+
+/** Opens the share sheet with the invite. On iOS the link goes as its
+ *  own item so Messages shows the preview card. */
+export function shareInvite(leagueName: string, code: string): void {
+  const link = joinLinkFor(code);
+  void Share.share(
+    Platform.OS === 'ios' ? { message: `Join "${leagueName}" on The Weekend. Code ${code}`, url: link } : { message: inviteMessage(leagueName, code) },
+  );
 }
 
 // Inviting someone to a league (2026-10): the code big enough to read
@@ -82,7 +85,7 @@ export function InviteSheet({ league, onClose }: { league: { id?: number; name: 
             label="Share invite"
             onPress={() => {
               haptics.tap();
-              void Share.share({ message: inviteMessage(league.name, league.invite_code) });
+              shareInvite(league.name, league.invite_code);
             }}
           />
           {/* The invite as a card (components/ShareSheet.tsx), for the league you're in. */}

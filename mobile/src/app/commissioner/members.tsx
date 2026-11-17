@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router, Stack, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { CommishScreen, ErrorText, errorMessage, Picker } from '@/components/commissioner/CommishUI';
 import { BigButton, PageTitle, Panel, partStyles as p, SmallButton, TONES } from '@/components/commissioner/CommishParts';
@@ -11,7 +11,7 @@ import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { timeAgo } from '@/components/admin/AdminUI';
 import { api } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
-import { inviteMessage } from '@/components/league/InviteSheet';
+import { shareInvite } from '@/components/league/InviteSheet';
 import { refreshCommish, useActiveLeagueName, useCommishMembers } from '@/lib/queries';
 import type { CommishMember } from '@/lib/types';
 
@@ -56,7 +56,7 @@ export default function MembersScreen() {
               </View>
               <BigButton
                 label="Share invite"
-                onPress={() => void Share.share({ message: inviteMessage(leagueName ?? 'our league', data.invite_code) })}
+                onPress={() => shareInvite(leagueName ?? 'our league', data.invite_code)}
               />
             </View>
           </Panel>

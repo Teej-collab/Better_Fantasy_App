@@ -25,7 +25,7 @@ import {
   type MatchupType,
   type RosterPreset,
 } from '@/lib/leagueFormat';
-import { inviteMessage } from '@/components/league/InviteSheet';
+import { shareInvite } from '@/components/league/InviteSheet';
 import { joinLinkFor } from '@/lib/qrJoin';
 import { queryClient } from '@/lib/queries';
 import type { LeagueInfo, ScoringPreset } from '@/lib/types';
@@ -171,7 +171,7 @@ export default function CreateScreen() {
           <View style={styles.flex}>
             <NeonButton
               label="Share"
-              onPress={() => void Share.share({ message: inviteMessage(league.name, league.invite_code) })}
+              onPress={() => shareInvite(league.name, league.invite_code)}
             />
           </View>
           <View style={[styles.codeBox, styles.flex]} accessible accessibilityLabel={`League code ${league.invite_code}`}>

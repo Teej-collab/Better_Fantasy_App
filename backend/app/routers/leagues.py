@@ -244,6 +244,31 @@ def _code_from(text: str) -> str:
     return unquote(m.group(1)) if m else text
 
 
+@router.get("/invite-card")
+async def invite_card(code: str):
+    """What an invite link's preview shows (2026-11-17: the web's
+    /start?join=CODE card in iMessage and the like, before anyone signs
+    in): the league's name, how full it is, its scoring and commissioner.
+    Public on purpose: whoever has the code can join anyway, and nothing
+    here is more than the invite itself says."""
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league = await league_queries.get_league_by_invite_code(conn, _code_from(code))
+        if league is None:
+            raise HTTPException(status_code=404, detail="No league found for that code")
+        preview = await league_queries.league_preview(conn, league["id"], season)
+    return {
+        "name": league["name"],
+        "invite_code": league["invite_code"],
+        "team_count": league["team_count"],
+        "teams": preview["teams"],
+        "scoring": preview["scoring"],
+        # First name only: this card is public.
+        "commissioner": (preview["commissioner"] or "").split(" ")[0] or None,
+    }
+
+
 @router.get("/preview")
 async def preview_league(code: str, request: Request):
     """The league behind an invite code, before joining: its name, how
@@ -588,18 +613,19 @@ async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request)
 
 
 async def _merge_synced_owner(conn, league_id: int, owner_id: int, user_id: int) -> int | None:
-    """Claiming a synced team with an account that already has an owner:
-    only in a league connected to (or moved over from) ESPN/Sleeper, only
-    an unclaimed owner with a team in this league, and only while the
-    caller has no team of their own here yet. Returns the caller's owner."""
-    from app.domain.league_mode import mirror_platform
+    """Claiming a team with an account that already has an owner (one
+    owner per account, a team in each of your leagues). Open in every
+    league since 2026-11-17 (it was ESPN/Sleeper-connected leagues only),
+    so you can take a Sandbox bot team, or any unclaimed team, while
+    keeping your teams elsewhere. Only an unclaimed owner with a team in
+    this league and no team in any other league (the merge moves all
+    of an owner's history, so nobody else's ever comes along), and only
+    while the caller has no team of their own here yet. Returns the
+    caller's owner."""
     from app.domain.owner_merge import merge_owners
 
-    connected = await mirror_platform(conn, league_id) or await conn.fetchval(
-        "SELECT 1 FROM league_switches WHERE league_id = $1", league_id
-    )
     mine = await auth_queries.get_owner_id_for_user(conn, user_id)
-    if not connected or mine is None or mine == owner_id:
+    if mine is None or mine == owner_id:
         return None
     eligible = await conn.fetchval(
         """
@@ -607,6 +633,7 @@ async def _merge_synced_owner(conn, league_id: int, owner_id: int, user_id: int)
         WHERE t.owner_id = $1 AND t.league_id = $2
           AND NOT EXISTS (SELECT 1 FROM owner_users ou WHERE ou.owner_id = $1)
           AND NOT EXISTS (SELECT 1 FROM teams_by_season m WHERE m.owner_id = $3 AND m.league_id = $2)
+          AND NOT EXISTS (SELECT 1 FROM teams_by_season x WHERE x.owner_id = $1 AND x.league_id <> $2)
         """,
         owner_id, league_id, mine,
     )

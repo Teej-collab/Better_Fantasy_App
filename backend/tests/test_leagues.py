@@ -951,3 +951,75 @@ async def test_not_my_team_files_a_report_and_changes_nothing(pool, monkeypatch)
         still = await conn.fetchval("SELECT owner_id FROM teams_by_season WHERE team_name = 'Not Actually Mine'")
     assert "Not my team" in report and "Not Actually Mine" in report and "other Horak" in report
     assert still == owner_id
+
+
+async def _league_with_unclaimed_team(creator_email: str, league_name: str, owner_key: str, team_name: str):
+    async with _client() as creator:
+        await _sign_up(creator, creator_email)
+        created = await creator.post("/leagues", json={"name": league_name})
+    from app.db import get_pool as _get_pool
+
+    real_pool = await _get_pool()
+    async with real_pool.acquire() as conn:
+        owner = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id", owner_key, f"Bot {owner_key}"
+        )
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, $3, $4)",
+            TEST_SEASON, owner, team_name, created.json()["id"],
+        )
+    return created.json()["id"], created.json()["invite_code"], owner
+
+
+async def test_you_can_take_a_bot_team_in_a_second_league_and_keep_your_first(pool, monkeypatch):
+    """2026-11-17: one account, a team in each of your leagues. Claiming
+    an unclaimed team in a league that isn't ESPN/Sleeper-connected (the
+    Sandbox) merges it into your owner instead of being refused."""
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    first_id, first_code, first_owner = await _league_with_unclaimed_team(
+        "test-leagues-multi-a@example.com", "Test League Multi A", "test-leagues-multi-bot-a", "First Team"
+    )
+    second_id, second_code, bot = await _league_with_unclaimed_team(
+        "test-leagues-multi-b@example.com", "Test League Multi B", "test-leagues-multi-bot-b", "Bot Team"
+    )
+    async with _client() as me:
+        await _sign_up(me, "test-leagues-multi-me@example.com")
+        await me.post("/leagues/join", json={"invite_code": first_code})
+        first = await me.post(f"/leagues/{first_id}/claim-owner", json={"owner_id": first_owner})
+        assert first.status_code == 200
+        await me.post("/leagues/join", json={"invite_code": second_code})
+        second = await me.post(f"/leagues/{second_id}/claim-owner", json={"owner_id": bot})
+    assert second.status_code == 200
+    assert second.json()["owner_id"] == first_owner
+    async with pool.acquire() as conn:
+        mine = await conn.fetch("SELECT league_id, team_name FROM teams_by_season WHERE owner_id = $1 ORDER BY team_name", first_owner)
+    assert [(r["league_id"], r["team_name"]) for r in mine] == [(second_id, "Bot Team"), (first_id, "First Team")]
+
+
+async def test_you_cant_take_an_owner_who_also_has_teams_in_other_leagues(pool, monkeypatch):
+    """The merge moves all of an owner's history, so an unclaimed owner
+    with a team anywhere else can't be merged into you."""
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    first_id, first_code, first_owner = await _league_with_unclaimed_team(
+        "test-leagues-multi-c@example.com", "Test League Multi C", "test-leagues-multi-bot-c", "Mine"
+    )
+    second_id, second_code, shared = await _league_with_unclaimed_team(
+        "test-leagues-multi-d@example.com", "Test League Multi D", "test-leagues-multi-bot-d", "Shared Here"
+    )
+    third_id, _, _ = await _league_with_unclaimed_team(
+        "test-leagues-multi-e@example.com", "Test League Multi E", "test-leagues-multi-bot-e", "Other"
+    )
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, 'Shared Elsewhere', $3)",
+            TEST_SEASON, shared, third_id,
+        )
+    async with _client() as me:
+        await _sign_up(me, "test-leagues-multi-me2@example.com")
+        await me.post("/leagues/join", json={"invite_code": first_code})
+        await me.post(f"/leagues/{first_id}/claim-owner", json={"owner_id": first_owner})
+        await me.post("/leagues/join", json={"invite_code": second_code})
+        resp = await me.post(f"/leagues/{second_id}/claim-owner", json={"owner_id": shared})
+    assert resp.status_code == 409
