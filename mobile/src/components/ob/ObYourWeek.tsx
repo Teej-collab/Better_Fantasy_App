@@ -17,7 +17,7 @@ import type { MatchupContextSide, YourWeek } from '@/lib/types';
 // round 2 "Home"): the team names on their own line so the scores get the
 // full width, one plain result chip instead of a second headline, and the
 // same frame live and final. Live: projections, win chance and your
-// touchdowns. Final: the points split and how it was won (MVP, points
+// touchdowns. Final: the result chip and how it was won (MVP, points
 // left on the bench, how far off the projection). `me` is your side of
 // the matchup, for those facts; without it the card just leaves them out.
 export function ObYourWeek(props: {
@@ -92,12 +92,9 @@ export function ObYourWeek(props: {
           <Score value={m.opponent_score} dim right />
         </View>
 
-        {result ? (
-          <View style={styles.split} accessibilityElementsHidden>
-            <View style={[styles.splitMine, { flex: Math.max(mine, 1) }]} />
-            <View style={[styles.splitThem, { flex: Math.max(theirs, 1) }]} />
-          </View>
-        ) : (
+        {/* Final: no bar. The points split drawn here read as a win chance
+            ("a little over 50%" on a game already won, 2026-11-23). */}
+        {result ? null : (
           <>
             <View style={styles.proj}>
               <Text style={styles.projText}>
@@ -297,9 +294,6 @@ const styles = StyleSheet.create({
   gain: { position: 'absolute', top: 0, fontFamily: OB.display, fontSize: 18, lineHeight: 22, color: OB.lamp },
   gainLeft: { right: 4 },
   gainRight: { left: 4 },
-  split: { flexDirection: 'row', gap: 3, height: 6 },
-  splitMine: { borderRadius: 3, backgroundColor: OB.lamp, shadowColor: OB.lamp, shadowOpacity: 0.6, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
-  splitThem: { borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.14)' },
   proj: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
   projText: { color: OB.mute, fontFamily: Fonts.mono, fontSize: 11 },
   projNum: { color: OB.ink },

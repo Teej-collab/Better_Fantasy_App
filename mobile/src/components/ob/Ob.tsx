@@ -29,7 +29,9 @@ function hot(hex: string): string {
 export const OB = {
   void: ObPalette.void,
   night: ObPalette.bg,
-  glass: 'rgba(255,255,255,0.034)',
+  // Mostly solid (2026-11-23): at 3% white the hex wall behind showed
+  // through enough to make cards hard to read. Still a touch of it.
+  glass: withAlpha(ObPalette.surface, 0.9),
   glass2: 'rgba(255,255,255,0.06)',
   rim: 'rgba(255,255,255,0.075)',
   rim2: 'rgba(255,255,255,0.13)',
@@ -416,7 +418,7 @@ export const obText = StyleSheet.create({
 
 const styles = StyleSheet.create({
   pane: { overflow: 'hidden', backgroundColor: OB.glass, borderWidth: 1, borderColor: OB.rim },
-  paneLit: { borderColor: lampAt(0.2), backgroundColor: 'rgba(255,255,255,0.045)' },
+  paneLit: { borderColor: lampAt(0.2), backgroundColor: withAlpha(ObPalette.tile, 0.92) },
   paneBody: { padding: 16 },
   pressed: { opacity: 0.85, transform: [{ scale: 0.985 }] },
   edge: { position: 'absolute', top: 0, height: 1.5, width: '50%' },
