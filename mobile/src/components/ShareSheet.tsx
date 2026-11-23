@@ -59,7 +59,8 @@ function Icon({ d }: { d: string }) {
   );
 }
 
-function ShareSheet({ shareRef, title, onClose }: { shareRef: ShareRef; title: string; onClose: () => void }) {
+// Also opened straight from a screen with its own Share button (What-If).
+export function ShareSheet({ shareRef, title, onClose }: { shareRef: ShareRef; title: string; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const [token, setToken] = useState<string | null>(null);
   const [format, setFormat] = useState<Format>('link');

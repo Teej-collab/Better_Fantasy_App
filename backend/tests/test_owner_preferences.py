@@ -195,6 +195,21 @@ async def test_put_preferences_accepts_the_new_looks(pool, monkeypatch):
             assert resp.json()["theme"] == look
 
 
+async def test_owners_box_color_theme_defaults_to_night_and_takes_every_palette(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 43)
+    async with pool.acquire() as conn:
+        assert (await preferences_queries.get_preferences(conn, owner_id))["ob_palette"] == "night"
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        for palette in ("cosmic", "midnight", "graphite", "ember", "gridiron", "night"):
+            resp = await client.put("/settings/preferences", json={"ob_palette": palette})
+            assert resp.status_code == 200
+            assert resp.json()["ob_palette"] == palette
+        assert (await client.put("/settings/preferences", json={"ob_palette": "calm"})).status_code == 400
+
+
 async def test_put_preferences_rejects_invalid_theme(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 42)

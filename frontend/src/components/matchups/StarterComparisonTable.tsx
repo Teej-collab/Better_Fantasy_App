@@ -348,11 +348,14 @@ function PlayerCell({
   return (
     <div className={`-mx-1.5 -my-1 flex min-w-0 flex-1 items-center rounded-lg px-1.5 py-1 ${highlightClass}`}>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex items-baseline gap-1.5">
+        {/* Two separate targets, set apart (2026-11-23): the name opens
+            the player, and the points are their own bordered button for
+            the breakdown, so a tap meant for one doesn't land on the other. */}
+        <span className="flex items-center gap-3">
           {clickable ? (
             <button
               onClick={() => onOpen(player)}
-              className="min-w-0 flex-1 text-left text-xs font-semibold break-words hover:underline"
+              className="-my-1 min-h-9 min-w-0 flex-1 rounded-md py-1 text-left text-xs font-semibold break-words hover:underline"
             >
               {nameSpan}
             </button>
@@ -360,11 +363,16 @@ function PlayerCell({
             <span className="min-w-0 flex-1 text-xs font-semibold break-words">{nameSpan}</span>
           )}
           {scoreClickable ? (
-            <button onClick={() => onOpenBreakdown(player)} className="shrink-0 hover:underline">
+            <button
+              onClick={() => onOpenBreakdown(player)}
+              aria-label={`${displayName(player)} scoring breakdown`}
+              className="flex min-h-10 shrink-0 items-center gap-1 rounded-lg border border-black/15 bg-black/[0.03] px-2 hover:border-[#39ff14]/50 dark:border-white/15 dark:bg-white/[0.04]"
+            >
               {scoreSpan}
+              <span aria-hidden className="text-base font-bold text-black/40 dark:text-white/40">›</span>
             </button>
           ) : (
-            scoreSpan
+            <span className="px-2">{scoreSpan}</span>
           )}
         </span>
         <span className="text-xs break-words text-black/50 dark:text-white/50">

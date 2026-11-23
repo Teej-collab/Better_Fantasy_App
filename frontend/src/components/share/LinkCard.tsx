@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import type { ShareData } from "@/lib/share";
+import { ordinal } from "@/lib/bracketEngine";
+import { whatIfLine, type ShareData } from "@/lib/share";
 
 // Every shared link's preview card (2026-11-17), in the style of the
 // invite card the user picked: a green eyebrow under a floodlight, the
@@ -10,7 +11,7 @@ import type { ShareData } from "@/lib/share";
 
 export const LINK_FONT = "Big Shoulders";
 
-type Parts = {
+export type LinkCardParts = {
   eyebrow: string;
   title: string;
   detail?: string | null;
@@ -28,7 +29,7 @@ const LAMP = "#39ff14";
 const one = (n: number) => n.toFixed(1);
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
-function partsFor(data: ShareData): Parts {
+function partsFor(data: ShareData): LinkCardParts {
   switch (data.kind) {
     case "matchup": {
       const c = data.card;
@@ -179,13 +180,39 @@ function partsFor(data: ShareData): Parts {
         photo: c.headshot,
       };
     }
+    case "survivor": {
+      const c = data.card;
+      const started = c.entries > 0 ? `${c.alive} of ${c.entries} still alive` : "Nobody's in yet";
+      return {
+        eyebrow: `Survivor pool · ${c.season}`,
+        title: c.name,
+        detail: `Pick one NFL team to win each week, never the same team twice. ${started} · starts week ${c.start_week}${c.lives > 1 ? ` · ${c.lives} lives` : ""}`,
+        heroLabel: "Join code",
+        hero: c.join_code,
+      };
+    }
+    case "whatif": {
+      const c = data.card;
+      return {
+        eyebrow: `What-If · ${c.season}`,
+        title: `What if… ${c.team_name}`,
+        detail: whatIfLine(c),
+        heroLabel: c.place ? "Finishes" : "Seed",
+        hero: c.place === 1 ? "Champs" : c.place ? ordinal(c.place) : `#${c.seed}`,
+      };
+    }
   }
 }
 
 export function LinkCard({ data, photos }: { data: ShareData; photos: Record<string, string | null> }) {
   const p = partsFor(data);
+  return <LinkCardView parts={p} photo={p.photo ? photos[p.photo] : null} footer={data.league_name} />;
+}
+
+/** The card itself, for previews that aren't share links (a Lounge room,
+ *  a co-owner invite): `footer` is the small line over "The Weekend". */
+export function LinkCardView({ parts: p, photo = null, footer }: { parts: LinkCardParts; photo?: string | null; footer?: string | null }) {
   const titleSize = p.title.length > 34 ? 64 : p.title.length > 22 ? 82 : 104;
-  const photo = p.photo ? photos[p.photo] : null;
   const heroText = typeof p.hero === "string" ? p.hero : null;
   const heroSize = heroText && heroText.length > 14 ? 60 : 84;
 
@@ -226,7 +253,7 @@ export function LinkCard({ data, photos }: { data: ShareData; photos: Record<str
             <div style={{ display: "flex" }} />
           )}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-            <div style={{ display: "flex", fontSize: 22, color: MUTE }}>{clip(data.league_name, 36)}</div>
+            {footer ? <div style={{ display: "flex", fontSize: 22, color: MUTE }}>{clip(footer, 36)}</div> : null}
             <div style={{ display: "flex", fontFamily: LINK_FONT, fontSize: 32, color: INK2 }}>The Weekend</div>
           </div>
         </div>

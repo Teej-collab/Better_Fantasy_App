@@ -251,7 +251,7 @@ function ReviewCard({ trade, votesNeeded, voting }: { trade: ReviewTrade; votesN
       <View style={styles.sides}>
         {trade.sides.map((side) => (
           <View key={side.team_id} style={styles.side}>
-            <Text style={styles.team} numberOfLines={1}>
+            <Text style={styles.team} numberOfLines={2}>
               {side.team_name ?? 'Team'}
             </Text>
             <Text style={p.label}>Gets</Text>

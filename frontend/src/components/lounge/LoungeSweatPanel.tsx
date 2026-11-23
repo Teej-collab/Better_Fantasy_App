@@ -142,7 +142,7 @@ export function LoungeSweatPanel({
                   className="flex min-w-0 flex-1 flex-col items-start text-left disabled:cursor-default"
                   aria-label={`${week?.team_name ?? "Your team"}, see roster`}
                 >
-                  <span className={`max-w-full truncate text-xs ${mySide ? "font-semibold text-[#f3f4f6] hover:underline" : "text-[#9aa3b2]"}`}>
+                  <span className={`max-w-full line-clamp-2 break-words text-xs ${mySide ? "font-semibold text-[#f3f4f6] hover:underline" : "text-[#9aa3b2]"}`}>
                     {week?.team_name} · you{mySide ? " ›" : ""}
                   </span>
                   <b className="font-mono text-2xl">{fmt(m.my_score)}</b>
@@ -160,7 +160,7 @@ export function LoungeSweatPanel({
                   className="flex min-w-0 flex-1 flex-col items-end text-right disabled:cursor-default"
                   aria-label={`${m.opponent_team_name ?? "Opponent"}, see roster`}
                 >
-                  <span className={`max-w-full truncate text-xs ${theirSide ? "font-semibold text-[#f3f4f6] hover:underline" : "text-[#9aa3b2]"}`}>
+                  <span className={`max-w-full line-clamp-2 break-words text-xs ${theirSide ? "font-semibold text-[#f3f4f6] hover:underline" : "text-[#9aa3b2]"}`}>
                     {m.opponent_team_name}
                     {theirSide ? " ›" : ""}
                   </span>
@@ -275,7 +275,7 @@ function SweatBet({
         return (
           <div key={leg.id} className="flex flex-col gap-1">
             <div className="flex justify-between gap-2">
-              <span className="truncate">{leg.description}</span>
+              <span className="line-clamp-2 break-words">{leg.description}</span>
               <span className="font-mono" style={{ color }}>
                 {leg.status === "won" ? "Hit" : leg.status === "lost" ? "Missed" : leg.current !== null ? `${leg.current} / ${leg.target ?? leg.line ?? ""}` : "Live"}
               </span>
@@ -300,7 +300,7 @@ function PlayerRow({ p, dot, status, value, muted }: { p: RosterPlayer; dot: str
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: dot }} />
       <div className="flex min-w-0 flex-1 flex-col">
         <b className="truncate text-sm">{p.player_name}</b>
-        <span className="truncate text-xs text-[#9aa3b2]">{status}</span>
+        <span className="line-clamp-2 break-words text-xs text-[#9aa3b2]">{status}</span>
       </div>
       <b className={`shrink-0 font-mono ${muted ? "text-[13px] font-medium text-[#9aa3b2]" : ""}`}>{value}</b>
     </div>
@@ -338,8 +338,8 @@ function ScoreboardCard({
           >
             <Avatar side={side} />
             <span className="flex min-w-0 flex-1 flex-col">
-              <b className="truncate text-sm">{side.team_name}</b>
-              <span className="truncate text-[11.5px] text-[#9aa3b2]">{[side.owner_name, side.record, leftLine(side)].filter(Boolean).join(" · ")}</span>
+              <b className="line-clamp-2 break-words text-sm">{side.team_name}</b>
+              <span className="line-clamp-2 break-words text-[11.5px] text-[#9aa3b2]">{[side.owner_name, side.record, leftLine(side)].filter(Boolean).join(" · ")}</span>
             </span>
             <span className="flex shrink-0 flex-col items-end">
               <b className={`font-mono text-lg ${leading ? "" : "text-[#9aa3b2]"}`}>{fmt(side.score)}</b>
@@ -373,7 +373,7 @@ function TeamRoster({ side, accent, onBack }: { side: MatchupContextSide; accent
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: live ? (p.is_redzone ? "#f87171" : accent) : "#4b5263" }} />
         <div className="flex min-w-0 flex-1 flex-col">
           <b className="truncate text-sm">{p.player_name}</b>
-          <span className="truncate text-xs text-[#9aa3b2]">{upcoming ? upcomingLine(p) : statusLine(p)}</span>
+          <span className="line-clamp-2 break-words text-xs text-[#9aa3b2]">{upcoming ? upcomingLine(p) : statusLine(p)}</span>
         </div>
         <b className={`shrink-0 font-mono ${upcoming ? "text-[13px] font-medium text-[#9aa3b2]" : ""}`}>
           {upcoming ? (p.on_bye ? "—" : `proj ${fmt(p.points_projected)}`) : fmt(p.points_scored)}
@@ -389,8 +389,8 @@ function TeamRoster({ side, accent, onBack }: { side: MatchupContextSide; accent
       <div className="flex items-center gap-3 rounded-[14px] bg-[#161a24] p-3">
         <Avatar side={side} size={44} />
         <div className="flex min-w-0 flex-1 flex-col">
-          <b className="truncate text-base">{side.team_name}</b>
-          <span className="truncate text-[11.5px] text-[#9aa3b2]">{[side.owner_name, side.record, leftLine(side)].filter(Boolean).join(" · ")}</span>
+          <b className="line-clamp-2 break-words text-base">{side.team_name}</b>
+          <span className="line-clamp-2 break-words text-[11.5px] text-[#9aa3b2]">{[side.owner_name, side.record, leftLine(side)].filter(Boolean).join(" · ")}</span>
         </div>
         <div className="flex shrink-0 flex-col items-end">
           <b className="font-mono text-2xl">{fmt(side.score)}</b>

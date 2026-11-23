@@ -1,6 +1,6 @@
 import { router, Stack, type Href } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { NeonPanel } from '@/components/NeonPanel';
@@ -12,6 +12,7 @@ import { queryClient, useFriends, useLoungeInvites, useLoungeRooms } from '@/lib
 import type { LoungeInvite, LoungeRoom } from '@/lib/types';
 import { loungeSlugFrom, nativeLoungeAvailable, setLoungeTicket } from '@/lib/loungeSession';
 import { openSignedInWeb } from '@/lib/webHandoff';
+import { shareLineAndLink } from '@/lib/shareImage';
 
 function shareUrl(slug: string) {
   return `${WEB_BASE_URL}/lounge/${slug}`;
@@ -241,7 +242,7 @@ export default function LoungeScreen() {
                   <Text style={styles.link} numberOfLines={1}>
                     {shareUrl(room.slug)}
                   </Text>
-                  <Pressable onPress={() => Share.share({ url: shareUrl(room.slug), message: shareUrl(room.slug) })} style={styles.outlineSm}>
+                  <Pressable onPress={() => void shareLineAndLink(`Come watch with me in ${room.name}`, shareUrl(room.slug))} style={styles.outlineSm}>
                     <Text style={styles.outlineSmText}>Share link</Text>
                   </Pressable>
                   <Pressable onPress={() => setInviting(inviting === room.id ? null : room.id)} style={styles.outlineSm} accessibilityRole="button">

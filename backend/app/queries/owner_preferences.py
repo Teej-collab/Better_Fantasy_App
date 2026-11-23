@@ -50,6 +50,10 @@ _DEFAULT_PREFERENCES = {
     # data-wl-theme on <html> (app/layout.tsx), the same before-first-
     # paint cookie mechanism neon_intensity already uses.
     "theme": "calm",
+    # The Owners Box look's color theme (2026-11-23, migration
+    # d2e4f6a8b0c1): the Weekend looks' palettes, in Owners Box glass.
+    # Only read while theme is "ownersbox".
+    "ob_palette": "night",
     # Settings > Labs > "Try the new look" — the redesigned nav
     # (hamburger drawer, no bottom tab bar; Home/League/Matchup/Chat/
     # More) and flatter card styling. Orthogonal to theme above: this

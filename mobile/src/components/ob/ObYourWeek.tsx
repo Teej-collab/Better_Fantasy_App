@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, FadeOut, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { openTeam } from '@/components/league/LeagueUI';
-import { Eyebrow, OB, ObPane, ObWinBar } from '@/components/ob/Ob';
+import { Eyebrow, lampAt, OB, ObPane, ObWinBar } from '@/components/ob/Ob';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
@@ -20,7 +20,16 @@ import type { MatchupContextSide, YourWeek } from '@/lib/types';
 // touchdowns. Final: the points split and how it was won (MVP, points
 // left on the bench, how far off the projection). `me` is your side of
 // the matchup, for those facts; without it the card just leaves them out.
-export function ObYourWeek(props: { myWeek: YourWeek; isGameDay: boolean; leagueName: string | null; final?: boolean; me?: MatchupContextSide | null; them?: MatchupContextSide | null }) {
+export function ObYourWeek(props: {
+  myWeek: YourWeek;
+  isGameDay: boolean;
+  leagueName: string | null;
+  final?: boolean;
+  me?: MatchupContextSide | null;
+  them?: MatchupContextSide | null;
+  // Settings > Your Week card: the card's light (Multi: its first color).
+  color?: string;
+}) {
   const { myWeek, me, them } = props;
   // Each side's profile picture, else initials.
   const photos = useOwnerPhotos();
@@ -37,7 +46,7 @@ export function ObYourWeek(props: { myWeek: YourWeek; isGameDay: boolean; league
   const tds = !result && me ? me.touchdowns.filter((t) => t.touchdowns > 0) : [];
 
   return (
-    <ObPane lit contentStyle={styles.body}>
+    <ObPane lit light={props.color} contentStyle={styles.body}>
       <View style={styles.top}>
         <Eyebrow live={live} color={live ? OB.mute : OB.lamp}>
           {kicker}
@@ -119,7 +128,7 @@ export function ObYourWeek(props: { myWeek: YourWeek; isGameDay: boolean; league
               <Text style={[styles.factValue, f.lit && { color: OB.lamp }]} numberOfLines={1} adjustsFontSizeToFit>
                 {f.value}
               </Text>
-              <Text style={styles.factSub} numberOfLines={1}>
+              <Text style={styles.factSub} numberOfLines={2}>
                 {f.sub}
               </Text>
             </View>
@@ -130,7 +139,7 @@ export function ObYourWeek(props: { myWeek: YourWeek; isGameDay: boolean; league
       {tds.length > 0 && (
         <View style={styles.tds}>
           <View style={styles.tdDot} />
-          <Text style={styles.tdText} numberOfLines={1}>
+          <Text style={styles.tdText}>
             <Text style={styles.tdLabel}>Touchdowns · </Text>
             {tds.map((t) => `${shortName(t.player_name)}${t.touchdowns > 1 ? ` ×${t.touchdowns}` : ''}`).join(', ')}
           </Text>
@@ -196,11 +205,11 @@ function Team({ photo, initials, name, meta, mine, right }: { photo?: string; in
         )}
       </View>
       <View style={[styles.teamText, right && styles.alignRight]}>
-        <Text style={styles.teamName} numberOfLines={1}>
+        <Text style={styles.teamName} numberOfLines={2}>
           {name}
         </Text>
         {meta ? (
-          <Text style={styles.meta} numberOfLines={1}>
+          <Text style={styles.meta} numberOfLines={2}>
             {meta}
           </Text>
         ) : null}
@@ -265,7 +274,7 @@ const styles = StyleSheet.create({
   body: { padding: 18, gap: 14 },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   league: { color: OB.ink2, fontSize: 12.5, fontFamily: Fonts.bodyMedium, flexShrink: 1 },
-  chip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(57,255,20,0.35)', backgroundColor: 'rgba(57,255,20,0.07)' },
+  chip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: lampAt(0.35), backgroundColor: lampAt(0.07) },
   chipQuiet: { borderColor: OB.rim2, backgroundColor: 'transparent' },
   chipText: { color: OB.lamp, fontFamily: Fonts.mono, fontSize: 11 },
   tap: { gap: 12 },
@@ -279,12 +288,12 @@ const styles = StyleSheet.create({
   meta: { color: OB.mute, fontFamily: Fonts.mono, fontSize: 10.5, marginTop: 2 },
   avatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1d2128', borderWidth: 1, borderColor: OB.rim2, overflow: 'hidden' },
   avatarPhoto: { width: '100%', height: '100%' },
-  avatarMine: { backgroundColor: OB.ink, borderWidth: 1.5, borderColor: 'rgba(57,255,20,0.6)' },
+  avatarMine: { backgroundColor: OB.ink, borderWidth: 1.5, borderColor: lampAt(0.6) },
   avatarText: { color: OB.ink, fontFamily: Fonts.bodyBold, fontSize: 11.5 },
   scores: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 },
   scoreWrap: { flex: 1, minWidth: 0 },
   score: { fontFamily: OB.displayBlack, fontSize: 76, lineHeight: 86, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
-  scoreLit: { textShadowColor: 'rgba(57,255,20,0.35)', textShadowRadius: 24 },
+  scoreLit: { textShadowColor: lampAt(0.35), textShadowRadius: 24 },
   gain: { position: 'absolute', top: 0, fontFamily: OB.display, fontSize: 18, lineHeight: 22, color: OB.lamp },
   gainLeft: { right: 4 },
   gainRight: { left: 4 },
@@ -302,7 +311,7 @@ const styles = StyleSheet.create({
   factLabel: { color: OB.mute, fontFamily: Fonts.mono, fontSize: 9.5, letterSpacing: 1.2, textTransform: 'uppercase' },
   factValue: { color: OB.ink, fontFamily: OB.display, fontSize: 22, lineHeight: 28 },
   factSub: { color: OB.mute, fontFamily: Fonts.mono, fontSize: 10 },
-  tds: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(57,255,20,0.2)', backgroundColor: 'rgba(57,255,20,0.06)' },
+  tds: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: lampAt(0.2), backgroundColor: lampAt(0.06) },
   tdDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: OB.lamp, shadowColor: OB.lamp, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } },
   tdText: { flex: 1, color: OB.ink, fontSize: 13, fontFamily: Fonts.bodyMedium },
   tdLabel: { color: OB.mute },

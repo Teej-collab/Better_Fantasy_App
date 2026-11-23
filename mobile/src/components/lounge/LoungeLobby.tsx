@@ -167,10 +167,10 @@ export function LoungeLobby() {
           return (
             <View key={g.game_id} style={styles.gameRow}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.gameScore} numberOfLines={1}>
+                <Text style={styles.gameScore} numberOfLines={2}>
                   <Text style={styles.bold}>{scoreLine(g)}</Text> <Text style={styles.gameClock}>{g.status_detail ?? ''}</Text>
                 </Text>
-                <Text style={[styles.stakes, { color: stakes.tone === 'mine' ? accent : stakes.tone === 'theirs' ? '#fde68a' : '#9aa3b2' }]} numberOfLines={1}>
+                <Text style={[styles.stakes, { color: stakes.tone === 'mine' ? accent : stakes.tone === 'theirs' ? '#fde68a' : '#9aa3b2' }]} numberOfLines={2}>
                   {stakes.text}
                 </Text>
               </View>

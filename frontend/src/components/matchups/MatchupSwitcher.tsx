@@ -42,7 +42,7 @@ export function MatchupSwitcher({
               <span key={side.team_id} className="flex justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <LogoAvatar logoUrl={side.logo_url} name={side.owner_name} size={16} tone="dark" />
-                  <span className="truncate">{side.team_name}</span>
+                  <span className="break-words">{side.team_name}</span>
                 </span>
                 <span>{(side.score ?? 0).toFixed(1)}</span>
               </span>

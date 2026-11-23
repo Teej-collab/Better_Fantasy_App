@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Share, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { EspnSignIn, espnSignInAvailable, type EspnSession } from '@/components/start/EspnSignIn';
 import { confirmClaim, NotMyTeamLink, SharedLoginPicker } from '@/components/start/TeamMatch';
@@ -14,6 +14,7 @@ import { IOS_APP_URL } from '@/lib/appLinks';
 import { joinLinkFor } from '@/lib/qrJoin';
 import { queryClient } from '@/lib/queries';
 import type { ImportPreview, LeagueInfo } from '@/lib/types';
+import { shareLineAndLink } from '@/lib/shareImage';
 
 // Bring a league in from ESPN or Sleeper (2026-10-24, the approved
 // "Connect & Share" mockups): paste the link → "Found your league" with
@@ -147,12 +148,14 @@ export default function ConnectLeagueScreen() {
   if (step === 'invite' && league && preview) {
     const joinLink = joinLinkFor(league.invite_code);
     const claimed = preview.team_count - (unclaimedLeft ?? preview.team_count - 1);
-    const message = `Our league is on The Weekend now: write-ups before every matchup, live gamecasts and a real league chat. Still on ${name}, nothing changes there. Get the iPhone app: ${IOS_APP_URL} then tap to claim your team: ${joinLink}`;
+    // The claim link goes last, on its own, so it unfurls as the league's
+    // invite card (2026-11-23: with two links in the text, neither did).
+    const message = `Our league is on The Weekend now: write-ups before every matchup, live gamecasts and a real league chat. Still on ${name}, nothing changes there. Get the iPhone app (${IOS_APP_URL}), then tap below to claim your team.`;
     return (
       <StartScreen
         footer={
           <>
-            <NeonButton label="Send to the group chat" onPress={() => void Share.share({ message })} />
+            <NeonButton label="Send to the group chat" onPress={() => void shareLineAndLink(message, joinLink)} />
             <Pressable
               onPress={() => {
                 router.dismissAll();

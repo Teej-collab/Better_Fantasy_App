@@ -290,10 +290,14 @@ function PlayerCell({ player, onBreakdown, right, winning }: { player: RosterPla
   const rank = !statLine ? formatPositionRank(player.opponent_position_rank, player.position) : null;
   const injury = player.in_game_injury && player.in_game_injury.state !== 'returned' ? IN_GAME_INJURY_LABELS[player.in_game_injury.state] : null;
   const canOpen = typeof player.player_id === 'string';
+  const canBreakdown = canOpen && player.points_scored != null;
   const align = right ? styles.alignEnd : styles.alignStart;
 
   return (
     <View style={[styles.cell, align, player.on_offense && !player.is_redzone && styles.onOffense]}>
+      {/* Two separate targets (2026-11-23, Niko kept hitting the wrong
+          one): the whole name block opens their Gamecast, and the points
+          are their own button, set apart, for the breakdown. */}
       <Pressable
         disabled={!canOpen}
         onPress={() =>
@@ -301,29 +305,38 @@ function PlayerCell({ player, onBreakdown, right, winning }: { player: RosterPla
             ? router.push({ pathname: '/gamecast/[id]', params: { id: gamecastId, player: String(player.player_id) } })
             : openPlayer(player.player_id)
         }
-        accessibilityHint={gamecastId ? 'Opens their game in Gamecast' : undefined}
-        style={align}>
+        hitSlop={{ top: 8, left: 4, right: 4 }}
+        accessibilityRole="button"
+        accessibilityLabel={displayName(player)}
+        accessibilityHint={gamecastId ? 'Opens their game in Gamecast' : 'Opens their player card'}
+        style={({ pressed }) => [styles.who, align, pressed && styles.whoPressed]}>
         <View style={[styles.nameLine, right && styles.reverse]}>
-          <Text style={[styles.playerName, right && styles.textRight]} numberOfLines={1}>
+          <Text style={[styles.playerName, right && styles.textRight]} numberOfLines={2}>
             {displayName(player)}
           </Text>
           {player.is_redzone && <Text style={styles.rz}>RZ</Text>}
           {hasInjuryBadge(player.injury_status) && <Text style={styles.injury}>{injuryShortCode(player.injury_status)}</Text>}
           {injury && <Text style={styles.gameInjury}>{injury}</Text>}
         </View>
+        <View style={[styles.nameLine, right && styles.reverse]}>
+          {isLive && <View style={styles.liveDot} />}
+          {logo && <Image source={{ uri: logo }} style={styles.teamLogo} contentFit="contain" />}
+          <Text style={[styles.cellDetail, right && styles.textRight]} numberOfLines={2}>
+            {statLine ??
+              `${player.pro_team ?? '—'}${player.next_opponent ? ` ${player.next_opponent}` : ''}${player.game_time ? ` · ${formatGameTime(player.game_time)}` : ''}`}
+          </Text>
+        </View>
+        {rank && (
+          <Text style={[styles.cellDetail, right && styles.textRight, { color: positionRankColor(player.opponent_position_rank!.rank) }]}>{rank}</Text>
+        )}
       </Pressable>
-      <View style={[styles.nameLine, right && styles.reverse]}>
-        {isLive && <View style={styles.liveDot} />}
-        {logo && <Image source={{ uri: logo }} style={styles.teamLogo} contentFit="contain" />}
-        <Text style={[styles.cellDetail, right && styles.textRight]} numberOfLines={1}>
-          {statLine ??
-            `${player.pro_team ?? '—'}${player.next_opponent ? ` ${player.next_opponent}` : ''}${player.game_time ? ` · ${formatGameTime(player.game_time)}` : ''}`}
-        </Text>
-      </View>
-      {rank && (
-        <Text style={[styles.cellDetail, right && styles.textRight, { color: positionRankColor(player.opponent_position_rank!.rank) }]}>{rank}</Text>
-      )}
-      <Pressable disabled={!canOpen || player.points_scored == null} onPress={() => onBreakdown(player)} hitSlop={6}>
+      <Pressable
+        disabled={!canBreakdown}
+        onPress={() => onBreakdown(player)}
+        hitSlop={{ bottom: 8, left: 4, right: 4 }}
+        accessibilityRole={canBreakdown ? 'button' : undefined}
+        accessibilityHint={canBreakdown ? 'Shows how the points were scored' : undefined}
+        style={({ pressed }) => [styles.pointsButton, canBreakdown && styles.pointsButtonOn, pressed && styles.whoPressed]}>
         <View style={[styles.pointsLine, right && styles.reverse]}>
           <Text style={[scored != null ? styles.points : styles.pointsProj, winning && styles.pointsWin]}>
             {scored != null ? scored.toFixed(1) : player.on_bye ? 'Bye' : player.points_projected != null ? player.points_projected.toFixed(1) : '—'}
@@ -336,6 +349,7 @@ function PlayerCell({ player, onBreakdown, right, winning }: { player: RosterPla
             <Text style={styles.projSmall}>proj</Text>
           ) : null}
         </View>
+        {canBreakdown && <Text style={styles.pointsChevron}>›</Text>}
       </Pressable>
     </View>
   );
@@ -437,12 +451,37 @@ function TeamDetail({ side }: { side: MatchupContextSide }) {
   );
 }
 
-// The all-time series, and the last few meetings as W/L cells from the
-// left team's side (oldest first).
+// The all-time series (option B, picked 2026-11-23): who leads in plain
+// words, a bar split by each side's wins (and ties), and the latest
+// meetings with the winner's initials. It used to be W/L cells "from the
+// left team's side", which read wrong to anyone on the other side.
+// Orange is the left team, green the right, like the lineup rows.
+const SMALL_WORDS = new Set(['the', 'a', 'an', 'of', 'is', 'and', '&']);
+
+export function teamInitials(name: string): string {
+  const words = name.split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w) && !SMALL_WORDS.has(w.toLowerCase()));
+  if (words.length === 0) return name.slice(0, 2).toUpperCase();
+  if (words.length === 1) return words[0].replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+const SHOWN_MEETINGS = 3;
+
 function HeadToHead({ matchup }: { matchup: WeekMatchupContextItem }) {
   const h = matchup.head_to_head;
   const { home, away } = matchup;
+  const [all, setAll] = useState(false);
   const total = h.wins_home + h.wins_away + h.ties;
+  let homeTag = teamInitials(home.team_name);
+  let awayTag = teamInitials(away.team_name);
+  if (homeTag === awayTag) {
+    homeTag = home.team_name.slice(0, 3).toUpperCase();
+    awayTag = away.team_name.slice(0, 3).toUpperCase();
+  }
+  const record = `${Math.max(h.wins_home, h.wins_away)}–${Math.min(h.wins_home, h.wins_away)}${h.ties ? `–${h.ties}` : ''}`;
+  const leader = h.wins_home > h.wins_away ? home : h.wins_away > h.wins_home ? away : null;
+  const meetings = [...h.recent_meetings].reverse();
+  const shown = all ? meetings : meetings.slice(0, SHOWN_MEETINGS);
   return (
     <EliteCard tone="deep" style={styles.series}>
       <Text style={[eliteText.kickerCaps, styles.centerText]}>
@@ -452,32 +491,61 @@ function HeadToHead({ matchup }: { matchup: WeekMatchupContextItem }) {
         <Text style={[eliteText.small, styles.centerText]}>First meeting between these two.</Text>
       ) : (
         <>
-          <Text style={styles.seriesScore} accessibilityLabel={`${home.team_name} ${h.wins_home}, ${away.team_name} ${h.wins_away}${h.ties ? `, ${h.ties} ties` : ''}`}>
-            <Text style={h.wins_home >= h.wins_away ? styles.seriesLead : null}>{h.wins_home}</Text> – {h.wins_away}
-            {h.ties > 0 ? <Text style={eliteText.small}>{`  (${h.ties} tie${h.ties > 1 ? 's' : ''})`}</Text> : null}
+          <Text style={styles.seriesHead}>
+            {leader ? (
+              <>
+                <Text style={{ color: leader === home ? Elite.orange : Elite.green }}>{leader.team_name}</Text> leads {record}
+              </>
+            ) : (
+              `Series tied ${record}`
+            )}
           </Text>
-          {h.recent_meetings.length > 0 && (
-            <View style={styles.chain}>
-              {h.recent_meetings.map((g, i) => {
-                const result = g.tie ? 'T' : g.home_won ? 'W' : 'L';
-                const won = result === 'W';
+          <View style={styles.seriesBarBlock} accessible accessibilityLabel={`${home.team_name} ${h.wins_home} wins, ${away.team_name} ${h.wins_away} wins${h.ties ? `, ${h.ties} ties` : ''}`}>
+            <View style={styles.spread}>
+              <Text style={[styles.seriesWins, { color: Elite.orange }]}>
+                {homeTag} · {h.wins_home} {h.wins_home === 1 ? 'win' : 'wins'}
+              </Text>
+              {h.ties > 0 && <Text style={[styles.seriesWins, { color: Elite.soft }]}>{h.ties} {h.ties === 1 ? 'tie' : 'ties'}</Text>}
+              <Text style={[styles.seriesWins, { color: Elite.green }]}>
+                {h.wins_away} {h.wins_away === 1 ? 'win' : 'wins'} · {awayTag}
+              </Text>
+            </View>
+            <View style={styles.seriesBar}>
+              {h.wins_home > 0 && <View style={{ flex: h.wins_home, backgroundColor: Elite.orange }} />}
+              {h.ties > 0 && <View style={{ flex: h.ties, backgroundColor: '#5a5f66' }} />}
+              {h.wins_away > 0 && <View style={{ flex: h.wins_away, backgroundColor: Elite.green }} />}
+            </View>
+            <View style={styles.spread}>
+              <Text style={[eliteText.small, styles.flexShrink]}>{home.team_name}</Text>
+              <Text style={[eliteText.small, styles.flexShrink, styles.textRight]}>{away.team_name}</Text>
+            </View>
+          </View>
+          {shown.length > 0 && (
+            <View style={styles.meetings}>
+              {shown.map((g, i) => {
+                const color = g.tie ? Elite.cream : g.home_won ? Elite.orange : Elite.green;
+                const tint = g.tie ? 'rgba(245,244,236,0.05)' : g.home_won ? 'rgba(255,122,26,0.08)' : 'rgba(57,255,20,0.07)';
+                const rim = g.tie ? 'rgba(245,244,236,0.18)' : g.home_won ? 'rgba(255,122,26,0.3)' : 'rgba(57,255,20,0.3)';
+                const winner = g.home_won ? homeTag : awayTag;
                 return (
-                  <View key={i} style={styles.chainItem} accessible accessibilityLabel={`${g.season} week ${g.week}: ${g.home_score.toFixed(1)} to ${g.away_score.toFixed(1)}`}>
-                    <Hex width={40} color={won ? Elite.peach : 'rgba(245,244,236,0.3)'} fill={won ? Elite.orange : 'rgba(245,244,236,0.12)'} glow={won && i === h.recent_meetings.length - 1}>
-                      <Text style={[styles.chainResult, { color: won ? '#1a0b00' : Elite.cream }]}>{result}</Text>
-                    </Hex>
-                    <Text style={styles.chainLabel}>
+                  <View key={i} style={[styles.meeting, { backgroundColor: tint, borderColor: rim }]}>
+                    <Text style={styles.meetingWhen}>
                       ’{String(g.season).slice(-2)} W{g.week}
                     </Text>
-                    <Text style={styles.chainScore}>
-                      {g.home_score.toFixed(1)}–{g.away_score.toFixed(1)}
+                    <Text style={[styles.meetingWho, { color }]}>{g.tie ? 'Tie' : `${winner} won`}</Text>
+                    <Text style={styles.meetingScore}>
+                      {Math.max(g.home_score, g.away_score).toFixed(1)}–{Math.min(g.home_score, g.away_score).toFixed(1)}
                     </Text>
                   </View>
                 );
               })}
+              {meetings.length > SHOWN_MEETINGS && (
+                <Pressable onPress={() => setAll((v) => !v)} hitSlop={8} accessibilityRole="button" style={styles.meetingsMore}>
+                  <Text style={[eliteText.small, styles.centerText]}>{all ? 'Show fewer' : `Show ${meetings.length - SHOWN_MEETINGS} more`}</Text>
+                </Pressable>
+              )}
             </View>
           )}
-          <Text style={[eliteText.small, styles.centerText]}>From {home.team_name}&apos;s side</Text>
         </>
       )}
     </EliteCard>
@@ -527,6 +595,11 @@ const styles = StyleSheet.create({
   gameInjury: { color: '#f87171', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', backgroundColor: 'rgba(239,68,68,0.15)', paddingHorizontal: 3, borderRadius: 3, overflow: 'hidden' },
   cellDetail: { color: 'rgba(245,244,236,0.58)', fontSize: 11, flexShrink: 1 },
   pointsLine: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  who: { gap: 2, maxWidth: '100%', borderRadius: 6, paddingVertical: 2 },
+  whoPressed: { backgroundColor: 'rgba(245,244,236,0.08)' },
+  pointsButton: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 34, marginTop: 6, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: 'transparent' },
+  pointsButtonOn: { borderColor: 'rgba(245,244,236,0.16)', backgroundColor: 'rgba(245,244,236,0.04)' },
+  pointsChevron: { color: 'rgba(245,244,236,0.45)', fontSize: 16, fontWeight: '700', marginTop: -2 },
   points: { fontFamily: ANTON, color: Elite.cream, fontSize: 19, lineHeight: 24 },
   pointsWin: { color: Elite.green },
   pointsProj: { fontFamily: ANTON, color: 'rgba(245,244,236,0.5)', fontSize: 19, lineHeight: 24 },
@@ -542,14 +615,18 @@ const styles = StyleSheet.create({
   detailTeam: { fontFamily: ANTON, fontSize: 18, lineHeight: 24, color: Elite.cream },
   plate: { borderRadius: 14, borderWidth: 1, backgroundColor: '#0f141b', padding: 12, gap: 4 },
   // The series
-  series: { padding: 16, gap: 12, alignItems: 'center' },
-  seriesScore: { fontFamily: ANTON, fontSize: 42, lineHeight: 50, letterSpacing: 2, color: Elite.cream },
-  seriesLead: { color: Elite.peach, textShadowColor: 'rgba(255,122,26,0.7)', textShadowRadius: 12 },
-  chain: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
-  chainItem: { alignItems: 'center', gap: 3 },
-  chainResult: { fontFamily: ANTON, fontSize: 15, lineHeight: 19 },
-  chainLabel: { color: Elite.soft, fontSize: 10 },
-  chainScore: { color: 'rgba(245,244,236,0.45)', fontSize: 9.5, fontVariant: ['tabular-nums'] },
+  series: { padding: 16, gap: 14 },
+  seriesHead: { fontFamily: ANTON, fontSize: 26, lineHeight: 32, color: Elite.cream, textAlign: 'center', textTransform: 'uppercase' },
+  seriesBarBlock: { gap: 6 },
+  seriesWins: { fontSize: 12, fontWeight: '700' },
+  seriesBar: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', gap: 2, backgroundColor: 'rgba(245,244,236,0.08)' },
+  flexShrink: { flexShrink: 1 },
+  meetings: { gap: 6 },
+  meeting: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  meetingWhen: { width: 56, color: Elite.soft, fontSize: 12 },
+  meetingWho: { flex: 1, fontSize: 13, fontWeight: '700' },
+  meetingScore: { color: Elite.soft, fontSize: 12, fontVariant: ['tabular-nums'] },
+  meetingsMore: { minHeight: 32, justifyContent: 'center' },
   // Score breakdown
   muted: { color: 'rgba(255,255,255,0.5)', fontSize: 14 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: Spacing.lg },

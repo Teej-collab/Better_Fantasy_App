@@ -15,18 +15,11 @@ export const canShareImages =
 
 const SITE = WEB_BASE_URL || 'https://weekend-league-web.vercel.app';
 
-// "Get this for your league" (2026-10-24): every card shared outside the
-// app carries a link to the 2027 waitlist page, tagged with which card it
-// was (ref=share-week-awards…) so the waitlist shows which shares bring
-// people in.
-export function getItLink(source: string): string {
-  const slug = source
-    .toLowerCase()
-    .replace(/\d+/g, '')
-    .replace(/[^a-z]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 30);
-  return `${SITE}/waitlist?ref=share-${slug || 'card'}`;
+/** One line of text and one link, the way every share goes out
+ *  (2026-11-17): on iOS the link is its own item, so Messages shows its
+ *  preview card under the line; Android sends them together. */
+export function shareLineAndLink(line: string, link: string): Promise<unknown> {
+  return Share.share(Platform.OS === 'ios' ? { message: line, url: link } : { message: `${line}\n${link}` });
 }
 
 /** The short form printed on a shared image, where a link can't be tapped. */
@@ -40,9 +33,10 @@ export async function shareViewAsImage(ref: RefObject<View | null>, dialogTitle:
   const Sharing = require('expo-sharing') as typeof import('expo-sharing');
   const uri = await captureRef(ref, { format: 'png', quality: 1, result: 'tmpfile' });
   if (Platform.OS === 'ios') {
-    // iOS's own sheet sends the image and a line of text together, so the
-    // link arrives tappable in a text thread.
-    await Share.share({ url: uri, message: `${dialogTitle} · Get this for your league: ${getItLink(dialogTitle)}` });
+    // The picture alone, like the share sheet's Post (2026-11-23): the
+    // waitlist link that rode along sent friends to the website instead
+    // of the app. The picture still says where to get it.
+    await Share.share({ url: uri });
     return;
   }
   await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle });

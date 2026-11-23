@@ -125,7 +125,7 @@ export function ScoreLine({
       <View style={styles.scoreSide}>
         <Display style={[styles.bigScore, { color }]}>{fmt(mine)}</Display>
         {mineLabel && (
-          <Text style={styles.scoreLabel} numberOfLines={1}>
+          <Text style={styles.scoreLabel} numberOfLines={2}>
             {mineLabel}
           </Text>
         )}
@@ -134,7 +134,7 @@ export function ScoreLine({
       <View style={[styles.scoreSide, styles.scoreSideRight]}>
         <Display style={styles.bigScore}>{fmt(theirs)}</Display>
         {theirLabel && (
-          <Text style={[styles.scoreLabel, styles.right]} numberOfLines={1}>
+          <Text style={[styles.scoreLabel, styles.right]} numberOfLines={2}>
             {theirLabel}
           </Text>
         )}
@@ -233,7 +233,7 @@ export function ClaimResultsCard({ run, color, others = [] }: { run: WaiverClaim
             left={
               <View style={styles.gap2}>
                 <Text style={styles.rowText}>{c.status === 'successful' ? `You got ${c.add_player_name}` : c.add_player_name}</Text>
-                <Text style={styles.small} numberOfLines={1}>
+                <Text style={styles.small}>
                   {c.status === 'successful' ? (c.drop_player_name ? `Dropped ${c.drop_player_name}` : 'No drop') : c.failure_reason}
                 </Text>
               </View>
@@ -251,11 +251,11 @@ export function ClaimResultsCard({ run, color, others = [] }: { run: WaiverClaim
           {shownMoves.map((a, i) =>
             a.kind === 'roster' ? (
               <View key={`${a.owner_id}-${a.timestamp}-${i}`} style={styles.moveRow}>
-                <Text style={[styles.rowText, styles.moveText]} numberOfLines={1}>
+                <Text style={[styles.rowText, styles.moveText]}>
                   {a.owner_name} added {a.added_player_name ?? 'a player'}
                 </Text>
                 {a.dropped_player_name ? (
-                  <Text style={styles.small} numberOfLines={1}>
+                  <Text style={styles.small}>
                     dropped {a.dropped_player_name}
                   </Text>
                 ) : null}
@@ -358,7 +358,7 @@ export function PlayersNowCard({ players, title }: { players: RosterPlayer[]; ti
           key={`${p.player_id}-${p.player_name}`}
           first={i === 0}
           left={
-            <Text style={styles.rowText} numberOfLines={1}>
+            <Text style={styles.rowText}>
               {p.player_name}
               {p.is_redzone ? <Text style={styles.redzone}>  · red zone</Text> : null}
             </Text>
@@ -422,11 +422,14 @@ const styles = StyleSheet.create({
   linkText: { fontSize: 14, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md, paddingVertical: 8 },
   rowDivided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border },
-  // Labels keep their words whole; a long value wraps instead ("Your
-  // bench" broke into "benc / h" on Android, 2026-11-16).
-  rowLeft: { flexGrow: 1, flexShrink: 0, maxWidth: '50%' },
+  // The left side takes the room the right doesn't need, but never less
+  // than 40% (Android broke "Your bench" into "benc / h", 2026-11-16); a
+  // long value wraps on the right. It was capped at half the row, which
+  // cut every score line and name short on a larger text size (Niko's
+  // phone, 2026-11-22).
+  rowLeft: { flexGrow: 1, flexShrink: 1, flexBasis: 'auto', minWidth: '40%' },
   rowText: { color: Colors.text, fontSize: 14 },
-  rowRight: { color: Colors.text, fontSize: 14, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
+  rowRight: { color: Colors.text, fontSize: 14, fontWeight: '600', flexShrink: 1, maxWidth: '60%', textAlign: 'right' },
   rowScore: { fontSize: 20 },
   redzone: { color: '#ef4444', fontSize: 12, fontWeight: '700' },
   scoreLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },

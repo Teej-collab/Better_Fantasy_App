@@ -124,7 +124,7 @@ export function SurvivorPoolRoom({ poolId, entryId, justCreated = false }: { poo
                     {initials(r.name)}
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-[13px] font-bold">{r.mine ? `${r.name} (you)` : r.name}</span>
+                    <span className="break-words text-[13px] font-bold">{r.mine ? `${r.name} (you)` : r.name}</span>
                     <span className="text-[11px]" style={{ color: out ? ELITE.grey : r.lives_left >= pool.lives ? ELITE.mint : ELITE.peach }}>
                       {out ? `Out in week ${r.eliminated_week}` : livesText(r.lives_left)}
                     </span>

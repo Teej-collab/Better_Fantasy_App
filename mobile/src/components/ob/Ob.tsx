@@ -5,7 +5,7 @@ import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, w
 import Svg, { Defs, Ellipse, LinearGradient as SvgLinear, Path, Polygon, RadialGradient, Stop } from 'react-native-svg';
 
 import { Text } from '@/components/Text';
-import { Fonts } from '@/constants/theme';
+import { Colors, Fonts, ObPalette, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 
 import { WORDMARK_PATHS, WORDMARK_VIEWBOX } from './wordmark';
@@ -14,9 +14,21 @@ import { WORDMARK_PATHS, WORDMARK_VIEWBOX } from './wordmark';
 // suite at night. One floodlight rising from the open box on each screen,
 // smoked-glass panels, scoreboard numbers, and green only ever as light.
 // Approved from the "Owners Box Prototype" artifact.
+// The light is your accent (2026-11-23), green unless you pick another
+// or a color theme brings its own; the dark behind it is the color
+// theme's (constants/theme.ts OB_PALETTES).
+const LAMP = Colors.accent;
+
+// The light, mixed toward white: its hot center.
+function hot(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c: number) => Math.round(c + (255 - c) * 0.78).toString(16).padStart(2, '0');
+  return `#${mix((n >> 16) & 255)}${mix((n >> 8) & 255)}${mix(n & 255)}`;
+}
+
 export const OB = {
-  void: '#060708',
-  night: '#0b0d10',
+  void: ObPalette.void,
+  night: ObPalette.bg,
   glass: 'rgba(255,255,255,0.034)',
   glass2: 'rgba(255,255,255,0.06)',
   rim: 'rgba(255,255,255,0.075)',
@@ -25,18 +37,22 @@ export const OB = {
   ink2: '#c8ccd2',
   mute: '#808894',
   dim: '#4b525c',
-  lamp: '#39ff14',
-  lampHi: '#d4ffc6',
+  lamp: LAMP,
+  lampHi: hot(LAMP),
   live: '#ff4d4d',
   warn: '#ffcf7a',
   display: 'BigShoulders_800ExtraBold',
   displayBlack: 'BigShoulders_900Black',
 } as const;
 
+/** The light at an opacity, for washes, rims and glows. */
+export const lampAt = (alpha: number) => withAlpha(LAMP, alpha);
+
 /** A smoked-glass panel. `lit` is the one panel on a screen that matters:
  *  a green edge of light along its top and a glow falling from it. */
 export function ObPane({
   lit = false,
+  light = LAMP,
   style,
   contentStyle,
   radius = 22,
@@ -45,6 +61,8 @@ export function ObPane({
   children,
 }: {
   lit?: boolean;
+  // The lit pane's light: the accent, or the Your Week card's own color.
+  light?: string;
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
   radius?: number;
@@ -53,14 +71,14 @@ export function ObPane({
   children: ReactNode;
 }) {
   const body = (
-    <View style={[styles.pane, { borderRadius: radius }, lit && styles.paneLit, onPress ? null : style]}>
+    <View style={[styles.pane, { borderRadius: radius }, lit && styles.paneLit, lit && { borderColor: withAlpha(light, 0.2) }, onPress ? null : style]}>
       <LinearGradient
         pointerEvents="none"
-        colors={lit ? ['rgba(57,255,20,0.13)', 'rgba(57,255,20,0)'] : ['rgba(255,255,255,0.035)', 'rgba(255,255,255,0)']}
+        colors={lit ? [withAlpha(light, 0.13), withAlpha(light, 0)] : ['rgba(255,255,255,0.035)', 'rgba(255,255,255,0)']}
         locations={[0, 0.55]}
         style={StyleSheet.absoluteFill}
       />
-      {lit && <LitEdge />}
+      {lit && <LitEdge color={light} />}
       <View style={[styles.paneBody, contentStyle]}>{children}</View>
     </View>
   );
@@ -80,7 +98,7 @@ export function ObPane({
 }
 
 // The light running along a lit panel's top edge.
-function LitEdge() {
+function LitEdge({ color = LAMP }: { color?: string }) {
   const reduce = useReducedMotion();
   const x = useSharedValue(0);
   useEffect(() => {
@@ -90,7 +108,7 @@ function LitEdge() {
   const move = useAnimatedStyle(() => ({ left: `${10 + x.value * 40}%` }));
   return (
     <Animated.View pointerEvents="none" style={[styles.edge, move]}>
-      <LinearGradient colors={['rgba(57,255,20,0)', OB.lamp, 'rgba(57,255,20,0)']} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={[withAlpha(color, 0), color, withAlpha(color, 0)]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
     </Animated.View>
   );
 }
@@ -100,7 +118,7 @@ function LitEdge() {
 export function ObLitLayer() {
   return (
     <>
-      <LinearGradient pointerEvents="none" colors={['rgba(57,255,20,0.13)', 'rgba(57,255,20,0)']} locations={[0, 0.55]} style={StyleSheet.absoluteFill} />
+      <LinearGradient pointerEvents="none" colors={[lampAt(0.13), lampAt(0)]} locations={[0, 0.55]} style={StyleSheet.absoluteFill} />
       <LitEdge />
     </>
   );
@@ -174,7 +192,9 @@ export function ObPortrait({ width, headshot, logo, color }: { width: number; he
 
 /** The floodlight behind a screen: a cone of green light from the top
  *  center, slowly breathing. Replaces the honeycomb. */
-export function Floodlight({ soft = false }: { soft?: boolean }) {
+// `over`: drawn on top of the hex wall (HoneycombBackground), so no fill
+// of its own.
+export function Floodlight({ soft = false, over = false }: { soft?: boolean; over?: boolean }) {
   const { width } = useWindowDimensions();
   const reduce = useReducedMotion();
   const o = useSharedValue(1);
@@ -187,7 +207,7 @@ export function Floodlight({ soft = false }: { soft?: boolean }) {
   const h = 560;
   const c = w / 2;
   return (
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: OB.night }]}>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, !over && { backgroundColor: OB.night }]}>
       <Animated.View style={[styles.flood, breathe]}>
         <Svg width={w} height={h}>
           <Defs>
@@ -302,7 +322,7 @@ export function ObWinBar({ percent, height = 4 }: { percent: number; height?: nu
   const p = Math.max(2, Math.min(100, percent));
   return (
     <View style={[styles.track, { height, borderRadius: height }]} accessibilityLabel={`${Math.round(percent)} percent to win`}>
-      <LinearGradient colors={['rgba(57,255,20,0.25)', OB.lamp]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={[styles.fill, { width: `${p}%`, borderRadius: height }]} />
+      <LinearGradient colors={[lampAt(0.25), OB.lamp]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={[styles.fill, { width: `${p}%`, borderRadius: height }]} />
       <View style={[styles.head, { left: `${p}%`, width: height + 6, height: height + 6, marginLeft: -(height + 6) / 2, marginTop: -(height + 6) / 2, borderRadius: height + 6 }]} />
     </View>
   );
@@ -396,19 +416,19 @@ export const obText = StyleSheet.create({
 
 const styles = StyleSheet.create({
   pane: { overflow: 'hidden', backgroundColor: OB.glass, borderWidth: 1, borderColor: OB.rim },
-  paneLit: { borderColor: 'rgba(57,255,20,0.2)', backgroundColor: 'rgba(255,255,255,0.045)' },
+  paneLit: { borderColor: lampAt(0.2), backgroundColor: 'rgba(255,255,255,0.045)' },
   paneBody: { padding: 16 },
   pressed: { opacity: 0.85, transform: [{ scale: 0.985 }] },
   edge: { position: 'absolute', top: 0, height: 1.5, width: '50%' },
   flood: { position: 'absolute', top: -20, left: 0, right: 0, alignItems: 'center' },
   numeral: { fontFamily: OB.displayBlack, color: OB.ink2, textAlign: 'center', fontVariant: ['tabular-nums'] },
-  numeralMine: { color: OB.lamp, textShadowColor: 'rgba(57,255,20,0.55)', textShadowRadius: 12 },
+  numeralMine: { color: OB.lamp, textShadowColor: lampAt(0.55), textShadowRadius: 12 },
   center: { alignItems: 'center', justifyContent: 'center' },
   ring: { borderWidth: 1, borderColor: OB.rim2 },
-  ringLit: { borderWidth: 1.5, borderColor: 'rgba(57,255,20,0.7)' },
+  ringLit: { borderWidth: 1.5, borderColor: lampAt(0.7) },
   placeholder: { backgroundColor: 'rgba(255,255,255,0.05)' },
   cellTag: { position: 'absolute', right: -6, bottom: -4, minWidth: 20, height: 18, paddingHorizontal: 4, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: OB.void, borderWidth: 1, borderColor: OB.rim2 },
-  cellTagLit: { borderColor: 'rgba(57,255,20,0.6)' },
+  cellTagLit: { borderColor: lampAt(0.6) },
   cellTagText: { fontFamily: OB.displayBlack, fontSize: 12, lineHeight: 15, color: OB.ink },
   eyebrow: { fontFamily: Fonts.mono, fontSize: 10.5, letterSpacing: 1.6 },
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

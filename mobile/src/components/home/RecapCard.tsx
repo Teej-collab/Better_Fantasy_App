@@ -24,7 +24,7 @@ function MissedRecap({ week, season }: { week: number; season: number }) {
     <NeonPanel color={SectionColors.awards} contentStyle={styles.missed}>
       <View style={styles.missedText}>
         <Text style={[styles.recapKicker, { color: SectionColors.awards }]}>📰 Missed the recap?</Text>
-        <Text style={styles.missedSub} numberOfLines={1}>
+        <Text style={styles.missedSub}>
           Week {week}&apos;s story, awards and all
         </Text>
       </View>

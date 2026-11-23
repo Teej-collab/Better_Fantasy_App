@@ -89,7 +89,7 @@ export function WeeklyRecapTeaser({
           <span className="text-xs font-bold tracking-wide uppercase" style={{ color: DESTINATIONS.awards.color }}>
             📰 Missed the recap?
           </span>
-          <span className="truncate text-sm text-black/60 dark:text-white/60">Week {week}&apos;s story, awards and all</span>
+          <span className="break-words text-sm text-black/60 dark:text-white/60">Week {week}&apos;s story, awards and all</span>
         </div>
         <Link
           href={`/seasons/${season}/weeks/${week}/recap`}

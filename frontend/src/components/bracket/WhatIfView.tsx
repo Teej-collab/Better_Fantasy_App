@@ -158,7 +158,7 @@ export function WhatIfView({
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs text-[#9aa3b2]">{nChanges ? `${nChanges} change${nChanges > 1 ? "s" : ""}` : "No changes yet"}</span>
           <button type="button" disabled={isEmpty(scenario)} onClick={onShareLink} className="font-display h-10 rounded-full border border-[#2b3340] px-4 text-sm disabled:opacity-40">
-            COPY LINK
+            SHARE ↗
           </button>
           <button type="button" disabled={isEmpty(scenario)} onClick={onShareChat} className="font-display h-10 rounded-full bg-[#39ff14] px-4 text-sm text-[#0d1016] disabled:opacity-40">
             SHARE TO LEAGUE CHAT

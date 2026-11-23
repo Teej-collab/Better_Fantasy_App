@@ -140,7 +140,7 @@ function BettorRow({ bet }: { bet: LeagueBet }) {
           {m.name}
           {m.team_name && <span className="font-normal text-black/50 dark:text-white/50"> · {m.team_name}</span>}
         </span>
-        <span className="block truncate text-xs text-black/50 dark:text-white/50">
+        <span className="block break-words text-xs text-black/50 dark:text-white/50">
           {timeAgo(bet.created_at)} · {bet.member_record} this season
         </span>
       </span>

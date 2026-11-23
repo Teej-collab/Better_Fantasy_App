@@ -446,7 +446,7 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
             <svg width="12" height="14" className="shrink-0" aria-hidden="true">
               <polygon points="6,1 11,4 11,10 6,13 1,10 1,4" fill={landed === i ? ORANGE : "none"} stroke={landed === i ? ORANGE : GREEN} strokeWidth="1.5" />
             </svg>
-            <span className="min-w-0 flex-1 truncate text-sm">{item.text}</span>
+            <span className="min-w-0 flex-1 break-words text-sm">{item.text}</span>
             {item.can_remove && (
               <button
                 type="button"

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { router, Stack, type Href } from 'expo-router';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
@@ -22,9 +22,11 @@ import type { SurvivorPoolSummary } from '@/lib/survivorTypes';
 export default function SurvivorHubScreen() {
   const q = useQuery({ queryKey: ['survivor-pools'], queryFn: api.survivorPools });
   const [refreshing, setRefreshing] = useState(false);
-  const [code, setCode] = useState('');
+  // From a shared pool's card (app/s/[token].tsx): its code, ready to join.
+  const { join: sharedCode } = useLocalSearchParams<{ join?: string }>();
+  const [code, setCode] = useState(sharedCode?.toUpperCase() ?? '');
   const [joining, setJoining] = useState(false);
-  const [showJoin, setShowJoin] = useState(false);
+  const [showJoin, setShowJoin] = useState(!!sharedCode);
   const inAPool = Boolean(q.data?.pools.some((p) => p.mine.length > 0));
   // Pick reminders need this phone registered, and someone who's only in
   // survivor pools (no league) never got asked from the tabs.
@@ -141,7 +143,7 @@ function PoolCard({ pool, joining, onJoin }: { pool: SurvivorPoolSummary; joinin
         <View style={styles.cardHead}>
           <StatusHex label={label} alive={alive || mine.length === 0} />
           <View style={styles.flex}>
-            <Text style={styles.poolName} numberOfLines={1}>
+            <Text style={styles.poolName} numberOfLines={2}>
               {pool.name}
             </Text>
             <View style={styles.meta}>

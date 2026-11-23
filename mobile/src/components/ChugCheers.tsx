@@ -61,7 +61,7 @@ export function ChugCheers({ chug, compact }: { chug: ChugFeedEntry; compact?: b
         </Pressable>
       )}
       {cheers.length > 0 && (
-        <Text style={styles.by} numberOfLines={1}>
+        <Text style={styles.by} numberOfLines={2}>
           {chug.mine ? `🍻 ${cheeredBy(cheers)} cheered this` : cheeredBy(cheers)}
         </Text>
       )}

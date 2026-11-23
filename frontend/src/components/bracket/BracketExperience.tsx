@@ -18,6 +18,8 @@ import type { PlayoffOdds } from "@/lib/api";
 import { ArenaView } from "@/components/bracket/ArenaView";
 import { PathView } from "@/components/bracket/PathView";
 import { WhatIfView } from "@/components/bracket/WhatIfView";
+import { ShareDialog } from "@/components/share/ShareButton";
+import type { ShareRef } from "@/lib/share";
 
 // The Bracket (2026-10; Standings → Playoffs): one world — reality, or the what-if the
 // user is building — shown three ways. The pill top-left switches
@@ -50,6 +52,7 @@ export function BracketExperience({
   const [meChoice, setMeChoice] = useState<number | null>(shared.me);
   const [pathChoice, setPathChoice] = useState<number | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<{ ref: ShareRef; title: string } | null>(null);
   const [odds, setOdds] = useState<{ key: string; real: PlayoffOdds | null; alt: PlayoffOdds | null } | null>(null);
 
   useEffect(() => {
@@ -139,13 +142,15 @@ export function BracketExperience({
     syncUrl(mode, EMPTY_SCENARIO, t);
   };
   const link = () => `${window.location.origin}/standings?view=playoffs&mode=whatif&w=${encodeScenario(scenario, me)}`;
-  const shareLink = async () => {
-    try {
-      await navigator.clipboard.writeText(link());
-      setShareNote("Link copied. Anyone in the league can open this exact world.");
-    } catch {
-      setShareNote(link());
-    }
+  // A card link like every other share (2026-11-23): it opens this exact
+  // world in the app for anyone who has it, and on the web otherwise.
+  const shareLink = () => {
+    const row = alt.standings.find((r) => r.team_id === me);
+    if (!row) return;
+    setSheet({
+      title: `What if… ${scenarioHeadline(world, alt, me)}`,
+      ref: { kind: "whatif", season, scenario: encodeScenario(scenario, me), team_id: me, record: recordOf(row), seed: row.seed, place: alt.places[me] ?? null },
+    });
   };
   const shareChat = async () => {
     const body = `What if… ${scenarioHeadline(world, alt, me)}. See it: ${link()}`;
@@ -219,6 +224,7 @@ export function BracketExperience({
           oddsUpdating={odds?.key !== oddsKey}
         />
       )}
+      {sheet && <ShareDialog shareRef={sheet.ref} title={sheet.title} onClose={() => setSheet(null)} />}
     </div>
   );
 }

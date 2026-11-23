@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,6 +24,7 @@ import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, slotDisplayLabel, starterSortIndex, TA
 import { formatPoints } from '@/lib/format';
 import type { RosterEntry } from '@/lib/types';
 import { TAB_BAR_HEIGHT, useTabBarScroll } from '@/lib/tabBar';
+import { shareLineAndLink } from '@/lib/shareImage';
 
 const UNDO_MS = 10_000;
 
@@ -126,7 +127,7 @@ function TeamScreenContent() {
         <MirrorBanner />
         <View style={styles.titleRow}>
           <TeamAvatar name={data.owner_name ?? data.team_name} logoUrl={data.logo_url ?? null} size={44} />
-          <Text style={[styles.title, styles.titleText]} numberOfLines={1}>
+          <Text style={[styles.title, styles.titleText]} numberOfLines={2}>
             {data.team_name}
           </Text>
           <InviteCoOwner />
@@ -220,9 +221,7 @@ function InviteCoOwner() {
     try {
       const code = await api.createCoOwnerInvite();
       const link = `${WEB_BASE_URL}/join-co-owner?code=${code}`;
-      await Share.share({
-        message: `Help me run my team on The Weekend — open this after you sign up and you'll be able to manage it with me: ${link}`,
-      });
+      await shareLineAndLink("Help me run my team on The Weekend. Open this after you sign up and you'll manage it with me.", link);
     } catch (e) {
       Alert.alert("Couldn't generate an invite link", e instanceof Error ? e.message : undefined);
     } finally {

@@ -677,7 +677,7 @@ function Builder({
             style={on ? { borderColor: color, backgroundColor: `${color}22` } : { borderColor: "rgba(127,127,127,0.25)" }}
           >
             <span className="truncate text-sm font-bold">{p.player_name}</span>
-            <span className={`truncate text-[11px] ${MUTED}`}>
+            <span className={`break-words text-[11px] ${MUTED}`}>
               {pos(p.position)} · {(p.per_week ?? 0).toFixed(1)}/wk{p.injury_status ? ` · ${p.injury_status}` : ""}
               {p.on_block ? " · on the block" : ""}
             </span>
@@ -713,7 +713,7 @@ function Builder({
             <Avatar name={partnerName} url={partnerInfo?.logo_url ?? null} />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className={`text-[11px] font-extrabold tracking-wider uppercase ${MUTED}`}>Trading with</span>
-              <span className="truncate font-bold">{partnerName}</span>
+              <span className="break-words font-bold">{partnerName}</span>
             </span>
             {counter === null && (
               <button type="button" onClick={() => setPartner(null)} className="min-h-10 rounded-full px-4 text-sm font-bold" style={{ backgroundColor: `color-mix(in srgb, ${NAV_ACCENT} 20%, transparent)` }}>
@@ -794,7 +794,7 @@ function PartnerList({ partners, onPick }: { partners: TradePartner[] | null; on
             <Avatar name={t.team_name} url={t.logo_url} />
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="flex items-baseline gap-2">
-                <span className="truncate font-bold">{t.team_name}</span>
+                <span className="break-words font-bold">{t.team_name}</span>
                 <span className={`ml-auto shrink-0 text-sm font-bold ${MUTED}`}>{record}</span>
               </span>
               <span className={`text-xs ${MUTED}`}>{shape || t.owner_name || ""}</span>

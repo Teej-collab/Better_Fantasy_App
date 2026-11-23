@@ -168,3 +168,45 @@ async def test_only_the_bettor_shares_a_bet(pool):
         card = (await bettor.get(f"/share/{resp.json()['token']}")).json()["card"]
         assert card["stake"] == 20 and card["legs"][0]["text"] == "Justin Jefferson 90+ rec yds"
         assert (await other.post("/share", json={"kind": "bet", "bet_id": bet_id})).status_code == 404
+
+
+async def test_a_what_if_world_shares_as_a_link_that_reopens_it(pool):
+    async with _client() as client:
+        league_id = await _member_of_a_new_league(client)
+        await _seed_teams(pool, league_id)
+        async with pool.acquire() as conn:
+            team_id = await conn.fetchval(
+                "SELECT id FROM teams_by_season WHERE league_id = $1 AND season = $2 ORDER BY id LIMIT 1", league_id, TEST_SEASON
+            )
+        ref = {"kind": "whatif", "season": TEST_SEASON, "scenario": f"p.337:5,338:1~me.{team_id}", "team_id": team_id, "record": "8-5 proj.", "seed": 3, "place": 3}
+        resp = await client.post("/share", json=ref)
+        assert resp.status_code == 200, resp.text
+        body = (await client.get(f"/share/{resp.json()['token']}")).json()
+        assert body["kind"] == "whatif" and body["ref"]["scenario"] == ref["scenario"]
+        assert body["card"] == {
+            "season": TEST_SEASON, "scenario": ref["scenario"], "name": "Kim", "team_name": "Cleat Chasers",
+            "record": "8-5 proj.", "seed": 3, "place": 3,
+        }
+        # No finish is fine; a made-up record or a team from elsewhere isn't.
+        assert (await client.post("/share", json={**ref, "place": None})).status_code == 200
+        assert (await client.post("/share", json={**ref, "record": "<b>8-5</b>"})).status_code == 404
+        assert (await client.post("/share", json={**ref, "team_id": 999999999})).status_code == 404
+        assert (await client.post("/share", json={**ref, "scenario": None})).status_code == 422
+
+
+async def test_a_survivor_pool_shares_as_an_invite_card(pool):
+    async with _client() as client:
+        league_id = await _member_of_a_new_league(client)
+        me = (await client.get("/auth/me")).json()
+        async with pool.acquire() as conn:
+            pool_id = await conn.fetchval(
+                "INSERT INTO survivor_pools (season, name, league_id, created_by, join_code, start_week) VALUES ($1, 'Last Man Standing', $2, $3, $4, 3) RETURNING id",
+                TEST_SEASON, league_id, me["user_id"], f"T{uuid.uuid4().hex[:7].upper()}",
+            )
+        resp = await client.post("/share", json={"kind": "survivor", "pool_id": pool_id})
+        assert resp.status_code == 200, resp.text
+        card = (await client.get(f"/share/{resp.json()['token']}")).json()["card"]
+        assert card["name"] == "Last Man Standing" and card["entries"] == 0 and card["league_only"] is True
+        assert (await client.post("/share", json={"kind": "survivor", "pool_id": 999999999})).status_code == 404
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM survivor_pools WHERE id = $1", pool_id)

@@ -3,7 +3,18 @@ import * as Updates from 'expo-updates';
 import { useEffect } from 'react';
 import { DevSettings } from 'react-native';
 
-import { ACCENT_STORE_KEY, ActiveTheme, Colors, DefaultAccent, HoneycombColor, THEME_STORE_KEY, type ThemeName } from '@/constants/theme';
+import {
+  ACCENT_STORE_KEY,
+  ActiveObPalette,
+  ActiveTheme,
+  Colors,
+  DefaultAccent,
+  HoneycombColor,
+  OB_PALETTE_STORE_KEY,
+  THEME_STORE_KEY,
+  type ObPaletteName,
+  type ThemeName,
+} from '@/constants/theme';
 import { isMulti, MULTI_COLORS } from '@/lib/colorChoice';
 import { usePreferences } from '@/lib/queries';
 
@@ -24,6 +35,9 @@ export type Appearance = {
   ring: string;
   // Border Animation Color: Multi — the ring sweeps through every color.
   ringColors: string[] | null;
+  // A Border Animation Color was picked (not "Match accent"): Owners Box
+  // panels, ringless by default, get the moving ring back.
+  ringChosen: boolean;
   // Home's Your Week card; falls back to the accent.
   yourWeek: string;
   yourWeekColors: string[] | null;
@@ -60,6 +74,7 @@ export function useAppearance(): Appearance {
     accentMulti,
     ring: hexOr(prefs?.border_glow_color, accent),
     ringColors: isMulti(prefs?.border_glow_color) ? MULTI_COLORS : null,
+    ringChosen: !!prefs?.border_glow_color,
     yourWeek: hexOr(prefs?.your_week_color, accent),
     yourWeekColors: isMulti(prefs?.your_week_color) ? MULTI_COLORS : null,
     honeycomb: prefs?.honeycomb_color === 'off' ? null : prefs?.honeycomb_color === 'multi' ? HONEYCOMB_MULTI[3] : hexOr(prefs?.honeycomb_color, HoneycombColor),
@@ -94,6 +109,18 @@ export function applyTheme(theme: ThemeName, returnTo?: string): void {
     return;
   }
   if (theme === ActiveTheme) return;
+  reloadQuietly(returnTo);
+}
+
+// The Owners Box color theme, saved for launch the same way as the Look
+// (constants/theme.ts reads it before any styles are built).
+export function applyObPalette(palette: ObPaletteName, returnTo?: string): void {
+  try {
+    SecureStore.setItem(OB_PALETTE_STORE_KEY, palette);
+  } catch {
+    return;
+  }
+  if (palette === ActiveObPalette || ActiveTheme !== 'ownersbox') return;
   reloadQuietly(returnTo);
 }
 
@@ -191,6 +218,16 @@ export function useThemeSync(): void {
       // Stays in the current look.
     }
   }, [theme]);
+  // And the Owners Box color theme, picked on another phone.
+  const obPalette = prefs?.ob_palette;
+  useEffect(() => {
+    if (!obPalette) return;
+    try {
+      if (SecureStore.getItem(OB_PALETTE_STORE_KEY) !== obPalette) SecureStore.setItem(OB_PALETTE_STORE_KEY, obPalette);
+    } catch {
+      // Stays in the current colors.
+    }
+  }, [obPalette]);
   // Same for the accent (an accent picked on the web shows from the next launch).
   const accent = prefs ? (prefs.accent_color && HEX.test(prefs.accent_color) ? prefs.accent_color : null) : undefined;
   useEffect(() => {

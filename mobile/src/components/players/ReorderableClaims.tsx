@@ -206,7 +206,7 @@ function ClaimRow({
                 </Text>
               )}
             </Text>
-            <Text style={styles.drop} numberOfLines={1}>
+            <Text style={styles.drop} numberOfLines={2}>
               {claim.drop_player_name ? `Drop ${claim.drop_player_name}` : 'No drop'}
               {note && <Text style={styles.note}> · {note}</Text>}
             </Text>

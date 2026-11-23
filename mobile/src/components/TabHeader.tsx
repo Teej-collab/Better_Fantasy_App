@@ -6,7 +6,7 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
-import { LiveDot, OB, Wordmark } from '@/components/ob/Ob';
+import { lampAt, LiveDot, OB, Wordmark } from '@/components/ob/Ob';
 import { SettingsIcon, type SettingsIconName } from '@/components/settings/SettingsIcon';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, OwnersBox, Radius, Spacing } from '@/constants/theme';
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
   obBrand: { gap: 3, flexShrink: 1 },
   obLeagueLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   obLeagueText: { color: OB.mute, fontFamily: Fonts.mono, fontSize: 9.5, letterSpacing: 1.4, flexShrink: 1 },
-  obScore: { height: 32, paddingHorizontal: 11, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(14,18,16,0.92)', borderWidth: 1, borderColor: 'rgba(57,255,20,0.35)' },
+  obScore: { height: 32, paddingHorizontal: 11, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(14,18,16,0.92)', borderWidth: 1, borderColor: lampAt(0.35) },
   obScoreMine: { fontFamily: 'BigShoulders_800ExtraBold', fontSize: 17, lineHeight: 21, color: OB.ink, fontVariant: ['tabular-nums'] },
   obScoreThem: { fontFamily: 'BigShoulders_800ExtraBold', fontSize: 17, lineHeight: 21, color: OB.mute, fontVariant: ['tabular-nums'] },
   obLeague: { minHeight: 32, paddingHorizontal: 10, gap: 7, borderColor: OB.rim, backgroundColor: OB.glass },
@@ -301,6 +301,6 @@ const styles = StyleSheet.create({
   obBell: { borderRadius: 17, borderWidth: 1, borderColor: OB.rim, backgroundColor: OB.glass },
   obBadge: { top: -3, right: -3, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: OB.lamp },
   obBadgeText: { color: OB.void, fontFamily: Fonts.monoBold, fontSize: 9.5 },
-  obAvatar: { borderWidth: 1.5, borderColor: 'rgba(57,255,20,0.6)', backgroundColor: OB.ink },
+  obAvatar: { borderWidth: 1.5, borderColor: lampAt(0.6), backgroundColor: OB.ink },
   obAvatarText: { color: OB.void, fontFamily: Fonts.bodyBold },
 });

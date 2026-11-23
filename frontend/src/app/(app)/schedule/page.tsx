@@ -260,10 +260,10 @@ function TeamRow({ side, other, week, record }: { side: ScheduleSide; other: Sch
     <div className="flex items-center gap-3 py-2">
       <Avatar side={side} size={40} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-bold" style={{ opacity: final && lost ? 0.5 : 1 }}>
+        <p className="break-words text-[15px] font-bold" style={{ opacity: final && lost ? 0.5 : 1 }}>
           {side.team_name}
         </p>
-        <p className="truncate text-xs" style={{ color: ELITE.soft }}>
+        <p className="break-words text-xs" style={{ color: ELITE.soft }}>
           {side.owner_name}
           {record ? ` · ${record}` : ""}
         </p>
@@ -357,8 +357,8 @@ function SeasonRow({
         <>
           <Avatar side={pair[1]} size={36} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-bold">vs {pair[1].team_name}</p>
-            <p className="truncate text-xs" style={{ color: ELITE.soft }}>
+            <p className="break-words text-[15px] font-bold">vs {pair[1].team_name}</p>
+            <p className="break-words text-xs" style={{ color: ELITE.soft }}>
               {pair[1].owner_name}
               {records[String(pair[1].team_id)] ? ` · ${records[String(pair[1].team_id)]}` : ""}
             </p>

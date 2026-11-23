@@ -180,7 +180,7 @@ function Sweat({ sweat }: { sweat: Extract<LeagueFeed, { enabled: true }>['sweat
             <Text style={styles.closestTitle} numberOfLines={2}>
               {headline}
             </Text>
-            <Text style={styles.soft} numberOfLines={1}>
+            <Text style={styles.soft} numberOfLines={2}>
               {c.odds_american !== null ? `to hit a ${formatOdds(c.odds_american)} ${c.legs > 1 ? 'parlay' : 'bet'}` : pick}
               {g?.away_team ? ` · ${g.away_team} @ ${g.home_team}` : ''}
             </Text>

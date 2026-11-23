@@ -28,6 +28,38 @@ export const ActiveTheme: ThemeName = storedTheme();
 // draw their Owners Box version instead.
 export const OwnersBox = ActiveTheme === 'ownersbox';
 
+// Owners Box color themes (2026-11-23): the Weekend looks' palettes, in
+// the Owners Box's glass. Night is the one it shipped with. Each swaps
+// the dark behind everything (bg/void), the panels, the light's default
+// color (accent) and the hex wall's (honeycomb). Saved on this phone like
+// the Look, and in owner_preferences.ob_palette.
+export type ObPaletteName = 'night' | 'cosmic' | 'midnight' | 'graphite' | 'ember' | 'gridiron';
+export const OB_PALETTE_NAMES: ObPaletteName[] = ['night', 'cosmic', 'midnight', 'graphite', 'ember', 'gridiron'];
+export const OB_PALETTE_STORE_KEY = 'wl-ob-palette';
+
+type Palette = { bg: string; surface: string; tile: string; tileRaised: string; border: string; accent: string };
+
+export const OB_PALETTES: Record<ObPaletteName, Palette & { void: string; honeycomb: string }> = {
+  night: { bg: '#0b0d10', void: '#060708', surface: '#121519', tile: '#171a1f', tileRaised: '#1c2026', border: '#1e2228', accent: '#39ff14', honeycomb: '#39ff14' },
+  cosmic: { bg: '#0a0716', void: '#05030c', surface: '#151026', tile: '#1b1530', tileRaised: '#211a38', border: '#2b2148', accent: '#39ffb0', honeycomb: '#a855f7' },
+  midnight: { bg: '#060a13', void: '#03060c', surface: '#0d1423', tile: '#131c30', tileRaised: '#182239', border: '#1b2740', accent: '#5cc8ff', honeycomb: '#2563eb' },
+  graphite: { bg: '#000000', void: '#000000', surface: '#101012', tile: '#18181b', tileRaised: '#1f1f23', border: '#26262a', accent: '#f2f2f7', honeycomb: '#636366' },
+  ember: { bg: '#110a07', void: '#0a0503', surface: '#18100b', tile: '#211611', tileRaised: '#281b14', border: '#352117', accent: '#ff7a2f', honeycomb: '#ea580c' },
+  gridiron: { bg: '#06100a', void: '#030a05', surface: '#0b1810', tile: '#102217', tileRaised: '#152b1d', border: '#1a3524', accent: '#b4f03a', honeycomb: '#16a34a' },
+};
+
+function storedObPalette(): ObPaletteName {
+  try {
+    const saved = SecureStore.getItem(OB_PALETTE_STORE_KEY) as ObPaletteName | null;
+    return saved && OB_PALETTE_NAMES.includes(saved) ? saved : 'night';
+  } catch {
+    return 'night';
+  }
+}
+
+export const ActiveObPalette: ObPaletteName = storedObPalette();
+export const ObPalette = OB_PALETTES[ActiveObPalette];
+
 // Settings > Appearance > Accent Color, saved on this phone the same way
 // (lib/appearance.ts), so the many screens styled from Colors.accent at
 // load use your color — not just the ones that read it live.
@@ -51,14 +83,14 @@ function storedAccent(): string | null {
 // 2026-10-28: four more full looks (the approved "The Weekend Themes"
 // mockup), each its own background, panels and accent: Midnight (navy),
 // Graphite (true black), Ember (warm charcoal) and Gridiron (field green).
-const PALETTES: Record<ThemeName, { bg: string; surface: string; tile: string; tileRaised: string; border: string; accent: string }> = {
+const PALETTES: Record<ThemeName, Palette> = {
   calm: { bg: '#0d1016', surface: '#12161c', tile: '#191d23', tileRaised: '#1e2227', border: '#1c2027', accent: '#39ff14' },
   cosmic: { bg: '#0a0716', surface: '#171129', tile: '#1e182f', tileRaised: '#231d34', border: '#35285f', accent: '#39ffb0' },
   midnight: { bg: '#060a13', surface: '#0e1526', tile: '#152038', tileRaised: '#1a2642', border: '#1d2b48', accent: '#5cc8ff' },
   graphite: { bg: '#000000', surface: '#121214', tile: '#1c1c1f', tileRaised: '#232327', border: '#2a2a2e', accent: '#f2f2f7' },
   ember: { bg: '#110a07', surface: '#1a110c', tile: '#241812', tileRaised: '#2b1d16', border: '#3a2418', accent: '#ff7a2f' },
   gridiron: { bg: '#06100a', surface: '#0c1a12', tile: '#12261a', tileRaised: '#17301f', border: '#1c3a27', accent: '#b4f03a' },
-  ownersbox: { bg: '#0b0d10', surface: '#121519', tile: '#171a1f', tileRaised: '#1c2026', border: '#1e2228', accent: '#39ff14' },
+  ownersbox: { bg: ObPalette.bg, surface: ObPalette.surface, tile: ObPalette.tile, tileRaised: ObPalette.tileRaised, border: ObPalette.border, accent: ObPalette.accent },
 };
 
 // The brand, the same for everyone whatever their look or accent, like
@@ -155,7 +187,7 @@ const THEME_HONEYCOMB: Record<ThemeName, string> = {
   graphite: '#636366',
   ember: '#ea580c',
   gridiron: '#16a34a',
-  ownersbox: '#39ff14',
+  ownersbox: ObPalette.honeycomb,
 };
 export const HoneycombColor = THEME_HONEYCOMB[ActiveTheme];
 

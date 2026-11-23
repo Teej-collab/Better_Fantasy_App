@@ -10,7 +10,9 @@ Kinds: matchup {matchup_id}, recap {season, week}, standings {season},
 power {season, week}, awards {season, week}; the second pass
 (2026-11-11): champion {season}, season_awards {season}, chug
 {chug_id}, bet {bet_id}, trade {trade_id}, wheel {season}, invite {}
-and player {game_id, player_id} (Gamecast). A builder returns None
+and player {game_id, player_id} (Gamecast); whatif {season, scenario,
+team_id, record, seed, place} (2026-11-23, a What-If world) and survivor
+{pool_id} (an invite to a survivor pool). A builder returns None
 when there's nothing to show yet (an unreleased recap, a week still
 being played), and the link answers 404 until there is.
 """
@@ -491,6 +493,68 @@ async def wheel_card(conn, league_id: int, ref: dict) -> dict | None:
     }
 
 
+# ---------------------------------------------------------------- what-if
+_SCENARIO = re.compile(r"^[a-z]{1,2}\.[0-9a-z.,:~-]{0,600}$")
+_PROJECTED_RECORD = re.compile(r"^\d{1,2}-\d{1,2}(-\d{1,2})?( proj\.)?$")
+
+
+async def whatif_card(conn, league_id: int, ref: dict) -> dict | None:
+    """A What-If world someone built: the scenario rides along so the app
+    and web open it exactly as made. The simulated record, seed and finish
+    come from the sharer's phone (the simulation runs there), so they're
+    checked for shape and the team must be in this league."""
+    season = int(ref["season"])
+    scenario, record = str(ref["scenario"]), str(ref["record"])
+    if not _SCENARIO.match(scenario) or not _PROJECTED_RECORD.match(record):
+        return None
+    team = await conn.fetchrow(
+        "SELECT team_name FROM teams_by_season WHERE league_id = $1 AND season = $2 AND id = $3",
+        league_id, season, int(ref["team_id"]),
+    )
+    if team is None:
+        return None
+    names = await _goes_by(conn, league_id, season)
+    place = ref.get("place")
+    return {
+        "season": season,
+        "scenario": scenario,
+        "name": names.get(int(ref["team_id"])) or team["team_name"],
+        "team_name": team["team_name"],
+        "record": record,
+        "seed": int(ref["seed"]),
+        "place": int(place) if place else None,
+    }
+
+
+# ---------------------------------------------------------------- survivor
+async def survivor_card(conn, league_id: int, ref: dict) -> dict | None:
+    """A survivor pool to join: this league's, or a stand-alone one (anyone
+    with its code joins those, so a member of any league may share it)."""
+    pool = await conn.fetchrow(
+        """
+        SELECT p.id, p.season, p.name, p.join_code, p.start_week, p.lives, p.league_id,
+               (SELECT count(*) FROM survivor_entries e WHERE e.pool_id = p.id) AS entries,
+               (SELECT count(*) FROM survivor_entries e WHERE e.pool_id = p.id AND e.eliminated_week IS NULL) AS alive
+        FROM survivor_pools p
+        WHERE p.id = $1 AND (p.league_id = $2 OR p.league_id IS NULL)
+        """,
+        int(ref["pool_id"]), league_id,
+    )
+    if pool is None:
+        return None
+    return {
+        "pool_id": pool["id"],
+        "season": pool["season"],
+        "name": pool["name"],
+        "join_code": pool["join_code"],
+        "start_week": pool["start_week"],
+        "lives": pool["lives"],
+        "entries": pool["entries"],
+        "alive": pool["alive"],
+        "league_only": pool["league_id"] is not None,
+    }
+
+
 # ---------------------------------------------------------------- invite
 async def invite_card(conn, league_id: int, ref: dict) -> dict | None:
     league = await conn.fetchrow(
@@ -584,4 +648,6 @@ BUILDERS = {
     "wheel": wheel_card,
     "invite": invite_card,
     "player": player_card,
+    "whatif": whatif_card,
+    "survivor": survivor_card,
 }

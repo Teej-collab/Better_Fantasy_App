@@ -135,7 +135,7 @@ export function GameTile({
                 {team ? team.name : sourceLabel(side.from, all)}
               </span>
               {!compact && (
-                <span className="truncate text-xs text-[#9aa3b2]">
+                <span className="break-words text-xs text-[#9aa3b2]">
                   {team ? `${team.team_name}${records[team.team_id] ? ` · ${records[team.team_id]}` : ""}` : "to be decided"}
                 </span>
               )}

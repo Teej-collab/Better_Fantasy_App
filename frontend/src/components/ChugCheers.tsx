@@ -57,7 +57,7 @@ export function ChugCheers({ chug, className = "" }: { chug: ChugFeedEntry; clas
         </button>
       )}
       {cheers.length > 0 && (
-        <span className="truncate text-xs text-[#f5f4ec]/50">
+        <span className="break-words text-xs text-[#f5f4ec]/50">
           {chug.mine ? `🍻 ${cheeredBy(cheers)} cheered this` : cheeredBy(cheers)}
         </span>
       )}

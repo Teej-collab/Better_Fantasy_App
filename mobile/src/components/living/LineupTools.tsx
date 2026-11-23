@@ -165,21 +165,21 @@ export function StartSitCard({ roster, context, week }: { roster: RosterEntry[];
         <View key={`${starter.player_id}-${bench.player_id}`} style={styles.calls}>
           <View style={[styles.call, { borderColor: proj(starter) >= proj(bench) ? Colors.accent : Colors.border }]}>
             <Text style={styles.callLabel}>Starting</Text>
-            <Text style={styles.callName} numberOfLines={1}>
+            <Text style={styles.callName} numberOfLines={2}>
               {starter.player_name}
             </Text>
             <Display style={styles.callNum}>{fmt(proj(starter))}</Display>
-            <Text style={styles.small} numberOfLines={1}>
+            <Text style={styles.small} numberOfLines={2}>
               {tough(starter)}
             </Text>
           </View>
           <View style={[styles.call, { borderColor: proj(bench) > proj(starter) ? Colors.accent : Colors.border }]}>
             <Text style={styles.callLabel}>Bench</Text>
-            <Text style={styles.callName} numberOfLines={1}>
+            <Text style={styles.callName} numberOfLines={2}>
               {bench.player_name}
             </Text>
             <Display style={styles.callNum}>{fmt(proj(bench))}</Display>
-            <Text style={styles.small} numberOfLines={1}>
+            <Text style={styles.small} numberOfLines={2}>
               {tough(bench)}
             </Text>
             {proj(bench) > proj(starter) && <SwapButton starter={starter} backup={bench} label="Start him" />}
@@ -218,7 +218,7 @@ export function WeatherCard({ games, roster }: { games: NflGame[]; roster: Roste
                   <Text style={styles.weatherGame}>
                     {g.away_team} @ {g.home_team}
                   </Text>
-                  <Text style={styles.small} numberOfLines={1}>
+                  <Text style={styles.small}>
                     {names}
                   </Text>
                 </View>

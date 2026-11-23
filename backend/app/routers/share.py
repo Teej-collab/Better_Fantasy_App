@@ -40,7 +40,12 @@ _REF_FIELDS = {
     "wheel": ("season",),
     "invite": (),
     "player": ("game_id", "player_id"),
+    "whatif": ("season", "scenario", "team_id", "record", "seed"),
+    "survivor": ("pool_id",),
 }
+# Kept in the ref when sent, but not required: a what-if may not say
+# where the team finishes.
+_OPTIONAL_REF_FIELDS = {"whatif": ("place",)}
 
 
 class ShareRequest(BaseModel):
@@ -53,6 +58,12 @@ class ShareRequest(BaseModel):
     trade_id: int | None = None
     game_id: str | None = None
     player_id: str | None = None
+    scenario: str | None = None
+    team_id: int | None = None
+    record: str | None = None
+    seed: int | None = None
+    place: int | None = None
+    pool_id: int | None = None
 
 
 @router.post("")
@@ -65,6 +76,7 @@ async def create_share_link(
     if any(values[f] is None for f in _REF_FIELDS[body.kind]):
         raise HTTPException(status_code=422, detail=f"Sharing {body.kind} needs {', '.join(_REF_FIELDS[body.kind])}.")
     ref = {f: values[f] for f in _REF_FIELDS[body.kind]}
+    ref |= {f: values[f] for f in _OPTIONAL_REF_FIELDS.get(body.kind, ()) if values[f] is not None}
     payload = decode_session_token(SessionConfig().session_secret, get_session_token(request) or "")
 
     async with pool.acquire() as conn:

@@ -2,7 +2,7 @@ import { useId, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { ClipPath, Defs, Image as SvgImage, Polygon } from 'react-native-svg';
 
-import { OB, ObCell, ObLitLayer, ObPortrait, ObTitle, ObWinBar } from '@/components/ob/Ob';
+import { lampAt, OB, ObCell, ObLitLayer, ObPortrait, ObTitle, ObWinBar } from '@/components/ob/Ob';
 import { Text } from '@/components/Text';
 import { Fonts, OwnersBox } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
@@ -471,7 +471,7 @@ export const eliteText = StyleSheet.create({
 const styles = StyleSheet.create({
   obGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', paddingVertical: 4 },
   obCard: { backgroundColor: OB.glass, borderColor: OB.rim, shadowOpacity: 0 },
-  obCardLit: { borderColor: 'rgba(57,255,20,0.2)', overflow: 'hidden' },
+  obCardLit: { borderColor: lampAt(0.2), overflow: 'hidden' },
   obWin: { marginTop: 8 },
   obWinLabel: { fontFamily: Fonts.mono, fontSize: 11, color: OB.mute },
   obChip: { borderRadius: 999, borderColor: OB.rim2, backgroundColor: 'transparent', shadowOpacity: 0 },

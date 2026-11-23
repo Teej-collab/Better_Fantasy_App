@@ -167,9 +167,9 @@ export function StartSitCard({ roster, context, week, onChanged }: { roster: Ros
   const side = (p: RosterEntry, label: string, better: boolean, extra?: React.ReactNode) => (
     <div className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-xl border bg-white/[0.04] p-2.5" style={{ borderColor: better ? "#39ff14" : "rgba(255,255,255,0.1)" }}>
       <span className="text-[10px] font-bold tracking-[0.1em] text-[#8790a0] uppercase">{label}</span>
-      <span className="truncate text-sm font-bold">{p.player_name}</span>
+      <span className="break-words text-sm font-bold">{p.player_name}</span>
       <span className="font-display text-[22px] tabular-nums">{fmt(proj(p))}</span>
-      <Small className="truncate">{tough(p)}</Small>
+      <Small className="break-words">{tough(p)}</Small>
       {extra}
     </div>
   );
@@ -214,7 +214,7 @@ export function WeatherCard({ games, roster }: { games: NflGame[]; roster: Roste
                   <span className="text-base">
                     {g.away_team} @ {g.home_team}
                   </span>
-                  <Small className="truncate">{names}</Small>
+                  <Small className="break-words">{names}</Small>
                 </span>
                 <span className="flex shrink flex-col items-end gap-0.5 text-right">
                   <span className="text-sm font-bold">{headline}</span>
@@ -317,14 +317,14 @@ export function SwingPlayersCard({ me, them }: { me: MatchupContextSide; them: M
       {carry && (
         <Panel className="min-w-0 flex-1">
           <Kicker color={UP}>Carrying you</Kicker>
-          <span className="truncate text-sm font-bold">{carry.player_name}</span>
+          <span className="break-words text-sm font-bold">{carry.player_name}</span>
           <span className="font-display text-[28px] tabular-nums">{fmt(carry.points_scored)}</span>
         </Panel>
       )}
       {hurt && (
         <Panel className="min-w-0 flex-1">
           <Kicker color={DOWN}>Hurting you</Kicker>
-          <span className="truncate text-sm font-bold">{hurt.player_name}</span>
+          <span className="break-words text-sm font-bold">{hurt.player_name}</span>
           <span className="font-display text-[28px] tabular-nums">{fmt(hurt.points_scored)}</span>
         </Panel>
       )}
@@ -550,7 +550,7 @@ export function MatchupsAliveCard({ matchups, teamId }: { matchups: WeekMatchupC
               key={m.matchup_id}
               first={i === 0}
               left={
-                <span className="block truncate">
+                <span className="block break-words">
                   {m.home.owner_name} vs {m.away.owner_name}
                 </span>
               }

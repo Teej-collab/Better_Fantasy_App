@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ANTON, Elite, EliteCard, EliteLabel, Hex, initials } from '@/components/elite/Elite';
+import { ShareSheet } from '@/components/ShareSheet';
 import { livesText, rulesLine, TeamLogo } from '@/components/survivor/SurvivorKit';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
@@ -17,8 +18,12 @@ import type { SurvivorFieldRow, SurvivorPickView } from '@/lib/survivorTypes';
 // lives and picks — a pick for a game that hasn't started shows as a
 // lock), how the pool picked each week, and the code to invite people.
 export default function SurvivorPoolScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, share } = useLocalSearchParams<{ id: string; share?: string }>();
   const poolId = Number(id);
+  // The invite goes out as a card link (2026-11-23) that opens the pool in
+  // the app; it was a code in a plain text. ?share=1 opens it straight
+  // away (right after making a pool).
+  const [sharing, setSharing] = useState(share === '1');
   const q = useQuery({ queryKey: ['survivor-pool', poolId], queryFn: () => api.survivorPool(poolId), enabled: Number.isFinite(poolId) });
   const [refreshing, setRefreshing] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -40,7 +45,10 @@ export default function SurvivorPoolScreen() {
           <View style={styles.codeRow}>
             <Text style={styles.code}>{pool.join_code}</Text>
             <Pressable
-              onPress={() => void Share.share({ message: `Join my survivor pool "${pool.name}" on The Weekend with code ${pool.join_code}` })}
+              onPress={() => {
+                haptics.tap();
+                setSharing(true);
+              }}
               style={styles.outline}
               accessibilityRole="button">
               <Text style={styles.outlineText}>Share</Text>
@@ -65,6 +73,7 @@ export default function SurvivorPoolScreen() {
   }
 
   return (
+    <>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -169,6 +178,8 @@ export default function SurvivorPoolScreen() {
 
       {field.rows.length > 1 && invite}
     </ScrollView>
+      {sharing && <ShareSheet shareRef={{ kind: 'survivor', pool_id: poolId }} title={`Join "${pool.name}", my survivor pool`} onClose={() => setSharing(false)} />}
+    </>
   );
 }
 
@@ -181,7 +192,7 @@ function FieldRow({ row, weeks, lives }: { row: SurvivorFieldRow; weeks: number[
         <Text style={styles.initials}>{initials(row.name)}</Text>
       </Hex>
       <View style={styles.flex}>
-        <Text style={styles.fieldName} numberOfLines={1}>
+        <Text style={styles.fieldName} numberOfLines={2}>
           {row.mine ? `${row.name} (you)` : row.name}
         </Text>
         <Text style={[styles.fieldStatus, { color: out ? Elite.grey : row.lives_left >= lives ? Elite.mint : Elite.peach }]}>

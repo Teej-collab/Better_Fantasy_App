@@ -30,9 +30,14 @@ export default function SurvivorHubPage() {
     refresh().catch(() => setError("Couldn't load your pools. Are you signed in?"));
   }, [refresh]);
   useEffect(() => {
-    // Straight from Create a League's "Just a survivor pool".
+    // Straight from Create a League's "Just a survivor pool", or from a
+    // shared pool's card (/s/…) with its code ready to join.
+    const params = new URLSearchParams(window.location.search);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (new URLSearchParams(window.location.search).get("create")) setCreating(true);
+    if (params.get("create")) setCreating(true);
+    const shared = params.get("join");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (shared) setCode(shared.toUpperCase());
   }, []);
 
   async function join(body: { code?: string; pool_id?: number }) {
@@ -180,7 +185,7 @@ function PoolCard({ pool, busy, onJoin }: { pool: SurvivorPoolSummary; busy: boo
           </span>
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="truncate text-base font-extrabold">{pool.name}</span>
+          <span className="break-words text-base font-extrabold">{pool.name}</span>
           <span className="flex flex-wrap items-center gap-1.5 text-xs" style={{ color: ELITE.soft }}>
             <span className="rounded px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide" style={pool.league_id ? { color: ELITE.blue, background: "rgba(125,211,252,.14)" } : { color: ELITE.peach, background: "rgba(255,178,122,.14)" }}>
               {pool.league_id ? "LEAGUE" : "STANDALONE"}

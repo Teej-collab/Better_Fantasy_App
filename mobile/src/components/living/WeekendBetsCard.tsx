@@ -201,7 +201,7 @@ function LeagueBetsPill() {
       style={({ pressed }) => [styles.button, styles.leaguePill, pressed && styles.pressed]}>
       {live > 0 && <View style={styles.liveDot} />}
       <Text style={styles.buttonText}>League Bets</Text>
-      <Text style={styles.leagueDetail} numberOfLines={1}>
+      <Text style={styles.leagueDetail} numberOfLines={2}>
         · {detail}
       </Text>
     </Pressable>
@@ -281,7 +281,7 @@ function BetRow({ bet, kind, games }: { bet: Bet; kind: Kind; games: Map<string,
       )}
       {(sub || toWin !== null) && (
         <View style={styles.rowTop}>
-          <Text style={styles.small} numberOfLines={1}>
+          <Text style={styles.small} numberOfLines={2}>
             {sub ?? ''}
           </Text>
           {toWin !== null && toWin > 0 && <Text style={styles.small}>to win {money(toWin)}</Text>}

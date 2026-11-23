@@ -187,7 +187,7 @@ function Sweat({ sweat }: { sweat: LeagueSweat }) {
           <BetAvatar member={c.member} size={30} ring="#f59e0b" />
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-semibold">{headline}</span>
-            <span className={`block truncate text-xs ${muted}`}>
+            <span className={`block break-words text-xs ${muted}`}>
               {c.odds_american !== null ? `to hit a ${formatOdds(c.odds_american)} ${c.legs > 1 ? "parlay" : "bet"}` : ""}
               {g?.away_team ? ` · ${g.away_team} @ ${g.home_team}` : ""}
             </span>

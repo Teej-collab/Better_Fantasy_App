@@ -31,7 +31,19 @@ type YourWeekProps = {
 };
 
 export function YourWeekCard(props: YourWeekProps) {
-  if (OwnersBox) return <ObYourWeek myWeek={props.myWeek} isGameDay={props.isGameDay} leagueName={props.leagueName} final={props.final} me={props.me} them={props.them} />;
+  if (OwnersBox) {
+    return (
+      <ObYourWeek
+        myWeek={props.myWeek}
+        isGameDay={props.isGameDay}
+        leagueName={props.leagueName}
+        final={props.final}
+        me={props.me}
+        them={props.them}
+        color={props.colors?.[0] ?? props.color}
+      />
+    );
+  }
   return <YourWeekClassic {...props} />;
 }
 

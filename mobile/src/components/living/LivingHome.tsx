@@ -51,7 +51,7 @@ import {
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { ApiError } from '@/lib/api';
-import { Eyebrow, OB } from '@/components/ob/Ob';
+import { Eyebrow, lampAt, OB } from '@/components/ob/Ob';
 import { Colors, Fonts, OwnersBox, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 import {
@@ -618,6 +618,6 @@ const styles = StyleSheet.create({
   obContent: { gap: 22 },
   obHeader: { gap: 8, marginTop: 4 },
   obTitle: { fontFamily: OB.displayBlack, fontSize: 44, lineHeight: 50, letterSpacing: 0.2, paddingTop: 4 },
-  obUnread: { backgroundColor: 'rgba(57,255,20,0.07)', borderWidth: 1, borderColor: 'rgba(57,255,20,0.35)' },
+  obUnread: { backgroundColor: lampAt(0.07), borderWidth: 1, borderColor: lampAt(0.35) },
   obUnreadText: { color: OB.lamp, fontFamily: Fonts.mono, fontWeight: '400', fontSize: 11 },
 });

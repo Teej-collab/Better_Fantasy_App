@@ -188,7 +188,7 @@ function LeagueBetsPill({ className }: { className: string }) {
     <Link href="/bets/league" className={`${className} gap-1.5 border`} style={{ backgroundColor: "rgba(245,185,66,0.12)", borderColor: "rgba(245,185,66,0.35)" }}>
       {live > 0 && <span className="size-[7px] rounded-full" style={{ backgroundColor: LIVE }} />}
       <span>League Bets</span>
-      <span className="truncate text-[13px] font-semibold" style={{ color: ACCENT }}>
+      <span className="break-words text-[13px] font-semibold" style={{ color: ACCENT }}>
         · {detail}
       </span>
     </Link>
@@ -267,7 +267,7 @@ function BetRow({ bet, kind, games }: { bet: Bet; kind: Kind; games: Map<string,
       )}
       {(sub || toWin !== null) && (
         <div className="flex items-center justify-between gap-2 text-xs text-[#8790a0]">
-          <span className="truncate">{sub ?? ""}</span>
+          <span className="break-words">{sub ?? ""}</span>
           {toWin !== null && toWin > 0 && <span className="shrink-0">to win {money(toWin)}</span>}
         </div>
       )}

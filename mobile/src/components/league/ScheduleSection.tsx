@@ -196,7 +196,7 @@ function TeamRow({ side, other, week, record, onPress }: { side: ScheduleSide; o
     <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.teamRow, pressed && styles.pressed]}>
       <TeamAvatar name={side.owner_name ?? side.team_name} logoUrl={side.logo_url} size={40} />
       <View style={styles.flex}>
-        <Text style={[eliteText.name, week.status === 'final' && lost && styles.dim]} numberOfLines={1}>
+        <Text style={[eliteText.name, week.status === 'final' && lost && styles.dim]} numberOfLines={2}>
           {side.team_name}
         </Text>
         <Text style={eliteText.small} numberOfLines={1}>
@@ -273,7 +273,7 @@ function SeasonRow({
         <>
           <TeamAvatar name={pair[1].owner_name ?? pair[1].team_name} logoUrl={pair[1].logo_url} size={36} />
           <View style={styles.flex}>
-            <Text style={eliteText.name} numberOfLines={1}>
+            <Text style={eliteText.name} numberOfLines={2}>
               vs {pair[1].team_name}
             </Text>
             <Text style={eliteText.small} numberOfLines={1}>

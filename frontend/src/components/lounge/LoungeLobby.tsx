@@ -204,10 +204,10 @@ export function LoungeLobby() {
         return (
           <div key={g.game_id} className="flex items-center gap-3 rounded-[14px] border border-white/[0.08] bg-[#12151d] px-3.5 py-3">
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate font-mono text-sm">
+              <span className="line-clamp-2 break-words font-mono text-sm">
                 <b>{scoreLine(g)}</b> <span className="text-xs text-[#9aa3b2]">{g.status_detail}</span>
               </span>
-              <span className="truncate text-xs" style={{ color: stakes.tone === "mine" ? ACCENT : stakes.tone === "theirs" ? "#fde68a" : "#9aa3b2" }}>
+              <span className="line-clamp-2 break-words text-xs" style={{ color: stakes.tone === "mine" ? ACCENT : stakes.tone === "theirs" ? "#fde68a" : "#9aa3b2" }}>
                 {stakes.text}
               </span>
             </div>

@@ -68,16 +68,22 @@ type Props = {
 // rotates behind a card inset by the ring width, clipped to the rounded
 // shape. With Reduce Motion on, the ring holds still.
 export function NeonPanel(props: Props) {
-  // Owners Box: smoked glass, no ring. A card given its own ring (the Your
-  // Week card) is the lit one.
-  if (OwnersBox) {
-    return (
-      <ObPane lit={!!props.ring} style={props.style} contentStyle={props.contentStyle} radius={(props.radius ?? Radius.lg) + 4}>
-        {props.children}
-      </ObPane>
-    );
-  }
+  if (OwnersBox) return <NeonPanelOb {...props} />;
   return <NeonPanelClassic {...props} />;
+}
+
+// Owners Box: smoked glass, no ring. A card given its own ring (the Your
+// Week card) is the lit one, lit in that color. Picking a Border
+// Animation color brings the moving ring back on every panel (2026-11-23).
+function NeonPanelOb(props: Props) {
+  const appearance = useAppearance();
+  const radius = (props.radius ?? Radius.lg) + 4;
+  if (appearance.ringChosen && !props.ring) return <NeonPanelClassic {...props} radius={radius} />;
+  return (
+    <ObPane lit={!!props.ring} light={Array.isArray(props.ring) ? props.ring[0] : props.ring} style={props.style} contentStyle={props.contentStyle} radius={radius}>
+      {props.children}
+    </ObPane>
+  );
 }
 
 function NeonPanelClassic({ children, color: sectionColor, ring, style, contentStyle, radius = Radius.lg }: Props) {

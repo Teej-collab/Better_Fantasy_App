@@ -1,10 +1,11 @@
 import { API_BASE_URL } from "@/lib/api";
+import { ordinal } from "@/lib/bracketEngine";
 
 // Public share links (2026-11-10, the share overhaul): what
 // GET /share/{token} returns (backend app/domain/share_cards.py) and
 // the client call that makes one.
 
-export type ShareKind = "matchup" | "recap" | "standings" | "power" | "awards" | "champion" | "season_awards" | "chug" | "bet" | "trade" | "wheel" | "invite" | "player";
+export type ShareKind = "matchup" | "recap" | "standings" | "power" | "awards" | "champion" | "season_awards" | "chug" | "bet" | "trade" | "wheel" | "invite" | "player" | "whatif" | "survivor";
 export type ShareFormat = "post" | "story" | "wide";
 
 export const FORMAT_SIZE: Record<ShareFormat, { width: number; height: number }> = {
@@ -118,6 +119,10 @@ export type PlayerCard = {
   lines: { title: string; stats: { label: string; value: string }[] }[];
 };
 
+export type WhatIfCard = { season: number; scenario: string; name: string; team_name: string; record: string; seed: number; place: number | null };
+
+export type SurvivorCard = { pool_id: number; season: number; name: string; join_code: string; start_week: number; lives: number; entries: number; alive: number; league_only: boolean };
+
 export type ShareData =
   | { kind: "matchup"; league_name: string; card: MatchupCard }
   | { kind: "recap"; league_name: string; card: RecapCard }
@@ -131,7 +136,9 @@ export type ShareData =
   | { kind: "trade"; league_name: string; card: TradeCard }
   | { kind: "wheel"; league_name: string; card: WheelCard }
   | { kind: "invite"; league_name: string; card: InviteCard }
-  | { kind: "player"; league_name: string; card: PlayerCard };
+  | { kind: "player"; league_name: string; card: PlayerCard }
+  | { kind: "whatif"; league_name: string; card: WhatIfCard }
+  | { kind: "survivor"; league_name: string; card: SurvivorCard };
 
 /** Server-side: the card behind a share link, or null. Public, no session. */
 export async function getShareCard(token: string): Promise<ShareData | null> {
@@ -141,7 +148,7 @@ export async function getShareCard(token: string): Promise<ShareData | null> {
   return res.json();
 }
 
-export type ShareRef = { kind: ShareKind; matchup_id?: number; season?: number; week?: number; chug_id?: number; bet_id?: number; trade_id?: number; game_id?: string; player_id?: string };
+export type ShareRef = { kind: ShareKind; matchup_id?: number; season?: number; week?: number; chug_id?: number; bet_id?: number; trade_id?: number; game_id?: string; player_id?: string; scenario?: string; team_id?: number; record?: string; seed?: number; place?: number | null; pool_id?: number };
 
 /** Client-side: make (or reuse) the link for something in your league. */
 export async function createShareLink(ref: ShareRef): Promise<string> {
@@ -191,5 +198,15 @@ export function shareTitle(data: ShareData): string {
       return `You're invited to ${data.league_name}`;
     case "player":
       return `${data.card.name}${data.card.points !== null ? ` · ${data.card.points.toFixed(1)} pts` : ""}`;
+    case "whatif":
+      return `What if… ${whatIfLine(data.card)}`;
+    case "survivor":
+      return `Join "${data.card.name}", a survivor pool on The Weekend`;
   }
+}
+
+/** "Niko goes 8-5 proj., the #3 seed, and finishes 3rd": the app's scenarioHeadline, from the card. */
+export function whatIfLine(c: WhatIfCard): string {
+  const finish = c.place === 1 ? "wins the title" : c.place ? `finishes ${ordinal(c.place)}` : "";
+  return `${c.name} goes ${c.record}, the #${c.seed} seed${finish ? `, and ${finish}` : ""}`;
 }

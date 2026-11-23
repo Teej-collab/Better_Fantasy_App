@@ -36,7 +36,8 @@ export function ShareButton({ shareRef, title, label = "Share ↗", className = 
   );
 }
 
-function ShareDialog({ shareRef, title, onClose }: { shareRef: ShareRef; title: string; onClose: () => void }) {
+// Also opened straight from a screen with its own Share button (What-If).
+export function ShareDialog({ shareRef, title, onClose }: { shareRef: ShareRef; title: string; onClose: () => void }) {
   const [token, setToken] = useState<string | null>(null);
   const [format, setFormat] = useState<ShareFormat>("post");
   const [busy, setBusy] = useState<string | null>(null);

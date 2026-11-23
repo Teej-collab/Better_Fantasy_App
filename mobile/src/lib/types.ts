@@ -820,6 +820,8 @@ export type OwnerPreferences = {
   // A hex, "off", or null for the default crimson.
   honeycomb_color: string | null;
   theme: 'calm' | 'cosmic' | 'midnight' | 'graphite' | 'ember' | 'gridiron' | 'ownersbox';
+  // The Owners Box look's color theme (constants/theme.ts OB_PALETTES).
+  ob_palette: 'night' | 'cosmic' | 'midnight' | 'graphite' | 'ember' | 'gridiron';
   beta_layout: boolean;
   design_direction: 'default' | 'broadcast' | 'stadium';
   home_card_order: string | null;

@@ -59,7 +59,7 @@ export function SwingPlayersCard({ me, them }: { me: MatchupContextSide; them: M
       {carry && (
         <Panel outerStyle={styles.tileOuter}>
           <Kicker color={UP}>Carrying you</Kicker>
-          <Text style={styles.tileName} numberOfLines={1}>
+          <Text style={styles.tileName} numberOfLines={2}>
             {carry.player_name}
           </Text>
           <Display style={styles.tileNum}>{fmt(carry.points_scored)}</Display>
@@ -68,7 +68,7 @@ export function SwingPlayersCard({ me, them }: { me: MatchupContextSide; them: M
       {hurt && (
         <Panel outerStyle={styles.tileOuter}>
           <Kicker color={DOWN}>Hurting you</Kicker>
-          <Text style={styles.tileName} numberOfLines={1}>
+          <Text style={styles.tileName} numberOfLines={2}>
             {hurt.player_name}
           </Text>
           <Display style={styles.tileNum}>{fmt(hurt.points_scored)}</Display>
@@ -291,7 +291,7 @@ export function MatchupsAliveCard({ matchups, teamId }: { matchups: WeekMatchupC
             key={m.matchup_id}
             first={i === 0}
             left={
-              <Text style={styles.rowText} numberOfLines={1}>
+              <Text style={styles.rowText}>
                 {m.home.owner_name} vs {m.away.owner_name}
               </Text>
             }

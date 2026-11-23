@@ -111,7 +111,7 @@ export function ClaimResultsCard({ run, color, others = [] }: { run: WaiverClaim
           </div>
           {shown.map((a, i) => (
             <div key={`${a.owner_id}-${a.timestamp}-${i}`} className="flex items-center justify-between gap-2 text-[13px]">
-              <span className="min-w-0 truncate">
+              <span className="min-w-0 break-words">
                 {a.owner_name} added {a.added_player_name ?? "a player"}
               </span>
               {a.dropped_player_name && <Small className="shrink-0">dropped {a.dropped_player_name}</Small>}
@@ -174,7 +174,7 @@ export function PlayersNowCard({ players, title }: { players: RosterPlayer[]; ti
             key={`${p.player_id}-${p.player_name}`}
             first={i === 0}
             left={
-              <span className="truncate">
+              <span className="break-words">
                 {p.player_name}
                 {p.is_redzone ? <span className="text-xs font-bold text-red-500"> · red zone</span> : null}
               </span>
@@ -321,7 +321,7 @@ export function LeagueScoreboardCard({ matchups, teamId, title, live }: { matchu
               key={m.matchup_id}
               first={i === 0}
               left={
-                <span className={`block truncate ${yours ? "font-bold" : ""}`}>
+                <span className={`block break-words ${yours ? "font-bold" : ""}`}>
                   {win.owner_name} {fmt(win.score)} – {fmt(lose.score)} {lose.owner_name}
                 </span>
               }
@@ -442,7 +442,7 @@ export function WhatIfCard({ odds, teamId, standings, half }: { odds: PlayoffOdd
               first={i === 0}
               left={
                 <div className="flex flex-col gap-0.5">
-                  <span className="truncate">
+                  <span className="break-words">
                     <b>{name(r.root_for_team_id)}</b> <Small>over {name(r.against_team_id)}</Small>
                   </span>
                   <Small>

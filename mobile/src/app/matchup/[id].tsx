@@ -127,7 +127,7 @@ export default function MatchupScreen() {
                     style={[styles.mini, active && styles.miniActive]}>
                     {[m.home, m.away].map((side) => (
                       <View key={side.team_id} style={styles.miniLine}>
-                        <Text style={styles.miniName} numberOfLines={1}>
+                        <Text style={styles.miniName} numberOfLines={2}>
                           {side.team_name}
                         </Text>
                         <Text style={styles.miniScore}>{(side.score ?? 0).toFixed(1)}</Text>

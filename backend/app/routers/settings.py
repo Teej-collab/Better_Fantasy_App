@@ -298,6 +298,7 @@ class PreferencesPatch(BaseModel):
     your_week_color: str | None = None
     border_glow_color: str | None = None
     honeycomb_color: str | None = None
+    ob_palette: str | None = None
     home_card_order: str | None = None
     bottom_nav_order: str | None = None
     home_hidden_cards: str | None = None
@@ -309,6 +310,7 @@ class PreferencesPatch(BaseModel):
 
 _VALID_NEON_INTENSITIES = {"subtle", "standard", "high"}
 _VALID_THEMES = {"calm", "cosmic", "midnight", "graphite", "ember", "gridiron", "ownersbox"}
+_VALID_OB_PALETTES = {"night", "cosmic", "midnight", "graphite", "ember", "gridiron"}
 _VALID_DESIGN_DIRECTIONS = {"default", "broadcast", "stadium"}
 
 
@@ -321,6 +323,8 @@ async def update_preferences(body: PreferencesPatch, request: Request, pool=Depe
         raise HTTPException(status_code=400, detail=f"neon_intensity must be one of {sorted(_VALID_NEON_INTENSITIES)}")
     if "theme" in patch and patch["theme"] not in _VALID_THEMES:
         raise HTTPException(status_code=400, detail=f"theme must be one of {sorted(_VALID_THEMES)}")
+    if "ob_palette" in patch and patch["ob_palette"] not in _VALID_OB_PALETTES:
+        raise HTTPException(status_code=400, detail=f"ob_palette must be one of {sorted(_VALID_OB_PALETTES)}")
     if patch.get("timezone") is not None and not is_valid_timezone(patch["timezone"]):
         raise HTTPException(status_code=400, detail="timezone must be an IANA zone name like America/Chicago")
     if "design_direction" in patch and patch["design_direction"] not in _VALID_DESIGN_DIRECTIONS:

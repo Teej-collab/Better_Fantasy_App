@@ -1,7 +1,8 @@
 /* eslint-disable @next/next/no-img-element -- Satori draws plain <img>, next/image doesn't exist there */
 import type { CSSProperties, ReactNode } from "react";
-import type { AwardsCard, BetCard, ChampionCard, ChugCard, InviteCard, MatchupCard, PlayerCard, PowerCard, RecapCard, SeasonAwardsCard, ShareData, ShareFormat, StandingsCard, TradeCard, WheelCard } from "@/lib/share";
-import { FORMAT_SIZE } from "@/lib/share";
+import type { AwardsCard, BetCard, ChampionCard, ChugCard, InviteCard, MatchupCard, PlayerCard, PowerCard, RecapCard, SeasonAwardsCard, ShareData, ShareFormat, StandingsCard, SurvivorCard, TradeCard, WheelCard, WhatIfCard } from "@/lib/share";
+import { ordinal } from "@/lib/bracketEngine";
+import { FORMAT_SIZE, whatIfLine } from "@/lib/share";
 
 /**
  * The share cards as images (2026-11-10, the share overhaul): The
@@ -606,6 +607,48 @@ function Wheel({ c, fmt, league, assets }: { c: WheelCard; fmt: ShareFormat; lea
   );
 }
 
+// ---------------------------------------------------------------- what-if
+function WhatIf({ c, fmt, league, assets }: { c: WhatIfCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
+  const u = unit(fmt);
+  const wide = fmt === "wide";
+  return (
+    <Frame fmt={fmt} league={league} right={<Label u={u} color={GREEN}>{`${c.season} What-If`}</Label>} assets={assets}>
+      <Col style={{ alignItems: "center", marginTop: u(wide ? 6 : fmt === "story" ? 230 : 120) }}>
+        <Kicker u={u}>What if…</Kicker>
+        <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(wide ? 44 : 40), textAlign: "center", justifyContent: "center", textTransform: "uppercase", lineHeight: 1.1, marginTop: u(8), maxWidth: u(470) }}>{c.team_name}</div>
+        <div style={{ display: "flex", fontSize: u(15), color: SOFT, textAlign: "center", justifyContent: "center", marginTop: u(10), maxWidth: u(460) }}>{whatIfLine(c)}</div>
+      </Col>
+      <Row style={{ gap: u(10), marginTop: u(wide ? 16 : 30), justifyContent: "center" }}>
+        <Stat u={u} value={c.record.replace(" proj.", "")} label="Record" />
+        <Stat u={u} value={`#${c.seed}`} label="Seed" />
+        {c.place !== null && <Stat u={u} value={c.place === 1 ? "Champs" : ordinal(c.place)} label="Finish" hot />}
+      </Row>
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------- survivor
+function Survivor({ c, fmt, league, assets }: { c: SurvivorCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
+  const u = unit(fmt);
+  const wide = fmt === "wide";
+  return (
+    <Frame fmt={fmt} league={league} right={<Label u={u} color={GREEN}>{`${c.season} survivor`}</Label>} assets={assets}>
+      <Col style={{ alignItems: "center", marginTop: u(wide ? 6 : fmt === "story" ? 230 : 110) }}>
+        <Kicker u={u}>You&apos;re invited</Kicker>
+        <div style={{ display: "flex", fontFamily: ANTON, fontSize: u(wide ? 44 : 42), textAlign: "center", justifyContent: "center", textTransform: "uppercase", lineHeight: 1.1, marginTop: u(8), maxWidth: u(470) }}>{c.name}</div>
+        <div style={{ display: "flex", fontSize: u(15), color: SOFT, textAlign: "center", justifyContent: "center", marginTop: u(10), maxWidth: u(440) }}>
+          Pick one NFL team to win each week. Lose and you&apos;re out, and you can only use each team once.
+        </div>
+      </Col>
+      <Row style={{ gap: u(10), marginTop: u(wide ? 16 : 30), justifyContent: "center" }}>
+        <Stat u={u} value={c.join_code} label="Join code" hot />
+        <Stat u={u} value={c.entries > 0 ? `${c.alive}/${c.entries}` : "0"} label={c.entries > 0 ? "Alive" : "In so far"} />
+        <Stat u={u} value={`Wk ${c.start_week}`} label="Starts" />
+      </Row>
+    </Frame>
+  );
+}
+
 // ---------------------------------------------------------------- invite
 function Invite({ c, fmt, league, assets }: { c: InviteCard; fmt: ShareFormat; league: string; assets: ShareAssets }) {
   const u = unit(fmt);
@@ -703,5 +746,9 @@ export function ShareImage({ data, fmt, assets }: { data: ShareData; fmt: ShareF
       return <Invite c={data.card} fmt={fmt} league={league} assets={assets} />;
     case "player":
       return <Player c={data.card} fmt={fmt} league={league} assets={assets} />;
+    case "whatif":
+      return <WhatIf c={data.card} fmt={fmt} league={league} assets={assets} />;
+    case "survivor":
+      return <Survivor c={data.card} fmt={fmt} league={league} assets={assets} />;
   }
 }

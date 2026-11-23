@@ -523,7 +523,7 @@ export default function PunishmentWheelScreen() {
                 strokeWidth={1.5}
               />
             </Svg>
-            <Text style={styles.rowText} numberOfLines={1}>
+            <Text style={styles.rowText}>
               {item.text}
             </Text>
             {item.can_remove && (

@@ -55,7 +55,22 @@ export default async function SharedCardPage({ params }: Props) {
         </section>
       )}
 
-      {data.kind === "invite" ? (
+      {data.kind === "survivor" ? (
+        <section className="flex flex-col gap-3 rounded-[22px] border border-[#39ff14]/40 bg-[#141a22] p-5 shadow-[0_0_26px_rgba(57,255,20,.12)]">
+          <h2 className={`${ANTON} text-2xl uppercase tracking-wide text-[#39ff14]`}>Join {data.card.name}</h2>
+          <p className="text-[15px] leading-relaxed text-[#f5f4ec]/75">
+            In The Weekend app, open Survivor and join with code{" "}
+            <span className="font-mono font-bold tracking-widest text-[#f5f4ec]">{data.card.join_code}</span>, or join here.
+            {data.card.league_only ? ` It's for ${data.league_name}'s members.` : ""}
+          </p>
+          <Link
+            href={`/survivor?join=${encodeURIComponent(data.card.join_code)}`}
+            className={`${ANTON} flex min-h-12 items-center justify-center rounded-xl bg-[#ff7a1a] text-lg uppercase tracking-wide text-[#1a0b00] shadow-[0_0_18px_rgba(255,122,26,.45)]`}
+          >
+            Join on the web
+          </Link>
+        </section>
+      ) : data.kind === "invite" ? (
         <section className="flex flex-col gap-3 rounded-[22px] border border-[#39ff14]/40 bg-[#141a22] p-5 shadow-[0_0_26px_rgba(57,255,20,.12)]">
           <h2 className={`${ANTON} text-2xl uppercase tracking-wide text-[#39ff14]`}>Join {data.league_name}</h2>
           <p className="text-[15px] leading-relaxed text-[#f5f4ec]/75">
@@ -80,7 +95,10 @@ export default async function SharedCardPage({ params }: Props) {
         >
           Start your league
         </Link>
-        <Link href="/" className="text-center text-sm font-semibold text-[#f5f4ec]/70 hover:text-[#39ff14]">
+        <Link
+          href={data.kind === "whatif" ? `/standings?view=playoffs&mode=whatif&w=${encodeURIComponent(data.card.scenario)}` : "/"}
+          className="text-center text-sm font-semibold text-[#f5f4ec]/70 hover:text-[#39ff14]"
+        >
           Already in {data.league_name}? Open The Weekend
         </Link>
       </section>

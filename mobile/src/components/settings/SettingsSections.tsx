@@ -14,7 +14,7 @@ import { ImageViewer } from '@/components/ImageViewer';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
-import { Colors, DefaultAccent, HoneycombColor, Radius, SectionColors, Spacing, type ThemeName } from '@/constants/theme';
+import { Colors, DefaultAccent, HoneycombColor, OB_PALETTES, Radius, SectionColors, Spacing, type ObPaletteName, type ThemeName } from '@/constants/theme';
 import { api, uploadCardPhoto, uploadChatImage } from '@/lib/api';
 import { pickCardPhoto } from '@/lib/cardPhoto';
 import {
@@ -27,7 +27,7 @@ import {
   type ReminderSettings,
 } from '@/lib/localNotifications';
 import type { ReminderCategory } from '@/lib/reminders';
-import { applyAccent, applyTheme, flushAccentReload, useAppearance } from '@/lib/appearance';
+import { applyAccent, applyObPalette, applyTheme, flushAccentReload, useAppearance } from '@/lib/appearance';
 import { COLOR_PRESETS, isHexColor, isMulti, MULTI, MULTI_COLORS } from '@/lib/colorChoice';
 import { canChangeAppIcon, seasonalIconEnabled, setSeasonalIconEnabled } from '@/lib/seasonal';
 import { useAuth } from '@/lib/auth';
@@ -1057,7 +1057,18 @@ export function lookName(theme: string | undefined): string {
 
 const LOOK_PAGE = '/settings?section=look';
 
+// Owners Box color themes (2026-11-23): the Weekend looks' palettes.
+const OB_PALETTE_LOOKS: { key: ObPaletteName; name: string; blurb: string }[] = [
+  { key: 'night', name: 'Night', blurb: 'The original: green light on near-black' },
+  { key: 'cosmic', name: 'Cosmic', blurb: 'Deep purple, mint light' },
+  { key: 'midnight', name: 'Midnight', blurb: 'Navy, ice-blue light' },
+  { key: 'graphite', name: 'Graphite', blurb: 'True black, white light' },
+  { key: 'ember', name: 'Ember', blurb: 'Warm charcoal, orange light' },
+  { key: 'gridiron', name: 'Gridiron', blurb: 'Field green, lime light' },
+];
+
 export const LOOK_TUNES: Record<string, string> = {
+  palette: 'Color theme',
   accent: 'Accent color',
   glow: 'Neon glow',
   background: 'Background lights',
@@ -1099,6 +1110,7 @@ export function AppearanceSettings({ tune }: { tune?: string }) {
       </View>
     );
   }
+  if (tune === 'palette') return <ObPalettePicker prefs={prefs} patch={patch} saved={saved} />;
   if (tune === 'accent') {
     return (
       <View style={styles.gap}>
@@ -1172,13 +1184,73 @@ export function AppearanceSettings({ tune }: { tune?: string }) {
 
       <Text style={styles.fineTune}>FINE-TUNE</Text>
       <ListCard>
-        <ListRow first label="Accent color" value={colorLabel(prefs.accent_color, `${lookName(prefs.theme)} default`)} onPress={() => openTune('look', 'accent')} />
+        {prefs.theme === 'ownersbox' && (
+          <ListRow
+            first
+            label="Color theme"
+            value={OB_PALETTE_LOOKS.find((p) => p.key === prefs.ob_palette)?.name ?? 'Night'}
+            onPress={() => openTune('look', 'palette')}
+          />
+        )}
+        <ListRow first={prefs.theme !== 'ownersbox'} label="Accent color" value={colorLabel(prefs.accent_color, `${lookName(prefs.theme)} default`)} onPress={() => openTune('look', 'accent')} />
         <ListRow label="Neon glow" value={{ subtle: 'Subtle', standard: 'Standard', high: 'High' }[prefs.neon_intensity]} onPress={() => openTune('look', 'glow')} />
         <ListRow label="Background lights" value={colorLabel(prefs.honeycomb_color, `${lookName(prefs.theme)} default`)} onPress={() => openTune('look', 'background')} />
         <ListRow label="Your Week card" value={colorLabel(prefs.your_week_color, 'Match accent')} onPress={() => openTune('look', 'yourweek')} />
         <ListRow label="Border animation" value={colorLabel(prefs.border_glow_color, 'Match accent')} onPress={() => openTune('look', 'border')} />
         <ListRow label="Motion" value={prefs.reduced_motion ? 'Reduced' : 'Full'} onPress={() => openTune('look', 'motion')} />
       </ListCard>
+    </View>
+  );
+}
+
+// Owners Box's color themes, as tiles like the Looks. A new one restarts
+// the app (every color is built at launch) and puts the accent and the
+// color picks back to that theme's own, like switching Looks does.
+function ObPalettePicker({ prefs, patch, saved }: { prefs: OwnerPreferences; patch: ReturnType<typeof usePatchPreferences>['patch']; saved: boolean }) {
+  function pick(key: ObPaletteName, name: string) {
+    if (key === prefs.ob_palette) return;
+    Alert.alert(`Switch to ${name}?`, 'The app restarts to apply it, then brings you right back here. Your accent and color picks go back to its own.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Switch',
+        onPress: () =>
+          void patch({ ob_palette: key, accent_color: null, honeycomb_color: null, your_week_color: null, border_glow_color: null }).then((ok) => {
+            if (!ok) return;
+            applyAccent(null);
+            applyObPalette(key, `${LOOK_PAGE}&tune=palette`);
+          }),
+      },
+    ]);
+  }
+  return (
+    <View style={styles.gap}>
+      <Header title="Color theme" subtitle="The colors behind Owners Box: the dark, the panels and the light. Fine-tune the accent and the rest after." saved={saved} />
+      <View style={styles.themeGrid}>
+        {OB_PALETTE_LOOKS.map((l) => {
+          const p = OB_PALETTES[l.key];
+          const on = prefs.ob_palette === l.key;
+          return (
+            <Pressable
+              key={l.key}
+              onPress={() => pick(l.key, l.name)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on }}
+              accessibilityLabel={`${l.name}: ${l.blurb}`}
+              style={[styles.themeTile, { backgroundColor: p.bg, borderColor: on ? p.accent : Colors.border }]}>
+              <View style={styles.themeDots}>
+                <View style={[styles.themeDot, { backgroundColor: p.accent }]} />
+                <View style={[styles.themeDot, { backgroundColor: p.honeycomb }]} />
+                <View style={[styles.themeDot, { backgroundColor: p.surface, borderWidth: 1, borderColor: '#343b47' }]} />
+              </View>
+              <View>
+                <Text style={styles.bodyMedium}>{l.name}</Text>
+                <Text style={styles.small}>{l.blurb}</Text>
+                {on && <Text style={[styles.lookTag, { color: p.accent }]}>Current</Text>}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }

@@ -140,7 +140,7 @@ function MemberCard({ member: m, color, isMe, open, onToggle, leagueId, everyone
             {isMe ? <Text style={p.sub}> (you)</Text> : null}
             {m.role === 'commissioner' ? <Text style={styles.role}>  {isMe ? 'COMMISH' : 'CO-COMMISH'}</Text> : null}
           </Text>
-          <Text style={[p.sub, !m.team && { color: TONES.purple }]} numberOfLines={1}>
+          <Text style={[p.sub, !m.team && { color: TONES.purple }]} numberOfLines={2}>
             {m.team ? `${m.team.team_name} · ${record}` : 'No team yet'}
           </Text>
         </View>

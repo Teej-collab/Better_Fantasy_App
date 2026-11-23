@@ -109,7 +109,7 @@ export default function LeaguesScreen() {
           return (
             <View key={l.id} style={[startStyles.card, active && startStyles.cardLit]}>
               <View style={styles.cardTop}>
-                <Text style={[startStyles.cardTitle, styles.flex]} numberOfLines={1}>
+                <Text style={[startStyles.cardTitle, styles.flex]} numberOfLines={2}>
                   {l.name}
                 </Text>
                 {active && (

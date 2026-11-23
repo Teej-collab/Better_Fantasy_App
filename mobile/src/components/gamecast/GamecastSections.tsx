@@ -259,7 +259,7 @@ function ImpactGroup(props: { title: string; subtitle?: string; players: ImpactP
       <View style={styles.cardTop}>
         <Text style={styles.groupTitle}>{props.title}</Text>
         {props.subtitle && (
-          <Text style={styles.muted} numberOfLines={1}>
+          <Text style={styles.muted} numberOfLines={2}>
             {props.subtitle}
           </Text>
         )}
@@ -290,7 +290,7 @@ function ImpactRow({ player }: { player: ImpactPlayer }) {
           <Text style={styles.headshotText}>{position}</Text>
         </View>
       )}
-      <Text style={styles.impactName} numberOfLines={1}>
+      <Text style={styles.impactName} numberOfLines={2}>
         {player.player_name} <Text style={styles.muted}>{position}</Text>
       </Text>
       <Text style={styles.impactPoints}>{player.points_scored.toFixed(1)}</Text>

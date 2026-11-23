@@ -12,7 +12,7 @@ import { queryClient, useMe } from '@/lib/queries';
 // what it shows and go straight there, switching to its league first.
 // Someone outside that league sees the card itself instead.
 
-type Shared = { kind: string; league_name: string; league_id: number; ref: Record<string, string | number>; card: { invite_code?: string } };
+type Shared = { kind: string; league_name: string; league_id: number; ref: Record<string, string | number>; card: { invite_code?: string; join_code?: string } };
 
 function screenFor(s: Shared): Href | null {
   const r = s.ref;
@@ -39,6 +39,8 @@ function screenFor(s: Shared): Href | null {
       return '/punishment-wheel' as Href;
     case 'player':
       return { pathname: '/player/[id]', params: { id: String(r.player_id) } };
+    case 'whatif':
+      return { pathname: '/league', params: { section: 'standings', view: 'playoffs', mode: 'whatif', w: String(r.scenario) } } as unknown as Href;
     default:
       return null;
   }
@@ -57,6 +59,18 @@ export default function SharedLinkScreen() {
       try {
         const shared = await api.sharedCard(token);
         if (!live) return;
+        // A survivor pool: open it if you're in it, else the join box with
+        // its code filled in (a stand-alone pool isn't any league's).
+        if (shared.kind === 'survivor' && shared.card.join_code) {
+          const poolId = Number(shared.ref.pool_id);
+          const mine = await api.survivorPool(poolId).then(
+            () => true,
+            () => false,
+          );
+          if (!live) return;
+          router.replace((mine ? `/survivor/${poolId}` : `/survivor?join=${encodeURIComponent(shared.card.join_code)}`) as Href);
+          return;
+        }
         if (shared.kind === 'invite' && shared.card.invite_code) {
           router.replace({ pathname: '/start/join', params: { code: shared.card.invite_code } });
           return;

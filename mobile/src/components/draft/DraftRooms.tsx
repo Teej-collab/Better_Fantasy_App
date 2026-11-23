@@ -74,7 +74,7 @@ function LastPick({ pick, compact }: { pick: DraftPick | undefined; compact?: bo
       <Text style={styles.lastNum}>{pickLabel(pick)}</Text>
       <View style={[styles.lastStripe, { backgroundColor: color }]} />
       <View style={styles.flex}>
-        <Text style={styles.lastName} numberOfLines={1}>
+        <Text style={styles.lastName} numberOfLines={2}>
           {pick.owner_name} took {pick.player_name}
         </Text>
         <Text style={styles.small} numberOfLines={1}>

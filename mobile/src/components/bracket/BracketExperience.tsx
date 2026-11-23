@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { FullBracket } from '@/components/bracket/FullBracket';
 import { PathView } from '@/components/bracket/PathView';
 import { WhatIfView } from '@/components/bracket/WhatIfView';
+import { ShareSheet } from '@/components/ShareSheet';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Fonts } from '@/constants/theme';
-import { api, WEB_BASE_URL } from '@/lib/api';
+import { api, WEB_BASE_URL, type ShareRef } from '@/lib/api';
 import {
   EMPTY_SCENARIO,
   buildWorld,
@@ -23,7 +24,6 @@ import {
   type WorldTeam,
 } from '@/lib/bracketEngine';
 import { haptics } from '@/lib/haptics';
-import { getItLink } from '@/lib/shareImage';
 import { useMe, usePlayoffOdds, usePlayoffWorld, useSeasons } from '@/lib/queries';
 
 // The Bracket (2026-10): one world — reality or the user's what-if —
@@ -63,6 +63,7 @@ export function BracketExperience({
   const [meChoice, setMeChoice] = useState<number | null>(shared.me);
   const [pathChoice, setPathChoice] = useState<number | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<{ ref: ShareRef; title: string } | null>(null);
 
   // Playoff chances for "me": reality, and the what-if world (its
   // request waits until the taps settle).
@@ -108,12 +109,19 @@ export function BracketExperience({
     setShareNote(null);
   };
   const share = async (to: 'chat' | 'sheet') => {
-    const link = `${WEB_BASE_URL}/standings?view=playoffs&mode=whatif&w=${encodeScenario(scenario, meId)}`;
-    const text = `What if… ${scenarioHeadline(world, alt, meId)}. See it: ${link}`;
+    const headline = `What if… ${scenarioHeadline(world, alt, meId)}`;
     if (to === 'sheet') {
-      await Share.share({ message: `${text}\n\nGet this for your league: ${getItLink('what-if-bracket')}` });
+      // A card link like every other share (2026-11-23): it opens this
+      // exact world in the app, where the old /standings link opened the web.
+      const row = alt.standings.find((r) => r.team_id === meId);
+      if (!row) return;
+      setSheet({
+        title: headline,
+        ref: { kind: 'whatif', season, scenario: encodeScenario(scenario, meId), team_id: meId, record: recordOf(row), seed: row.seed, place: alt.places[meId] ?? null },
+      });
       return;
     }
+    const text = `${headline}. See it: ${WEB_BASE_URL}/standings?view=playoffs&mode=whatif&w=${encodeScenario(scenario, meId)}`;
     try {
       await api.shareToLeagueChat(text);
       haptics.success();
@@ -191,6 +199,8 @@ export function BracketExperience({
   return (
     <View style={embedded ? styles.embedded : styles.screen}>
       {embedded ? body : <ScrollView contentContainerStyle={{ paddingTop: 12, paddingBottom: insets.bottom + 48, gap: 14 }}>{body}</ScrollView>}
+
+      {sheet && <ShareSheet shareRef={sheet.ref} title={sheet.title} onClose={() => setSheet(null)} />}
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setMenuOpen(false)} accessibilityLabel="Close">

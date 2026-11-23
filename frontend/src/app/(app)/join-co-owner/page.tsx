@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import { JoinCoOwnerForm } from "@/components/JoinCoOwnerForm";
 
-export const metadata: Metadata = { title: "Join as Co-Owner — The Weekend" };
+// The preview card when the invite is texted (2026-11-23).
+const PREVIEW = { url: "/api/og/co-owner", width: 1200, height: 630, alt: "Help run my team on The Weekend" };
+export const metadata: Metadata = {
+  title: "Join as Co-Owner — The Weekend",
+  description: "Co-own a fantasy team on The Weekend.",
+  openGraph: { title: "Help run my team on The Weekend", description: "Co-own a fantasy team on The Weekend.", images: [PREVIEW], type: "website", siteName: "The Weekend" },
+  twitter: { card: "summary_large_image", title: "Help run my team on The Weekend", images: [PREVIEW.url] },
+};
 
 // The link an owner shares (POST /leagues/co-owner-invite) points here
 // with ?code=... — read server-side, same shape as reset-password's

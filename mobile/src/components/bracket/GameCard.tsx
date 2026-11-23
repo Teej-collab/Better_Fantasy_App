@@ -116,7 +116,7 @@ export function GameCard({
                 {team ? team.name : sourceLabel(side.from, all)}
               </Text>
               {!compact && (
-                <Text style={styles.sub} numberOfLines={1}>
+                <Text style={styles.sub} numberOfLines={2}>
                   {team ? `${team.team_name}${records[team.team_id] ? ` · ${records[team.team_id]}` : ''}` : 'to be decided'}
                 </Text>
               )}

@@ -68,7 +68,7 @@ function WriteUpCard({ color, kicker, sub, text, target, elite }: { color: strin
             <h2 className={`${SATISFY} text-2xl leading-tight`} style={{ color: ELITE.peach }}>
               {elite}
             </h2>
-            <span className="truncate text-xs" style={{ color: ELITE.soft }}>
+            <span className="break-words text-xs" style={{ color: ELITE.soft }}>
               {sub}
             </span>
           </div>
@@ -95,7 +95,7 @@ function WriteUpCard({ color, kicker, sub, text, target, elite }: { color: strin
           <h2 className="text-xs font-bold tracking-wide uppercase" style={{ color }}>
             {kicker}
           </h2>
-          <span className="truncate text-sm text-black/60 dark:text-white/60">{sub}</span>
+          <span className="break-words text-sm text-black/60 dark:text-white/60">{sub}</span>
         </div>
         <button
           type="button"

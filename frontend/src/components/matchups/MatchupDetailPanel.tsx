@@ -218,61 +218,109 @@ function TeamDetailSummary({ side }: { side: MatchupContextSide }) {
   );
 }
 
-// The all-time series, and the last few meetings as W/L cells from the
-// left team's side (oldest first).
+// The all-time series (option B, picked 2026-11-23): who leads in plain
+// words, a bar split by each side's wins (and ties), and the latest
+// meetings with the winner's initials, like the app's. It used to be W/L
+// cells "from the left team's side". Orange is the left team, green the
+// right, like the lineup rows.
+const SMALL_WORDS = new Set(["the", "a", "an", "of", "is", "and", "&"]);
+
+function teamInitials(name: string): string {
+  const words = name.split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w) && !SMALL_WORDS.has(w.toLowerCase()));
+  if (words.length === 0) return name.slice(0, 2).toUpperCase();
+  if (words.length === 1) return words[0].replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+const SHOWN_MEETINGS = 3;
+
 function Series({ matchup }: { matchup: WeekMatchupContextItem }) {
   const h = matchup.head_to_head;
   const { home, away } = matchup;
   const total = h.wins_home + h.wins_away + h.ties;
+  let homeTag = teamInitials(home.team_name);
+  let awayTag = teamInitials(away.team_name);
+  if (homeTag === awayTag) {
+    homeTag = home.team_name.slice(0, 3).toUpperCase();
+    awayTag = away.team_name.slice(0, 3).toUpperCase();
+  }
+  const record = `${Math.max(h.wins_home, h.wins_away)}–${Math.min(h.wins_home, h.wins_away)}${h.ties ? `–${h.ties}` : ""}`;
+  const leader = h.wins_home > h.wins_away ? home : h.wins_away > h.wins_home ? away : null;
+  const meetings = [...h.recent_meetings].reverse();
+  const meeting = (g: (typeof meetings)[number], i: number) => {
+    const color = g.tie ? ELITE.cream : g.home_won ? ELITE.orange : ELITE.green;
+    const tint = g.tie ? "rgba(245,244,236,.05)" : g.home_won ? "rgba(255,122,26,.08)" : "rgba(57,255,20,.07)";
+    const rim = g.tie ? "rgba(245,244,236,.18)" : g.home_won ? "rgba(255,122,26,.3)" : "rgba(57,255,20,.3)";
+    return (
+      <li key={i} className="flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2" style={{ background: tint, borderColor: rim }}>
+        <span className="w-14 text-xs" style={{ color: ELITE.soft }}>
+          ’{String(g.season).slice(-2)} W{g.week}
+        </span>
+        <span className="flex-1 text-[13px] font-bold" style={{ color }}>
+          {g.tie ? "Tie" : `${g.home_won ? homeTag : awayTag} won`}
+        </span>
+        <span className="text-xs tabular-nums" style={{ color: ELITE.soft }}>
+          {Math.max(g.home_score, g.away_score).toFixed(1)}–{Math.min(g.home_score, g.away_score).toFixed(1)}
+        </span>
+      </li>
+    );
+  };
   return (
-    <EliteCard tone="deep" className="flex flex-col items-center gap-3 p-4 text-center">
-      <span className="text-[11px] font-extrabold tracking-[2px]" style={{ color: ELITE.soft }}>
+    <EliteCard tone="deep" className="flex flex-col gap-3.5 p-4">
+      <span className="text-center text-[11px] font-extrabold tracking-[2px]" style={{ color: ELITE.soft }}>
         ALL-TIME SERIES{h.last_season !== null ? ` · LAST MET ${h.last_season} WK ${h.last_week}` : ""}
       </span>
       {total === 0 ? (
-        <p className="text-sm" style={{ color: ELITE.soft }}>
+        <p className="text-center text-sm" style={{ color: ELITE.soft }}>
           First meeting between these two.
         </p>
       ) : (
         <>
-          <p
-            className={`${ANTON} text-5xl leading-none tracking-[2px]`}
-            aria-label={`${home.team_name} ${h.wins_home}, ${away.team_name} ${h.wins_away}${h.ties ? `, ${h.ties} ties` : ""}`}
-          >
-            <span style={h.wins_home >= h.wins_away ? { color: ELITE.peach, textShadow: "0 0 12px rgba(255,122,26,.7)" } : undefined}>{h.wins_home}</span> –{" "}
-            {h.wins_away}
-            {h.ties > 0 && (
-              <span className="ml-2 font-sans text-sm tracking-normal" style={{ color: ELITE.soft }}>
-                ({h.ties} tie{h.ties > 1 ? "s" : ""})
-              </span>
+          <p className={`${ANTON} text-center text-[26px] leading-tight uppercase`}>
+            {leader ? (
+              <>
+                <span style={{ color: leader === home ? ELITE.orange : ELITE.green }}>{leader.team_name}</span> leads {record}
+              </>
+            ) : (
+              `Series tied ${record}`
             )}
           </p>
-          {h.recent_meetings.length > 0 && (
-            <ol className="flex flex-wrap justify-center gap-2">
-              {h.recent_meetings.map((g, i) => {
-                const result = g.tie ? "T" : g.home_won ? "W" : "L";
-                const won = result === "W";
-                return (
-                  <li key={i} className="flex flex-col items-center gap-0.5" title={`${g.season} Wk ${g.week}: ${g.home_score.toFixed(1)}–${g.away_score.toFixed(1)}`}>
-                    <Hex size={42} color={won ? ELITE.peach : "rgba(245,244,236,.3)"} fill={won ? ELITE.orange : "rgba(245,244,236,.12)"} glow={won && i === h.recent_meetings.length - 1}>
-                      <span className={`${ANTON} text-[15px]`} style={{ color: won ? "#1a0b00" : ELITE.cream }}>
-                        {result}
-                      </span>
-                    </Hex>
-                    <span className="text-[10px]" style={{ color: ELITE.soft }}>
-                      ’{String(g.season).slice(-2)} W{g.week}
-                    </span>
-                    <span className="text-[9.5px] tabular-nums" style={{ color: ELITE.faint }}>
-                      {g.home_score.toFixed(1)}–{g.away_score.toFixed(1)}
-                    </span>
-                  </li>
-                );
-              })}
+          <div className="flex flex-col gap-1.5" aria-label={`${home.team_name} ${h.wins_home} wins, ${away.team_name} ${h.wins_away} wins${h.ties ? `, ${h.ties} ties` : ""}`}>
+            <div className="flex justify-between gap-2 text-xs font-bold">
+              <span style={{ color: ELITE.orange }}>
+                {homeTag} · {h.wins_home} {h.wins_home === 1 ? "win" : "wins"}
+              </span>
+              {h.ties > 0 && <span style={{ color: ELITE.soft }}>{h.ties} {h.ties === 1 ? "tie" : "ties"}</span>}
+              <span style={{ color: ELITE.green }}>
+                {h.wins_away} {h.wins_away === 1 ? "win" : "wins"} · {awayTag}
+              </span>
+            </div>
+            <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-white/[0.08]">
+              {h.wins_home > 0 && <div style={{ flex: h.wins_home, background: ELITE.orange }} />}
+              {h.ties > 0 && <div style={{ flex: h.ties, background: "#5a5f66" }} />}
+              {h.wins_away > 0 && <div style={{ flex: h.wins_away, background: ELITE.green }} />}
+            </div>
+            <div className="flex justify-between gap-2 text-[11px]" style={{ color: ELITE.soft }}>
+              <span>{home.team_name}</span>
+              <span className="text-right">{away.team_name}</span>
+            </div>
+          </div>
+          {meetings.length > 0 && (
+            <ol className="flex flex-col gap-1.5">
+              {meetings.slice(0, SHOWN_MEETINGS).map(meeting)}
+              {meetings.length > SHOWN_MEETINGS && (
+                <li>
+                  <details className="group">
+                    <summary className="cursor-pointer list-none py-1.5 text-center text-xs" style={{ color: ELITE.soft }}>
+                      <span className="group-open:hidden">Show {meetings.length - SHOWN_MEETINGS} more</span>
+                      <span className="hidden group-open:inline">Show fewer</span>
+                    </summary>
+                    <ol className="flex flex-col gap-1.5">{meetings.slice(SHOWN_MEETINGS).map(meeting)}</ol>
+                  </details>
+                </li>
+              )}
             </ol>
           )}
-          <span className="text-xs" style={{ color: ELITE.soft }}>
-            From {home.team_name}&apos;s side
-          </span>
         </>
       )}
     </EliteCard>

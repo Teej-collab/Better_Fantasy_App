@@ -174,7 +174,7 @@ export function LeagueScoreboardCard({
             key={m.matchup_id}
             first={i === 0}
             left={
-              <Text style={[styles.rowText, yours && styles.yourGame]} numberOfLines={1}>
+              <Text style={[styles.rowText, yours && styles.yourGame]}>
                 {win.owner_name} {fmt(win.score)} – {fmt(lose.score)} {lose.owner_name}
               </Text>
             }
@@ -334,7 +334,7 @@ export function WhatIfCard({
             first={i === 0}
             left={
               <View style={styles.gap2}>
-                <Text style={styles.rowText} numberOfLines={1}>
+                <Text style={styles.rowText}>
                   <Text style={styles.rootName}>{name(r.root_for_team_id)}</Text>
                   <Text style={styles.small}> over {name(r.against_team_id)}</Text>
                 </Text>

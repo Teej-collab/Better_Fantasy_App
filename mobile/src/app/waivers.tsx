@@ -123,7 +123,7 @@ export default function WaiversScreen() {
                   {c.add_player_name}
                 </Text>
                 {c.status === 'failed' && c.failure_reason && (
-                  <Text style={styles.runReason} numberOfLines={1}>
+                  <Text style={styles.runReason}>
                     {c.failure_reason}
                   </Text>
                 )}

@@ -121,7 +121,7 @@ function BettorRow({ bet }: { bet: LeagueBet }) {
           {m.name}
           {m.team_name ? <Text style={styles.soft}> · {m.team_name}</Text> : null}
         </Text>
-        <Text style={styles.soft} numberOfLines={1}>
+        <Text style={styles.soft} numberOfLines={2}>
           {timeAgo(bet.created_at)} · {bet.member_record} this season
         </Text>
       </View>

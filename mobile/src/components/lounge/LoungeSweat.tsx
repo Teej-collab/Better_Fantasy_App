@@ -53,7 +53,7 @@ export function SweatCard({ sweat, game, onOpen }: { sweat: LoungeSweat; game: L
         <Text style={styles.open}>Open ›</Text>
       </View>
       <View style={styles.scoreRow}>
-        <Text style={styles.teamName} numberOfLines={1}>
+        <Text style={styles.teamName} numberOfLines={2}>
           {sweat.myTeamName}
         </Text>
         <Text style={styles.score}>{fmt(sweat.myScore)}</Text>
@@ -61,7 +61,7 @@ export function SweatCard({ sweat, game, onOpen }: { sweat: LoungeSweat; game: L
           <View style={[styles.barFill, { width: `${Math.max(2, Math.min(98, share))}%`, backgroundColor: accent }]} />
         </View>
         <Text style={styles.score}>{fmt(sweat.opponentScore)}</Text>
-        <Text style={styles.oppName} numberOfLines={1}>
+        <Text style={styles.oppName} numberOfLines={2}>
           {sweat.opponentName}
         </Text>
       </View>
@@ -180,7 +180,7 @@ export function SweatSheet({
                     onPress={() => mySide && setRosterTeamId(mySide.team_id)}
                     accessibilityRole="button"
                     accessibilityLabel={`${sweat.myTeamName ?? 'Your team'}, see roster`}>
-                    <Text style={[styles.versusName, mySide && styles.linkName]} numberOfLines={1}>
+                    <Text style={[styles.versusName, mySide && styles.linkName]} numberOfLines={2}>
                       {sweat.myTeamName} · you{mySide ? ' ›' : ''}
                     </Text>
                     <Text style={styles.versusScore}>{fmt(sweat.myScore)}</Text>
@@ -196,7 +196,7 @@ export function SweatSheet({
                     onPress={() => theirSide && setRosterTeamId(theirSide.team_id)}
                     accessibilityRole="button"
                     accessibilityLabel={`${sweat.opponentName ?? 'Opponent'}, see roster`}>
-                    <Text style={[styles.versusName, theirSide && styles.linkName]} numberOfLines={1}>
+                    <Text style={[styles.versusName, theirSide && styles.linkName]} numberOfLines={2}>
                       {sweat.opponentName}
                       {theirSide ? ' ›' : ''}
                     </Text>
@@ -306,7 +306,7 @@ function SweatBet({
         return (
           <View key={leg.id} style={styles.leg}>
             <View style={styles.legHead}>
-              <Text style={styles.legText} numberOfLines={1}>
+              <Text style={styles.legText} numberOfLines={2}>
                 {leg.description}
               </Text>
               <Text style={[styles.legProgress, { color }]}>
@@ -376,10 +376,10 @@ function ScoreboardCard({
             style={({ pressed }) => [styles.boardRow, pressed && styles.pressed]}>
             <TeamAvatar name={side.owner_name || side.team_name} logoUrl={side.logo_url} size={34} />
             <View style={styles.boardTeam}>
-              <Text style={styles.boardName} numberOfLines={1}>
+              <Text style={styles.boardName} numberOfLines={2}>
                 {side.team_name}
               </Text>
-              <Text style={styles.boardMeta} numberOfLines={1}>
+              <Text style={styles.boardMeta} numberOfLines={2}>
                 {[side.owner_name, side.record, leftLine(side)].filter(Boolean).join(' · ')}
               </Text>
             </View>
@@ -423,7 +423,7 @@ function TeamRoster({ side, accent, onBack }: { side: MatchupContextSide; accent
           <Text style={styles.playerName} numberOfLines={1}>
             {p.player_name}
           </Text>
-          <Text style={styles.playerStatus} numberOfLines={1}>
+          <Text style={styles.playerStatus} numberOfLines={2}>
             {status}
           </Text>
         </View>
@@ -441,10 +441,10 @@ function TeamRoster({ side, accent, onBack }: { side: MatchupContextSide; accent
       <View style={styles.rosterHead}>
         <TeamAvatar name={side.owner_name || side.team_name} logoUrl={side.logo_url} size={44} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.rosterName} numberOfLines={1}>
+          <Text style={styles.rosterName} numberOfLines={2}>
             {side.team_name}
           </Text>
-          <Text style={styles.boardMeta} numberOfLines={1}>
+          <Text style={styles.boardMeta} numberOfLines={2}>
             {[side.owner_name, side.record, leftLine(side)].filter(Boolean).join(' · ')}
           </Text>
         </View>
@@ -476,7 +476,7 @@ function PlayerRow({ p, dot, status, value, muted }: { p: RosterPlayer; dot: str
       <View style={[styles.dot, { backgroundColor: dot }]} />
       <View style={{ flex: 1 }}>
         <Text style={styles.playerName}>{p.player_name}</Text>
-        <Text style={styles.playerStatus} numberOfLines={1}>
+        <Text style={styles.playerStatus} numberOfLines={2}>
           {status}
         </Text>
       </View>

@@ -65,7 +65,7 @@ export default function TeamScreen() {
           <Text style={styles.teamName} numberOfLines={2}>
             {t.team_name}
           </Text>
-          <Text style={styles.muted} numberOfLines={1}>
+          <Text style={styles.muted} numberOfLines={2}>
             <Text style={styles.ownerLink} onPress={() => openOwner(t.owner_id, t.season)}>
               {t.owner_name}
             </Text>
@@ -164,7 +164,7 @@ function PlayerRow({ player: p, divided }: { player: RosterPlayer; divided: bool
           </Text>
           <InjuryTag status={p.injury_status} />
         </View>
-        <Text style={styles.detail} numberOfLines={1}>
+        <Text style={styles.detail} numberOfLines={2}>
           {detail}
         </Text>
       </View>

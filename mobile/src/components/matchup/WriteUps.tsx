@@ -41,7 +41,7 @@ function WriteUpCard({ title, sub, text, target }: { title: string; sub: string;
       <View style={styles.row}>
         <View style={styles.rowText}>
           <Text style={styles.title}>{title}</Text>
-          <Text style={eliteText.small} numberOfLines={1}>
+          <Text style={eliteText.small} numberOfLines={2}>
             {sub}
           </Text>
         </View>

@@ -298,7 +298,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // What a share link points at (backend app/routers/share.py).
 export type ShareRef = {
-  kind: 'matchup' | 'recap' | 'standings' | 'power' | 'awards' | 'champion' | 'season_awards' | 'chug' | 'bet' | 'trade' | 'wheel' | 'invite' | 'player';
+  kind: 'matchup' | 'recap' | 'standings' | 'power' | 'awards' | 'champion' | 'season_awards' | 'chug' | 'bet' | 'trade' | 'wheel' | 'invite' | 'player' | 'whatif' | 'survivor';
   matchup_id?: number;
   season?: number;
   week?: number;
@@ -307,6 +307,14 @@ export type ShareRef = {
   trade_id?: number;
   game_id?: string;
   player_id?: string;
+  // A What-If world (2026-11-23): its encoded scenario and how it ends
+  // for one team, as simulated on this phone.
+  scenario?: string;
+  team_id?: number;
+  record?: string;
+  seed?: number;
+  place?: number | null;
+  pool_id?: number;
 };
 
 export type ReportReason = 'harassment' | 'hate' | 'sexual' | 'spam' | 'other';
@@ -424,7 +432,7 @@ export const api = {
   createShareLink: (ref: ShareRef) => request<{ token: string }>('/share', { method: 'POST', body: JSON.stringify(ref) }),
   // Public: what a share link shows and what it points at (app/s/[token].tsx).
   sharedCard: (token: string) =>
-    request<{ kind: string; league_name: string; league_id: number; ref: Record<string, string | number>; card: { invite_code?: string } }>(
+    request<{ kind: string; league_name: string; league_id: number; ref: Record<string, string | number>; card: { invite_code?: string; join_code?: string } }>(
       `/share/${encodeURIComponent(token)}`,
     ),
   shareToLeagueChat: (body: string) =>

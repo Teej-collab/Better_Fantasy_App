@@ -295,7 +295,7 @@ function PlayerColumn({
             <Text style={styles.playerName} numberOfLines={1}>
               {p.player_name}
             </Text>
-            <Text style={styles.playerSub} numberOfLines={1}>
+            <Text style={styles.playerSub} numberOfLines={2}>
               {pos(p.position)} · {(p.per_week ?? 0).toFixed(1)}/wk{p.injury_status ? ` · ${p.injury_status}` : ''}
               {p.on_block ? ' · on the block' : ''}
             </Text>

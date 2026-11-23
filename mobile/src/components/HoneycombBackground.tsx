@@ -84,9 +84,17 @@ function Light({ spec, clock, cx, cy, color }: { spec: LightSpec; clock: SharedV
   );
 }
 
-// Owners Box draws a floodlight instead (components/ob/Ob.tsx).
+// Owners Box hangs its floodlight (components/ob/Ob.tsx) over the same
+// hex wall (2026-11-23; it had the floodlight alone). Background lights
+// set to Off leaves just the floodlight.
 export function HoneycombBackground() {
-  return OwnersBox ? <Floodlight /> : <HoneycombClassic />;
+  if (!OwnersBox) return <HoneycombClassic />;
+  return (
+    <>
+      <HoneycombClassic />
+      <Floodlight over />
+    </>
+  );
 }
 
 function HoneycombClassic() {
