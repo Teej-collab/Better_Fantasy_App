@@ -159,16 +159,32 @@ def in_league(payload: dict, league_id: int | None, *, league_wide: bool = False
     return {**payload, "data": data}
 
 
+def in_leagues(payload: dict, league_ids: list[int]) -> dict:
+    """For a push about a player you might roster in several leagues
+    (injury news, 2026-11-26): it goes out unless every one of those
+    leagues is muted. The tap still switches to the first."""
+    payload = in_league(payload, league_ids[0] if league_ids else None)
+    if len(league_ids) > 1:
+        payload = {**payload, "data": {**payload["data"], "league_ids": list(league_ids)}}
+    return payload
+
+
 async def _league_allows(conn, owner_id: int, payload: dict) -> bool:
-    """False when the owner muted the push's league, or set it to just
-    their team and this is league-wide. Always kept in the inbox anyway."""
+    """False when the owner muted the push's league (the draft clock
+    too, since 2026-11-26: Muted means nothing buzzes), or set it to
+    just their team and this is league-wide. Always kept in the inbox
+    anyway."""
     data = payload.get("data") or {}
-    if data.get("league_id") is None or _type(payload) in quiet_hours.ALWAYS_SEND:
+    ids = data.get("league_ids") or ([data["league_id"]] if data.get("league_id") is not None else [])
+    if not ids:
         return True
-    level = await conn.fetchval(
-        "SELECT level FROM league_notification_levels WHERE owner_id = $1 AND league_id = $2", owner_id, data["league_id"]
+    levels = dict(
+        await conn.fetch(
+            "SELECT league_id, level FROM league_notification_levels WHERE owner_id = $1 AND league_id = ANY($2::int[])",
+            owner_id, ids,
+        )
     )
-    return level is None or (level == "mine" and not data.get("league_wide"))
+    return any(levels.get(i) is None or (levels[i] == "mine" and not data.get("league_wide")) for i in ids)
 
 
 async def record(conn, payload: dict, *, owner_ids: list[int] = (), user_id: int | None = None) -> None:

@@ -8,7 +8,8 @@ rather than inside either caller so neither has to import the other
 "You're on the clock" is a rare, time-critical alert — much like the
 commish_corner override in app/routers/chat.py's own push logic, it
 bypasses the normal per-owner notification-category toggles and only
-respects the master push_enabled switch. A push failure here must
+respects the master push_enabled switch — and a league set to Muted in
+Settings > Notifications > Your leagues (each push carries its league). A push failure here must
 never break the pick that triggered it, so every public function below
 swallows and logs its own errors rather than raising.
 """
@@ -46,7 +47,7 @@ async def notify_on_the_clock(season: int, league_id: int, config: dict) -> None
             await dispatcher.send_to_owner(
                 conn,
                 pick["owner_id"],
-                formatter.draft_on_the_clock(pick["round"], config["current_pick_number"], seconds),
+                dispatcher.in_league(formatter.draft_on_the_clock(pick["round"], config["current_pick_number"], seconds), league_id),
             )
     except Exception:
         logger.exception("Draft on-the-clock push failed for season=%s league_id=%s", season, league_id)
@@ -61,7 +62,7 @@ async def notify_draft_starting_soon(season: int, league_id: int, owner_ids: lis
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
-            payload = formatter.draft_starting_soon(minutes)
+            payload = dispatcher.in_league(formatter.draft_starting_soon(minutes), league_id)
             for owner_id in owner_ids:
                 prefs = await preferences_queries.get_preferences(conn, owner_id)
                 if prefs["push_enabled"]:
@@ -81,7 +82,7 @@ async def notify_draft_room_open(season: int, league_id: int, owner_ids: list[in
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
-            payload = formatter.draft_room_open()
+            payload = dispatcher.in_league(formatter.draft_room_open(), league_id)
             for owner_id in owner_ids:
                 prefs = await preferences_queries.get_preferences(conn, owner_id)
                 if prefs["push_enabled"]:
@@ -106,7 +107,7 @@ async def notify_draft_live(season: int, league_id: int, owner_ids: list[int]) -
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
-            payload = formatter.draft_live()
+            payload = dispatcher.in_league(formatter.draft_live(), league_id)
             for owner_id in owner_ids:
                 prefs = await preferences_queries.get_preferences(conn, owner_id)
                 if prefs["push_enabled"]:
@@ -127,7 +128,7 @@ async def notify_keeper_deadline_approaching(season: int, league_id: int, owner_
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
-            payload = formatter.keeper_deadline_approaching(minutes)
+            payload = dispatcher.in_league(formatter.keeper_deadline_approaching(minutes), league_id)
             for owner_id in owner_ids:
                 prefs = await preferences_queries.get_preferences(conn, owner_id)
                 if prefs["push_enabled"]:

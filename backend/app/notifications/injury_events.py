@@ -157,19 +157,21 @@ def classify(previous: dict | None, current: dict, now: datetime.datetime) -> tu
 
 
 async def _roster_owners(conn, season: int, sleeper_ids: list[str]) -> dict[str, list[dict]]:
-    """sleeper_player_id -> [{owner_id, team_id, player_name}], one per
-    owner even if they roster the player in more than one league."""
+    """sleeper_player_id -> [{owner_id, team_id, player_name, league_ids}],
+    one per owner even if they roster the player in more than one league
+    (league_ids lists them all, so the push only stays quiet when every
+    one of those leagues is muted)."""
     if not sleeper_ids:
         return {}
     rows = await conn.fetch(
         """
-        SELECT DISTINCT ON (cr.sleeper_player_id, t.owner_id)
-               cr.sleeper_player_id, t.owner_id, cr.team_id, p.full_name AS player_name
+        SELECT cr.sleeper_player_id, t.owner_id, min(cr.team_id) AS team_id, min(p.full_name) AS player_name,
+               COALESCE(array_agg(DISTINCT t.league_id) FILTER (WHERE t.league_id IS NOT NULL), '{}') AS league_ids
         FROM current_rosters cr
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         JOIN teams_by_season t ON t.id = cr.team_id
         WHERE cr.season = $1 AND cr.sleeper_player_id = ANY($2::text[]) AND t.owner_id IS NOT NULL
-        ORDER BY cr.sleeper_player_id, t.owner_id, cr.team_id
+        GROUP BY cr.sleeper_player_id, t.owner_id
         """,
         season, sleeper_ids,
     )
@@ -240,7 +242,7 @@ async def run_injury_watch(conn, season: int, feed: dict, now: datetime.datetime
                     )
                 else:
                     payload = formatter.player_news(owner["player_name"], entry["detail"], tag=f"news-{sleeper_id}", sleeper_id=sleeper_id)
-                await dispatcher.send_to_owner(conn, owner["owner_id"], payload, now=now)
+                await dispatcher.send_to_owner(conn, owner["owner_id"], dispatcher.in_leagues(payload, owner["league_ids"]), now=now)
                 sent += 1
             except Exception:
                 logger.exception("Injury alert failed (player=%s owner=%s)", sleeper_id, owner["owner_id"])
@@ -273,8 +275,11 @@ async def notify_in_game_injuries(conn, season: int, week: int) -> int:
                 )
                 await dispatcher.send_to_owner(
                     conn, owner["owner_id"],
-                    formatter.injury_in_game(
-                        owner["player_name"], r["state"], matchup_id, tag=f"injury-{r['sleeper_player_id']}",
+                    dispatcher.in_leagues(
+                        formatter.injury_in_game(
+                            owner["player_name"], r["state"], matchup_id, tag=f"injury-{r['sleeper_player_id']}",
+                        ),
+                        owner["league_ids"],
                     ),
                 )
                 sent += 1

@@ -78,8 +78,9 @@ const LEAGUE_LEVELS: { key: LeagueNotificationLevel["level"]; label: string }[] 
   { key: "off", label: "Muted" },
 ];
 
-// Your leagues (2026-11-08): how much each league can buzz you. The draft
-// clock always comes through, and a muted league still fills your inbox.
+// Your leagues (2026-11-08): how much each league can buzz you. A muted
+// league still fills your inbox. First on the page (2026-11-26), since
+// everything below it is one setting for all your leagues.
 function LeagueLevels() {
   const [leagues, setLeagues] = useState<LeagueNotificationLevel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,9 +123,9 @@ function LeagueLevels() {
 
   return (
     <section className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
-      <h2 className="text-sm font-semibold tracking-wide uppercase">Your Leagues</h2>
+      <h2 className="text-sm font-semibold tracking-wide uppercase">Each League</h2>
       <p className="mb-2 text-xs text-black/50 dark:text-white/50">
-        &ldquo;My team&rdquo; skips league chat, chugs, recaps and other people&apos;s trades. Muted still fills your inbox, and the draft clock always comes through.
+        Set each league on its own. &ldquo;My team&rdquo; skips league chat, chugs, recaps and other people&apos;s trades. Muted silences everything from that league, the draft clock too, but it all still lands in your inbox.
       </p>
       {error && (
         <p role="alert" className="text-xs text-red-500">
@@ -307,6 +308,12 @@ export function NotificationsSection() {
           {error}
         </p>
       )}
+
+      <LeagueLevels />
+
+      <p className="-mb-2 text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+        For all your leagues
+      </p>
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>
@@ -493,8 +500,6 @@ export function NotificationsSection() {
           ))}
         </div>
       </section>
-
-      <LeagueLevels />
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <ToggleRow

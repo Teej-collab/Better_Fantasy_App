@@ -689,15 +689,18 @@ function clockLabel(t: string): string {
 }
 
 // Settings > Notifications > Your leagues (2026-11-08): each league gets
-// everything, just your team, or muted. The draft clock always comes
-// through, and a muted league still fills your inbox.
+// everything, just your team, or muted. Muted means nothing buzzes, the
+// draft clock included (2026-11-26), but it still fills your inbox.
 const LEAGUE_LEVELS: { key: LeagueNotificationLevel['level']; label: string }[] = [
   { key: 'all', label: 'Everything' },
   { key: 'mine', label: 'My team' },
   { key: 'off', label: 'Muted' },
 ];
 
-function LeagueLevels() {
+// Shown at the top of Notifications (2026-11-26), since everything below
+// it there is one setting for all your leagues; `inline` drops the page
+// header for that.
+function LeagueLevels({ inline = false }: { inline?: boolean }) {
   const q = useQuery({ queryKey: ['notification-leagues'], queryFn: api.notificationLeagues });
   const [error, setError] = useState<string | null>(null);
   if (q.isPending) return <LoadingState />;
@@ -718,7 +721,11 @@ function LeagueLevels() {
   }
   return (
     <View style={styles.gap}>
-      <Header title="Your leagues" subtitle="How much each league can buzz you." />
+      {inline ? (
+        <Text style={styles.fineTune}>EACH LEAGUE</Text>
+      ) : (
+        <Header title="Your leagues" subtitle="How much each league can buzz you." />
+      )}
       {error && <Text style={styles.error}>{error}</Text>}
       {leagues.length === 0 ? (
         <Panel description="You're not in a league yet.">{null}</Panel>
@@ -731,7 +738,7 @@ function LeagueLevels() {
                 ? 'Everything you have switched on, from this league.'
                 : l.level === 'mine'
                   ? 'Only what’s about your team: your matchup, your players, trades with you. No league chat, chugs, recaps or other people’s trades.'
-                  : 'Nothing buzzes except the draft clock. It all still lands in your inbox.'}
+                  : 'Nothing from this league buzzes you, not even the draft clock. It all still lands in your inbox.'}
             </Text>
           </Panel>
         ))
@@ -884,6 +891,9 @@ export function NotificationSettings({ tune }: { tune?: string }) {
       <Header title="Notifications" subtitle="What The Weekend lets you know about, and when." saved={saved} />
       {error && <Text style={styles.error}>{error}</Text>}
 
+      <LeagueLevels inline />
+
+      <Text style={styles.fineTune}>FOR ALL YOUR LEAGUES</Text>
       <View style={[styles.sundayCard, { borderColor: accent }]}>
         <Text style={[styles.sectionKicker, { color: accent }]}>SUNDAY MODE · THE EASY WAY</Text>
         {SUNDAY_MODES.map((m) => {
@@ -906,11 +916,10 @@ export function NotificationSettings({ tune }: { tune?: string }) {
         {!prefs.sunday_mode && <Text style={styles.small}>Customized below, so no preset is on.</Text>}
       </View>
 
-      <Text style={styles.fineTune}>CUSTOMIZE</Text>
+      <Text style={styles.fineTune}>CUSTOMIZE FOR ALL YOUR LEAGUES</Text>
       <ListCard>
         <ListRow first label="Game day alerts" sub="Touchdowns, red zone, injuries, your matchup" value={`${gameOn} on`} onPress={() => openTune('notifications', 'game')} />
         <ListRow label="League & friends" sub="Trades, the draft, survivor, friends" value={`${leagueOn} on`} onPress={() => openTune('notifications', 'league')} />
-        <ListRow label="Your leagues" sub="Everything, just your team, or muted" onPress={() => openTune('notifications', 'leagues')} />
         <ListRow label="Messages" sub="DMs, league chat, mentions, replies" value={`${messagesOn} on`} onPress={() => openTune('notifications', 'messages')} />
         <ListRow label="Push notifications" sub="Alerts on this phone when the app's closed" value={prefs.push_enabled ? 'On' : 'Off'} onPress={() => openTune('notifications', 'push')} />
         <ListRow

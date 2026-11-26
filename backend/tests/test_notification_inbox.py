@@ -184,14 +184,24 @@ async def test_a_league_set_to_just_my_team_or_muted(pool, monkeypatch):
             assert len(delivered) == 1
             await conn.execute("UPDATE league_notification_levels SET level = 'off' WHERE owner_id = $1", owner_id)
             await dispatcher.send_to_owner(conn, owner_id, mine, now=NOON)
-            # Muted, but the draft clock still reaches you.
+            # Muted means the draft clock too.
             await dispatcher.send_to_owner(conn, owner_id, dispatcher.in_league(formatter.draft_on_the_clock(1, 1, 60), league_id), now=NOON)
+            assert len(delivered) == 1
+            # A player in this league and an unmuted one still buzzes.
+            news = formatter.player_news("Sam", "Limited Wednesday.", tag="news-x", sleeper_id="x")
+            other = await conn.fetchval(
+                "INSERT INTO leagues (name, created_by_user_id, invite_code) "
+                "VALUES ('Test Levels League 2', (SELECT id FROM users LIMIT 1), 'TSTLV2') RETURNING id"
+            )
+            await dispatcher.send_to_owner(conn, owner_id, dispatcher.in_leagues(news, [league_id]), now=NOON)
+            assert len(delivered) == 1
+            await dispatcher.send_to_owner(conn, owner_id, dispatcher.in_leagues(news, [league_id, other]), now=NOON)
             assert len(delivered) == 2
             # Everything still lands in the inbox.
-            assert {r["type"] for r in await _inbox(conn, owner_id)} == {"chug_posted", "matchup_final", "draft_on_the_clock"}
+            assert {r["type"] for r in await _inbox(conn, owner_id)} == {"chug_posted", "matchup_final", "draft_on_the_clock", "player_news"}
         finally:
             await conn.execute("DELETE FROM league_notification_levels WHERE league_id = $1", league_id)
-            await conn.execute("DELETE FROM leagues WHERE id = $1", league_id)
+            await conn.execute("DELETE FROM leagues WHERE invite_code IN ('TSTLVL', 'TSTLV2')")
 
 
 async def test_reply_from_a_chat_push(pool, monkeypatch):
