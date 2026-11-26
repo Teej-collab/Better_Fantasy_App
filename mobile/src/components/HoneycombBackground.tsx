@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, G, LinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
 
 import { Floodlight } from '@/components/ob/Ob';
 import { Colors, OwnersBox } from '@/constants/theme';
@@ -34,13 +34,27 @@ const DRIFT_PX_PER_S = 4;
 // of it so all of them loop seamlessly when it wraps.
 const CLOCK_MS = 120_000;
 
-function hexPath(cx: number, cy: number, r: number): string {
+function hexPath(cx: number, cy: number, r: number, turn = 0): string {
   let d = '';
   for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 3) * i;
+    const a = (Math.PI / 3) * i + turn;
     d += `${i === 0 ? 'M' : 'L'}${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
   }
   return `${d}Z`;
+}
+
+// Owners Box turns each plate 30° to point-up and splits it into a
+// cube's three faces (2026-11-23): the lid catches the light, the left
+// side sits in half shade, the right in full shade. The gaps between
+// plates still carry the light, so the cube edges glow.
+function cubeFaces(cx: number, cy: number, r: number): [string, string, string] {
+  const v = Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 3) * i - Math.PI / 2;
+    return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
+  });
+  const c = `${cx.toFixed(1)},${cy.toFixed(1)}`;
+  // v: 0 top, 1 upper right, 2 lower right, 3 bottom, 4 lower left, 5 upper left.
+  return [`M${v[0]}L${v[1]}L${c}L${v[5]}Z`, `M${v[5]}L${c}L${v[3]}L${v[4]}Z`, `M${c}L${v[1]}L${v[2]}L${v[3]}Z`];
 }
 
 // A fixed pseudo-random sequence, so the lights take the same paths on
@@ -105,26 +119,43 @@ function HoneycombClassic() {
   const appReduced = useAppearance().reducedMotion;
   const still = systemReduced || appReduced;
 
+  const cubes = OwnersBox;
   const r = Math.min(200, Math.max(70, 0.12 * Math.max(width, height)));
   const gap = Math.max(3, r * 0.045);
-  // The plate sheet is one tile period (3r across, √3·r down) bigger
-  // than the screen, so drifting it by exactly one period and jumping
-  // back is seamless.
-  const sheetW = width + 3 * r;
-  const sheetH = height + SQRT3 * r;
+  // The plate sheet is one tile period bigger than the screen (flat-top:
+  // 3r across, √3·r down; point-up cubes: √3·r across, 3r down), so
+  // drifting it by exactly one period and jumping back is seamless.
+  const periodX = cubes ? SQRT3 * r : 3 * r;
+  const periodY = cubes ? 3 * r : SQRT3 * r;
+  const sheetW = width + periodX;
+  const sheetH = height + periodY;
 
-  const plates = useMemo(() => {
+  const { plates, faces } = useMemo(() => {
     const plate = r - gap / SQRT3;
-    const colStep = 1.5 * r;
-    const rowStep = SQRT3 * r;
     const paths: string[] = [];
-    for (let col = -1; col * colStep < sheetW + r; col++) {
+    const sides: [string, string, string][] = [];
+    if (cubes) {
+      const colStep = SQRT3 * r;
+      const rowStep = 1.5 * r;
       for (let row = -1; row * rowStep < sheetH + r; row++) {
-        paths.push(hexPath(col * colStep, row * rowStep + (col % 2 !== 0 ? rowStep / 2 : 0), plate));
+        for (let col = -1; col * colStep < sheetW + r; col++) {
+          const x = col * colStep + (row % 2 !== 0 ? colStep / 2 : 0);
+          const y = row * rowStep;
+          paths.push(hexPath(x, y, plate, Math.PI / 6));
+          sides.push(cubeFaces(x, y, plate));
+        }
+      }
+    } else {
+      const colStep = 1.5 * r;
+      const rowStep = SQRT3 * r;
+      for (let col = -1; col * colStep < sheetW + r; col++) {
+        for (let row = -1; row * rowStep < sheetH + r; row++) {
+          paths.push(hexPath(col * colStep, row * rowStep + (col % 2 !== 0 ? rowStep / 2 : 0), plate));
+        }
       }
     }
-    return paths;
-  }, [r, gap, sheetW, sheetH]);
+    return { plates: paths, faces: sides };
+  }, [cubes, r, gap, sheetW, sheetH]);
 
   const lights = useMemo<LightSpec[]>(() => {
     const rand = seeded(11);
@@ -154,13 +185,13 @@ function HoneycombClassic() {
     clock.value = withRepeat(withTiming(1, { duration: CLOCK_MS, easing: Easing.linear }), -1, false);
     drift.value = 0;
     drift.value = withRepeat(
-      withTiming(1, { duration: ((3 * r) / DRIFT_PX_PER_S) * 1000, easing: Easing.linear }),
+      withTiming(1, { duration: (Math.max(periodX, periodY) / DRIFT_PX_PER_S) * 1000, easing: Easing.linear }),
       -1,
       false,
     );
-  }, [still, r, clock, drift]);
+  }, [still, periodX, periodY, clock, drift]);
   const driftStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -drift.value * 3 * r }, { translateY: -drift.value * SQRT3 * r }],
+    transform: [{ translateX: -drift.value * periodX }, { translateY: -drift.value * periodY }],
   }));
 
   // Settings > Appearance > Background: off.
@@ -194,9 +225,17 @@ function HoneycombClassic() {
             {plates.map((d, i) => (
               <Path key={i} d={d} fill="url(#plate)" />
             ))}
-            {plates.map((d, i) => (
-              <Path key={`s${i}`} d={d} fill="url(#sheen)" />
-            ))}
+            {cubes
+              ? faces.map(([lid, left, right], i) => (
+                  <G key={`f${i}`}>
+                    <Path d={lid} fill="#ffffff" fillOpacity={0.05} />
+                    <Path d={left} fill="#000000" fillOpacity={0.22} />
+                    <Path d={right} fill="#000000" fillOpacity={0.45} />
+                    {/* The lid's front edges catch a little light. */}
+                    <Path d={lid} fill="none" stroke="#ffffff" strokeOpacity={0.06} strokeWidth={1} />
+                  </G>
+                ))
+              : plates.map((d, i) => <Path key={`s${i}`} d={d} fill="url(#sheen)" />)}
           </Svg>
         </View>
       </Animated.View>
